@@ -914,41 +914,70 @@ function crearGraficosConsumo(datos) {
 
     if (datos.length === 0) return;
 
-    // ── 1. Histórico: total MB por día ──────────────────────────
-    const porFecha = {};
+    // ── 1. Histórico: MB por día desglosado por telefonía ───────
+    const TELEFONIA_CHART = {
+        Personal:    { color: '#1d4ed8', bg: 'rgba(37,99,235,0.08)' },
+        Claro:       { color: '#dc2626', bg: 'rgba(220,38,38,0.08)' },
+        Tigo:        { color: '#c2410c', bg: 'rgba(234,88,12,0.08)' },
+        Vox:         { color: '#16a34a', bg: 'rgba(22,163,74,0.08)' },
+        Desconocida: { color: '#6b7280', bg: 'rgba(107,114,128,0.08)' },
+    };
+
+    // Recolectar fechas y operadoras únicas presentes en los datos
+    const fechasSet = new Set();
+    const telefonias = [];
     datos.forEach(c => {
-        const f  = c.fecha_consumo ? String(c.fecha_consumo).substring(0, 10) : null;
-        const mb = parseFloat(c.consumo_mb) || 0;
-        if (f) porFecha[f] = (porFecha[f] || 0) + mb;
+        if (c.fecha_consumo) fechasSet.add(String(c.fecha_consumo).substring(0, 10));
+        const tel = c.telefonia || 'Desconocida';
+        if (!telefonias.includes(tel)) telefonias.push(tel);
     });
-    const fechas = Object.keys(porFecha).sort();
+    const fechas = [...fechasSet].sort();
+
+    // Acumular MB por [telefonía][fecha]
+    const mbPorTelFecha = {};
+    telefonias.forEach(tel => { mbPorTelFecha[tel] = {}; });
+    datos.forEach(c => {
+        const f   = c.fecha_consumo ? String(c.fecha_consumo).substring(0, 10) : null;
+        const tel = c.telefonia || 'Desconocida';
+        const mb  = parseFloat(c.consumo_mb) || 0;
+        if (f) mbPorTelFecha[tel][f] = (mbPorTelFecha[tel][f] || 0) + mb;
+    });
+
+    const datasets = telefonias.map(tel => {
+        const cfg = TELEFONIA_CHART[tel] || { color: '#8A35AB', bg: 'rgba(138,53,171,0.08)' };
+        return {
+            label: tel,
+            data: fechas.map(f => mbPorTelFecha[tel][f] || 0),
+            borderColor: cfg.color,
+            backgroundColor: cfg.bg,
+            borderWidth: 2.5,
+            fill: false,
+            tension: 0.4,
+            pointBackgroundColor: cfg.color,
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+        };
+    });
 
     const ctxH = document.getElementById('chartConsumoHistorico').getContext('2d');
     chartConsumoHistorico = new Chart(ctxH, {
         type: 'line',
         data: {
             labels: fechas.map(f => formatearFecha(f)),
-            datasets: [{
-                label: 'MB total',
-                data: fechas.map(f => porFecha[f]),
-                borderColor: '#8A35AB',
-                backgroundColor: 'rgba(138,53,171,0.10)',
-                borderWidth: 3,
-                fill: true,
-                tension: 0.4,
-                pointBackgroundColor: '#DA527D',
-                pointBorderColor: '#fff',
-                pointBorderWidth: 2,
-                pointRadius: 5,
-                pointHoverRadius: 7,
-            }]
+            datasets,
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
             plugins: {
-                legend: { display: false },
-                tooltip: { callbacks: { label: c => formatearNumero(c.parsed.y) + ' MB' } }
+                legend: { position: 'bottom', labels: { padding: 14, font: { size: 12 } } },
+                tooltip: {
+                    callbacks: {
+                        label: c => c.dataset.label + ': ' + formatearNumero(c.parsed.y) + ' MB'
+                    }
+                }
             },
             scales: {
                 y: { beginAtZero: true, ticks: { callback: v => formatearNumero(v) } }
