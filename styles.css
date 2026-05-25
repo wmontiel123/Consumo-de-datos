@@ -711,12 +711,13 @@ tbody tr:nth-child(odd) {
     display: flex;
     justify-content: center;
     margin-top: 20px;
+    margin-bottom: 28px;
 }
 
 .pag-controles {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 14px;
     flex-wrap: wrap;
     justify-content: center;
 }
