@@ -56,18 +56,18 @@
 
         <!-- Tabs de navegación -->
         <div class="tabs-nav">
-            <button class="tab-btn tab-activo" onclick="cambiarTab('dispositivos')" id="tabBtnDispositivos">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                Dispositivos
-            </button>
-            <button class="tab-btn" onclick="cambiarTab('consumo')" id="tabBtnConsumo">
+            <button class="tab-btn tab-activo" onclick="cambiarTab('consumo')" id="tabBtnConsumo">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
                 Consumo SIM
+            </button>
+            <button class="tab-btn" onclick="cambiarTab('dispositivos')" id="tabBtnDispositivos">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                Dispositivos
             </button>
         </div>
 
         <!-- Tab: Dispositivos -->
-        <div id="tab-dispositivos">
+        <div id="tab-dispositivos" style="display:none">
 
         <!-- Filtros -->
         <div class="filters">
@@ -178,7 +178,7 @@
         </div><!-- /tab-dispositivos -->
 
         <!-- Tab: Consumo SIM -->
-        <div id="tab-consumo" style="display:none">
+        <div id="tab-consumo">
 
             <!-- Filtros consumo -->
             <div class="filters">
@@ -249,6 +249,22 @@
                     </tbody>
                 </table>
                 <div id="paginacion-consumo" class="paginacion"></div>
+            </div>
+
+            <!-- Gráficos consumo -->
+            <div class="charts">
+                <div class="chart-container">
+                    <h3>Histórico de Consumo (MB por día)</h3>
+                    <canvas id="chartConsumoHistorico"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Top 15 Líneas por Consumo</h3>
+                    <canvas id="chartConsumoLineas"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Estado de Líneas</h3>
+                    <canvas id="chartConsumoEstados"></canvas>
+                </div>
             </div>
 
         </div><!-- /tab-consumo -->

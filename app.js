@@ -37,6 +37,7 @@ let activosSet     = new Set();
 let paginaActual   = 1;
 const ITEMS_POR_PAGINA = 10;
 let chartBarras, chartLineas, chartTorta;
+let chartConsumoHistorico, chartConsumoLineas, chartConsumoEstados;
 const COLORES = ['#35398C', '#DA527D', '#B44C80', '#904783', '#644087'];
 
 // Consumo SIM
@@ -118,8 +119,10 @@ async function iniciarApp() {
         // Guardar globalmente
         window.clienteSupabase = supabase;
         
-        // Cargar datos
+        // Cargar datos (dispositivos + mapas de consumo)
         await cargarDatos();
+        // Cargar consumo (tab por defecto)
+        await cargarConsumos();
         
     } catch (error) {
         console.error('❌ Error al iniciar:', error);
@@ -782,7 +785,7 @@ function cambiarTab(tab) {
         tabCons.style.display = 'block';
         btnDisp.classList.remove('tab-activo');
         btnCons.classList.add('tab-activo');
-        cargarConsumos();
+        cargarConsumos();  // refresca al volver al tab
     }
 }
 
@@ -811,13 +814,19 @@ async function cargarConsumos() {
         console.log(`✅ ${consumos.length} consumos cargados`);
         todosLosConsumos  = consumos;
         consumosFiltrados = consumos;
-        paginaConsumo = 1;
-        mostrarEnTablaConsumo(consumos);
+        mostrarDatosConsumo(consumos);
 
     } catch (e) {
         loading.style.display = 'none';
         console.error('❌', e);
     }
+}
+
+// Wrapper: resetea página, muestra tabla y actualiza gráficos
+function mostrarDatosConsumo(datos) {
+    paginaConsumo = 1;
+    mostrarEnTablaConsumo(datos);
+    crearGraficosConsumo(datos);
 }
 
 function mostrarEnTablaConsumo(datos) {
@@ -897,6 +906,150 @@ function irPaginaConsumo(num) {
     document.querySelector('#tab-consumo .table-container').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+// Crea los 3 gráficos del tab de consumo
+function crearGraficosConsumo(datos) {
+    if (chartConsumoHistorico) chartConsumoHistorico.destroy();
+    if (chartConsumoLineas)    chartConsumoLineas.destroy();
+    if (chartConsumoEstados)   chartConsumoEstados.destroy();
+
+    if (datos.length === 0) return;
+
+    // ── 1. Histórico: total MB por día ──────────────────────────
+    const porFecha = {};
+    datos.forEach(c => {
+        const f  = c.fecha_consumo ? String(c.fecha_consumo).substring(0, 10) : null;
+        const mb = parseFloat(c.consumo_mb) || 0;
+        if (f) porFecha[f] = (porFecha[f] || 0) + mb;
+    });
+    const fechas = Object.keys(porFecha).sort();
+
+    const ctxH = document.getElementById('chartConsumoHistorico').getContext('2d');
+    chartConsumoHistorico = new Chart(ctxH, {
+        type: 'line',
+        data: {
+            labels: fechas.map(f => formatearFecha(f)),
+            datasets: [{
+                label: 'MB total',
+                data: fechas.map(f => porFecha[f]),
+                borderColor: '#8A35AB',
+                backgroundColor: 'rgba(138,53,171,0.10)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: '#DA527D',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                pointRadius: 5,
+                pointHoverRadius: 7,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: c => formatearNumero(c.parsed.y) + ' MB' } }
+            },
+            scales: {
+                y: { beginAtZero: true, ticks: { callback: v => formatearNumero(v) } }
+            }
+        }
+    });
+
+    // ── 2. Top 15 líneas por MB ─────────────────────────────────
+    const porLinea = {};
+    datos.forEach(c => {
+        const rc  = encontrarRC(c);
+        const key = rc !== '-' ? rc : (c.numero || c.imei || 'Sin ID');
+        const mb  = parseFloat(c.consumo_mb) || 0;
+        porLinea[key] = (porLinea[key] || 0) + mb;
+    });
+    const top15 = Object.entries(porLinea)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 15);
+    const labelsLineas  = top15.map(([k]) => k);
+    const valoresLineas = top15.map(([, v]) => v);
+    const coloresLineas = labelsLineas.map((_, i) => COLORES[i % COLORES.length]);
+
+    const ctxL = document.getElementById('chartConsumoLineas').getContext('2d');
+    chartConsumoLineas = new Chart(ctxL, {
+        type: 'bar',
+        data: {
+            labels: labelsLineas,
+            datasets: [{
+                label: 'MB',
+                data: valoresLineas,
+                backgroundColor: coloresLineas,
+                borderColor: coloresLineas,
+                borderWidth: 2,
+                borderRadius: 6,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            indexAxis: 'y',
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: c => formatearNumero(c.parsed.x) + ' MB' } }
+            },
+            scales: {
+                x: { beginAtZero: true, ticks: { callback: v => formatearNumero(v) } }
+            }
+        }
+    });
+
+    // ── 3. Estado de líneas (donut) ──────────────────────────────
+    const COLORES_ESTADO = {
+        activo:      '#16a34a',
+        sin_consumo: '#ea580c',
+        desactivado: '#dc2626',
+        legado:      '#7c3aed',
+        error:       '#ef4444',
+    };
+    const porEstado = {};
+    datos.forEach(c => {
+        const est = calcularEstadoConsumo(c);
+        porEstado[est] = (porEstado[est] || 0) + 1;
+    });
+    const estadoKeys   = Object.keys(porEstado);
+    const estadoCounts = estadoKeys.map(e => porEstado[e]);
+    const estadoColores = estadoKeys.map(e => COLORES_ESTADO[e] || '#6b7280');
+    const estadoLabels  = estadoKeys.map(e =>
+        (ESTADO_CONFIG[e]?.label || e).replace('● ', '')
+    );
+
+    const ctxE = document.getElementById('chartConsumoEstados').getContext('2d');
+    chartConsumoEstados = new Chart(ctxE, {
+        type: 'doughnut',
+        data: {
+            labels: estadoLabels,
+            datasets: [{
+                data: estadoCounts,
+                backgroundColor: estadoColores,
+                borderColor: '#fff',
+                borderWidth: 3,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: { position: 'bottom', labels: { padding: 15, font: { size: 12 } } },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) {
+                            const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                            const pct = ((ctx.parsed / total) * 100).toFixed(1);
+                            return ctx.label + ': ' + formatearNumero(ctx.parsed) + ' (' + pct + '%)';
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
 // ── FILTROS CONSUMO ────────────────────────────────────────────────
 
 function aplicarFiltrosConsumo() {
@@ -913,8 +1066,7 @@ function aplicarFiltrosConsumo() {
         return true;
     });
 
-    paginaConsumo = 1;
-    mostrarEnTablaConsumo(consumosFiltrados);
+    mostrarDatosConsumo(consumosFiltrados);
 }
 
 function limpiarFiltrosConsumo() {
@@ -923,8 +1075,7 @@ function limpiarFiltrosConsumo() {
     document.getElementById('filtroNumConsumo').value    = '';
     document.getElementById('filtroFechaConsumo').value  = '';
     consumosFiltrados = todosLosConsumos;
-    paginaConsumo = 1;
-    mostrarEnTablaConsumo(consumosFiltrados);
+    mostrarDatosConsumo(consumosFiltrados);
 }
 
 // ── IMPORTACIÓN CSV CONSUMO ────────────────────────────────────────
