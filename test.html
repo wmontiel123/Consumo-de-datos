@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Supabase</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #35398C;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #644087;
+        }
+        pre {
+            background: #f8f8f8;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test de Conexión Supabase</h1>
+        <p>Presiona el botón para probar la conexión con tu base de datos</p>
+        
+        <button onclick="probarConexion()">🔍 Probar Conexión</button>
+        <button onclick="limpiarResultado()">🗑️ Limpiar</button>
+        
+        <h2>Resultado:</h2>
+        <pre id="resultado">Esperando prueba...</pre>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // Configuración
+        const SUPABASE_URL = 'https://rnnsvvujedwcvcjyyajm.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJubnN2dnVqZWR3Y3Zjanl5YWptIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4MjM2NjcsImV4cCI6MjA4NDM5OTY2N30.VhmUP-tal_iMwmJU_MDDAploV5sDqkzgbi9E2hyCqZc';
+
+        // Crear cliente una sola vez
+        const clienteSupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        async function probarConexion() {
+            const resultado = document.getElementById('resultado');
+            resultado.className = '';
+            resultado.textContent = '⏳ Probando conexión...\n\n';
+            
+            try {
+                console.log('📡 Conectando a:', SUPABASE_URL);
+                
+                // Consultar la tabla
+                const { data, error, status, statusText } = await clienteSupabase
+                    .from('consumo_datos')
+                    .select('*')
+                    .limit(10);
+                
+                console.log('Status:', status);
+                console.log('Data:', data);
+                console.log('Error:', error);
+                
+                if (error) {
+                    resultado.className = 'error';
+                    resultado.textContent = `❌ ERROR DE SUPABASE:\n\n`;
+                    resultado.textContent += `Código: ${error.code}\n`;
+                    resultado.textContent += `Mensaje: ${error.message}\n`;
+                    resultado.textContent += `Detalles: ${error.details}\n`;
+                    resultado.textContent += `Hint: ${error.hint}\n\n`;
+                    
+                    if (error.code === 'PGRST116') {
+                        resultado.textContent += `\n🔧 SOLUCIÓN:\n`;
+                        resultado.textContent += `La tabla "consumo_datos" no existe o el nombre está mal.\n`;
+                        resultado.textContent += `Ve a Supabase → Table Editor y verifica el nombre exacto de la tabla.\n`;
+                    } else if (error.code === '42501' || error.message.includes('permission')) {
+                        resultado.textContent += `\n🔧 SOLUCIÓN:\n`;
+                        resultado.textContent += `Problema de permisos (RLS Policy).\n`;
+                        resultado.textContent += `Sigue estos pasos:\n`;
+                        resultado.textContent += `1. Ve a Supabase Dashboard\n`;
+                        resultado.textContent += `2. Authentication → Policies\n`;
+                        resultado.textContent += `3. Selecciona tabla "consumo_datos"\n`;
+                        resultado.textContent += `4. Click "New Policy"\n`;
+                        resultado.textContent += `5. "Enable read access for all users"\n`;
+                        resultado.textContent += `6. Save policy\n`;
+                    }
+                    
+                    console.error('Error completo:', error);
+                } else if (data) {
+                    resultado.className = 'success';
+                    resultado.textContent = `✅ CONEXIÓN EXITOSA!\n\n`;
+                    resultado.textContent += `Total de registros obtenidos: ${data.length}\n\n`;
+                    resultado.textContent += `Datos:\n`;
+                    resultado.textContent += JSON.stringify(data, null, 2);
+                    
+                    if (data.length === 0) {
+                        resultado.textContent += `\n\n⚠️ La tabla está vacía. Agrega datos en Supabase → Table Editor`;
+                    } else {
+                        resultado.textContent += `\n\n🎉 ¡Todo funciona! Tu página principal debería funcionar ahora.`;
+                    }
+                } else {
+                    resultado.textContent = '⚠️ Respuesta inesperada (sin datos ni error)';
+                }
+                
+            } catch (error) {
+                resultado.className = 'error';
+                resultado.textContent = `❌ ERROR DE JAVASCRIPT:\n\n${error.message}\n\n`;
+                resultado.textContent += `Esto puede ser un problema de:\n`;
+                resultado.textContent += `- Conexión a internet\n`;
+                resultado.textContent += `- CORS (abre el archivo desde un servidor local)\n`;
+                resultado.textContent += `- URL de Supabase incorrecta\n`;
+                console.error('Error:', error);
+            }
+        }
+        
+        function limpiarResultado() {
+            document.getElementById('resultado').textContent = 'Esperando prueba...';
+            document.getElementById('resultado').className = '';
+        }
+        
+        // NO ejecutar automáticamente para evitar el error de declaración duplicada
+        // window.addEventListener('DOMContentLoaded', probarConexion);
+    </script>
+</body>
+</html>

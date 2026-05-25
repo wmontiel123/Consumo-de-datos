@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consulta de Consumo de Datos</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Consulta de Consumo de Datos</h1>
+        
+        <!-- Filtros -->
+        <div class="filters">
+            <h2>Filtros</h2>
+            <div class="filter-group">
+                <label>Número:</label>
+                <input type="text" id="filtroNumero" placeholder="Ej: 123456">
+            </div>
+            <div class="filter-group">
+                <label>Fecha de Consumo:</label>
+                <input type="date" id="filtroFechaConsumo">
+            </div>
+            <div class="filter-group">
+                <label>Fecha de Consulta:</label>
+                <input type="date" id="filtroFechaConsulta">
+            </div>
+            <div class="filter-buttons">
+                <button onclick="aplicarFiltros()">Buscar</button>
+                <button onclick="limpiarFiltros()" class="btn-secondary">Limpiar</button>
+            </div>
+        </div>
+
+        <!-- Estadísticas -->
+        <div class="stats">
+            <div class="stat-card">
+                <h3>Total Registros</h3>
+                <p id="totalRegistros">0</p>
+            </div>
+            <div class="stat-card">
+                <h3>Consumo Total</h3>
+                <p id="consumoTotal">0 KB</p>
+            </div>
+            <div class="stat-card">
+                <h3>Consumo Promedio</h3>
+                <p id="consumoPromedio">0 KB</p>
+            </div>
+        </div>
+
+        <!-- Gráficos -->
+        <div class="charts">
+            <div class="chart-container">
+                <h3>Consumo por Número (Barras)</h3>
+                <canvas id="chartBarras"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3>Tendencia de Consumo (Líneas)</h3>
+                <canvas id="chartLineas"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3>Distribución por Número (Torta)</h3>
+                <canvas id="chartTorta"></canvas>
+            </div>
+        </div>
+
+        <!-- Tabla de datos -->
+        <div class="table-container">
+            <h2>Datos</h2>
+            <div id="loading">Cargando datos...</div>
+            <table id="tablaConsumo">
+                <thead>
+                    <tr>
+                        <th>Número</th>
+                        <th>Consumo (KB)</th>
+                        <th>Fecha de Consumo</th>
+                        <th>Fecha de Consulta</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaDatos">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
