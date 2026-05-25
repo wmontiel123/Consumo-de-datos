@@ -1,3 +1,217 @@
+/* ── LOGIN ── */
+.login-overlay {
+    position: fixed;
+    inset: 0;
+    background: #f0f2f8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.login-card {
+    width: 100%;
+    max-width: 400px;
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: 0 32px 80px rgba(26, 18, 46, 0.22);
+}
+
+/* Header oscuro */
+.login-header {
+    background: linear-gradient(160deg, #1A1A2E 0%, #2D1B4E 100%);
+    padding: 36px 40px 32px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.login-header::before {
+    content: '';
+    position: absolute;
+    top: -60px; right: -60px;
+    width: 200px; height: 200px;
+    border-radius: 50%;
+    background: rgba(138, 53, 171, 0.18);
+}
+
+.login-header::after {
+    content: '';
+    position: absolute;
+    bottom: -40px; left: -40px;
+    width: 140px; height: 140px;
+    border-radius: 50%;
+    background: rgba(138, 53, 171, 0.12);
+}
+
+.login-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    position: relative;
+    z-index: 1;
+}
+
+.brand-icon {
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+}
+
+.brand-text {
+    font-size: 1.9em;
+    font-weight: 800;
+    color: white;
+    letter-spacing: 2px;
+}
+
+.brand-i {
+    color: #8A35AB;
+}
+
+.login-tagline {
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.45);
+    margin-bottom: 18px;
+    position: relative;
+    z-index: 1;
+}
+
+.login-greeting {
+    font-size: 2em;
+    font-weight: 700;
+    color: white;
+    margin-bottom: 6px;
+    border: none;
+    padding: 0;
+    position: relative;
+    z-index: 1;
+}
+
+.login-subtitle {
+    font-size: 13px;
+    color: rgba(255,255,255,0.55);
+    position: relative;
+    z-index: 1;
+}
+
+/* Cuerpo blanco */
+.login-body {
+    background: white;
+    padding: 32px 40px 36px;
+}
+
+.login-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #fff0f3;
+    border-left: 3px solid #DA527D;
+    color: #c0405f;
+    border-radius: 8px;
+    padding: 11px 14px;
+    margin-bottom: 18px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.login-group {
+    margin-bottom: 16px;
+}
+
+.input-icon-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-icon {
+    position: absolute;
+    left: 14px;
+    width: 18px;
+    height: 18px;
+    color: #aaa;
+    pointer-events: none;
+    flex-shrink: 0;
+}
+
+.login-group input {
+    width: 100%;
+    padding: 14px 44px;
+    background: #f4f5fb;
+    border: 2px solid transparent;
+    border-radius: 12px;
+    font-size: 15px;
+    color: #1A1A2E;
+    transition: all 0.25s;
+    outline: none;
+}
+
+.login-group input::placeholder {
+    color: #b0b4c8;
+}
+
+.login-group input:focus {
+    border-color: #8A35AB;
+    background: white;
+    box-shadow: 0 0 0 4px rgba(138, 53, 171, 0.1);
+}
+
+.toggle-pwd {
+    position: absolute;
+    right: 12px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    color: #aaa;
+    display: flex;
+    align-items: center;
+    transition: color 0.2s;
+    flex: none;
+    width: auto;
+    transform: none;
+    box-shadow: none;
+}
+
+.toggle-pwd:hover {
+    color: #8A35AB;
+    background: none;
+    transform: none;
+    box-shadow: none;
+}
+
+.toggle-pwd svg {
+    width: 18px;
+    height: 18px;
+}
+
+.login-btn {
+    width: 100%;
+    padding: 15px;
+    margin-top: 8px;
+    background: linear-gradient(135deg, #8A35AB 0%, #2D1B4E 100%);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: opacity 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+
+.login-btn:hover {
+    opacity: 1;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(138, 53, 171, 0.45);
+    background: linear-gradient(135deg, #9B3DBF 0%, #3D2560 100%);
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -43,8 +257,15 @@ h2 {
     border: 2px solid #35398C;
 }
 
+.filter-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 10px;
+}
+
 .filter-group {
-    margin-bottom: 15px;
+    margin-bottom: 0;
 }
 
 .filter-group label {
@@ -54,16 +275,30 @@ h2 {
     font-weight: 600;
 }
 
-.filter-group input {
+.filter-group input,
+.filter-group select {
     width: 100%;
     padding: 12px;
     border: 2px solid #ddd;
     border-radius: 8px;
-    font-size: 16px;
+    font-size: 15px;
+    background: white;
     transition: all 0.3s;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: none;
 }
 
-.filter-group input:focus {
+.filter-group select {
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2335398C' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+}
+
+.filter-group input:focus,
+.filter-group select:focus {
     outline: none;
     border-color: #35398C;
     box-shadow: 0 0 0 3px rgba(53, 57, 140, 0.1);
@@ -206,6 +441,415 @@ tbody tr:nth-child(odd) {
     background: white;
 }
 
+/* ── BOTÓN IMPORTAR ── */
+.table-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.table-header-row h2 {
+    margin-bottom: 0;
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.btn-import-open {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #8A35AB 0%, #2D1B4E 100%);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: box-shadow 0.2s, transform 0.2s;
+    flex: none;
+    width: auto;
+    transform: none;
+    box-shadow: none;
+}
+
+.btn-import-open:hover {
+    box-shadow: 0 6px 20px rgba(138, 53, 171, 0.4);
+    transform: translateY(-2px);
+    background: linear-gradient(135deg, #9B3DBF 0%, #3D2560 100%);
+}
+
+/* ── MODAL IMPORTACIÓN ── */
+.import-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(26, 18, 46, 0.55);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    padding: 20px;
+}
+
+.import-modal-card {
+    background: white;
+    border-radius: 20px;
+    width: 100%;
+    max-width: 480px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.25);
+    overflow: hidden;
+}
+
+.import-modal-header {
+    background: linear-gradient(135deg, #1A1A2E 0%, #2D1B4E 100%);
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.import-modal-header h3 {
+    color: white;
+    font-size: 1.1em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+}
+
+.import-close {
+    background: rgba(255,255,255,0.15);
+    border: none;
+    color: white;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 30px;
+    padding: 0;
+    transition: background 0.2s;
+    transform: none;
+    box-shadow: none;
+}
+
+.import-close:hover {
+    background: rgba(255,255,255,0.3);
+    transform: none;
+    box-shadow: none;
+}
+
+.import-modal-body {
+    padding: 28px 28px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Zona de arrastre */
+.drop-zone {
+    border: 2px dashed #d0d5e8;
+    border-radius: 14px;
+    padding: 32px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s;
+    background: #fafbff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.drop-zone:hover,
+.drop-zone.drag-hover {
+    border-color: #8A35AB;
+    background: rgba(138, 53, 171, 0.04);
+}
+
+.drop-zone.drop-active {
+    border-color: #22c55e;
+    background: rgba(34, 197, 94, 0.04);
+}
+
+.drop-zone p {
+    margin: 0;
+    color: #555;
+    font-size: 14px;
+}
+
+.drop-zone p span {
+    color: #8A35AB;
+    font-weight: 600;
+    text-decoration: underline;
+}
+
+.drop-sub {
+    font-size: 12px !important;
+    color: #aaa !important;
+}
+
+/* Opciones de radio */
+.import-options {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.import-radio {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 2px solid #eee;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.import-radio:has(input:checked) {
+    border-color: #8A35AB;
+    background: rgba(138, 53, 171, 0.05);
+}
+
+.import-radio input[type="radio"] {
+    display: none;
+}
+
+.radio-custom {
+    width: 18px;
+    height: 18px;
+    border: 2px solid #ccc;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 2px;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.import-radio:has(input:checked) .radio-custom {
+    border-color: #8A35AB;
+    background: #8A35AB;
+    box-shadow: inset 0 0 0 3px white;
+}
+
+.import-radio strong {
+    display: block;
+    font-size: 14px;
+    color: #1A1A2E;
+    margin-bottom: 2px;
+}
+
+.import-radio small {
+    font-size: 12px;
+    color: #888;
+}
+
+/* Barra de progreso */
+.progress-track {
+    height: 8px;
+    background: #f0f2f8;
+    border-radius: 99px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #8A35AB, #DA527D);
+    border-radius: 99px;
+    transition: width 0.3s ease, background 0.4s;
+}
+
+.progress-text {
+    font-size: 13px;
+    color: #555;
+    margin: 8px 0 0;
+    text-align: center;
+}
+
+/* Botón ejecutar importación */
+.btn-import-go {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, #8A35AB 0%, #2D1B4E 100%);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: opacity 0.2s, transform 0.2s, box-shadow 0.2s;
+    transform: none;
+}
+
+.btn-import-go:hover {
+    box-shadow: 0 8px 24px rgba(138, 53, 171, 0.4);
+    transform: translateY(-2px);
+    background: linear-gradient(135deg, #9B3DBF 0%, #3D2560 100%);
+}
+
+/* ── PAGINACIÓN ── */
+.paginacion-info {
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 10px;
+}
+
+.paginacion {
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.pag-controles {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.pag-btn {
+    min-width: 38px;
+    height: 38px;
+    padding: 0 12px;
+    background: white;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #35398C;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex: none;
+    width: auto;
+    transform: none;
+    box-shadow: none;
+}
+
+.pag-btn:hover:not(:disabled) {
+    border-color: #8A35AB;
+    color: #8A35AB;
+    background: rgba(138, 53, 171, 0.05);
+    transform: none;
+    box-shadow: none;
+}
+
+.pag-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.pag-btn.pag-activa {
+    background: linear-gradient(135deg, #8A35AB 0%, #2D1B4E 100%);
+    border-color: #8A35AB;
+    color: white;
+}
+
+.pag-btn.pag-activa:hover {
+    background: linear-gradient(135deg, #8A35AB 0%, #2D1B4E 100%);
+    color: white;
+}
+
+.pag-dots {
+    color: #aaa;
+    font-size: 16px;
+    padding: 0 4px;
+    user-select: none;
+}
+
+/* Nota de consumos */
+.nota-consumo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-left: 4px solid #f59e0b;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 13px;
+    color: #92400e;
+    margin-bottom: 24px;
+}
+
+/* Stat cards de estado */
+.stat-activos {
+    background: linear-gradient(135deg, #16a34a 0%, #15803d 100%) !important;
+}
+
+.stat-desactivados {
+    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+}
+
+/* Badges de estado */
+.badge-estado {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.badge-activo {
+    background: rgba(22, 163, 74, 0.12);
+    color: #15803d;
+}
+
+.badge-sin-consumo {
+    background: rgba(234, 88, 12, 0.12);
+    color: #c2410c;
+}
+
+.badge-desactivado {
+    background: rgba(220, 38, 38, 0.12);
+    color: #b91c1c;
+}
+
+/* Filas inactivas levemente atenuadas */
+.fila-inactiva td {
+    opacity: 0.7;
+}
+
+/* Badge regional */
+.badge-regional {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    background: rgba(53, 57, 140, 0.1);
+    color: #35398C;
+    white-space: nowrap;
+}
+
+/* Columnas de IMEI y ubicación más compactas */
+.td-imei {
+    font-size: 12px;
+    color: #888;
+    font-family: monospace;
+}
+
+.td-ubicacion {
+    font-size: 12px;
+    color: #666;
+}
+
 @media (max-width: 768px) {
     .container {
         padding: 15px;
@@ -226,4 +870,78 @@ tbody tr:nth-child(odd) {
     th, td {
         padding: 10px;
     }
+}
+
+/* ── TABS DE NAVEGACIÓN ── */
+.tabs-nav {
+    display: flex;
+    gap: 4px;
+    background: #f0f2f8;
+    border-radius: 12px;
+    padding: 4px;
+    margin-bottom: 28px;
+    width: fit-content;
+}
+
+.tab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 22px;
+    border: none;
+    border-radius: 9px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #888;
+    background: transparent;
+    cursor: pointer;
+    transition: color 0.2s, background 0.2s;
+    flex: none;
+    width: auto;
+    transform: none;
+    box-shadow: none;
+}
+
+.tab-btn:hover {
+    color: #35398C;
+    background: rgba(53, 57, 140, 0.08);
+    transform: none;
+    box-shadow: none;
+}
+
+.tab-btn.tab-activo {
+    background: white;
+    color: #35398C;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.tab-btn.tab-activo:hover {
+    transform: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* ── BADGES ADICIONALES ── */
+.badge-legado {
+    background: rgba(124, 58, 237, 0.12);
+    color: #6d28d9;
+}
+
+.badge-error {
+    background: rgba(239, 68, 68, 0.15);
+    color: #dc2626;
+    font-weight: 800;
+}
+
+/* ── TELEFONÍA DETECTADA ── */
+.telefonia-detectada {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    border-left: 4px solid #22c55e;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: #166534;
 }
