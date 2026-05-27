@@ -241,6 +241,31 @@ h1 {
     font-size: 2.5em;
 }
 
+.btn-logout {
+    position: fixed;
+    top: 14px;
+    right: 18px;
+    z-index: 999;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    background: #fff;
+    color: #dc2626;
+    border: 1.5px solid #fca5a5;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    transition: background 0.15s, border-color 0.15s;
+    white-space: nowrap;
+}
+.btn-logout:hover {
+    background: #fef2f2;
+    border-color: #dc2626;
+}
+
 h2 {
     color: #35398C;
     margin-bottom: 20px;
@@ -422,6 +447,28 @@ th {
     padding: 15px;
     text-align: left;
     font-weight: 600;
+}
+
+th.sortable {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+th.sortable:hover {
+    background: #2a2e76;
+}
+th.sortable::after {
+    content: ' ⇅';
+    opacity: 0.35;
+    font-size: 11px;
+}
+th.sort-asc::after {
+    content: ' ▲';
+    opacity: 1;
+}
+th.sort-desc::after {
+    content: ' ▼';
+    opacity: 1;
 }
 
 td {
@@ -873,6 +920,112 @@ tbody tr:nth-child(odd) {
     }
 }
 
+/* ── ENCABEZADO TABLA CONSUMO ── */
+.consumo-header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+.consumo-header-left h2 { margin: 0; }
+
+.consumo-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Etiqueta total consumo */
+.total-consumo-resumen {
+    display: inline-block;
+    background: #f0f2f8;
+    color: #35398C;
+    border: 1.5px solid #c7cae8;
+    border-radius: 8px;
+    padding: 7px 16px;
+    font-size: 14px;
+    margin-bottom: 14px;
+}
+.total-consumo-resumen:empty { display: none; }
+
+/* Toggle Por Línea / Por Equipo */
+.view-toggle {
+    display: flex;
+    background: #f0f2f8;
+    border-radius: 8px;
+    padding: 3px;
+    gap: 2px;
+}
+.view-btn {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    background: transparent;
+    color: #666;
+    transition: all 0.15s;
+}
+.view-btn.view-activo {
+    background: white;
+    color: #35398C;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    font-weight: 600;
+}
+
+/* Botones Exportar / Imprimir */
+.btn-accion {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    background: white;
+    color: #35398C;
+    border: 1.5px solid #c7cae8;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.btn-accion:hover {
+    background: #f0f2f8;
+    border-color: #35398C;
+}
+
+/* ── PRINT ── */
+.print-header { display: none; }
+
+@media print {
+    /* Ocultar todo lo que no es el reporte */
+    .btn-logout, .tabs-nav, #filtrosConsumo, .no-print,
+    #tab-dispositivos, #loadingConsumo { display: none !important; }
+
+    /* Mostrar cabecera de impresión */
+    .print-header {
+        display: block !important;
+        text-align: center;
+        margin-bottom: 20px;
+        padding-bottom: 12px;
+        border-bottom: 2px solid #35398C;
+    }
+    .print-logo { font-size: 13px; color: #666; margin-bottom: 4px; }
+    .print-header h2 { color: #35398C; margin: 4px 0; font-size: 18px; }
+    .print-header p  { margin: 2px 0; font-size: 12px; color: #444; }
+
+    /* Tabla limpia */
+    .table-container { box-shadow: none; border: none; padding: 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    th { background: #35398C !important; color: white !important; padding: 6px 8px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; }
+    tr:nth-child(even) td { background: #f9fafb; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+    .badge-estado, .badge-regional { font-size: 10px; }
+    .paginacion, .paginacion-info { display: none !important; }
+
+    @page { margin: 1.5cm; size: A4 landscape; }
+}
+
 /* ── TABS DE NAVEGACIÓN ── */
 .tabs-nav {
     display: flex;
@@ -931,6 +1084,62 @@ tbody tr:nth-child(odd) {
     background: rgba(239, 68, 68, 0.15);
     color: #dc2626;
     font-weight: 800;
+}
+
+/* ── MAPA DE PARAGUAY ── */
+.mapa-section {
+    background: #f8f9fa;
+    border: 2px solid #35398C;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 30px;
+}
+
+.mapa-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 16px 20px;
+    background: white;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.mapa-header h3 {
+    color: #35398C;
+    font-size: 18px;
+    margin: 0;
+}
+
+.mapa-leyenda {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.leyenda-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #555;
+    font-weight: 500;
+}
+
+.leyenda-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.8);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    flex-shrink: 0;
+}
+
+#mapaParaguay {
+    height: 520px;
+    width: 100%;
 }
 
 /* ── TELEFONÍA DETECTADA ── */

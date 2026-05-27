@@ -1,20 +1,108 @@
-// Credenciales de acceso (demo)
-const USUARIO_VALIDO = 'admin';
-const PASSWORD_VALIDO = 'demo2025';
+// Credenciales de acceso
+const USUARIOS = {
+    admin: { password: 'demo2025', rol: 'admin' },
+    ande:  { password: 'ande2025', rol: 'viewer' },
+};
+let rolActual = 'admin';
+
+// Helpers de rol
+function esViewer() { return rolActual === 'viewer'; }
+
+// Colapsa todos los estados no-desactivado a 'activo' (para viewer y stats)
+function estadoSimple(est) {
+    return est === 'desactivado' ? 'desactivado' : 'activo';
+}
+
+// Estado para el tab Dispositivos: sin_consumo → activo, error y legado se mantienen
+function estadoDisp(device) {
+    const est = calcularEstado(device);
+    return est === 'sin_consumo' ? 'activo' : est;
+}
+
+// Config completa para admin en Dispositivos (Activado/Desactivado/Error/Legado)
+const ESTADO_CONFIG_DISP = {
+    activo:      { label: '● Activado',    cls: 'badge-activo' },
+    desactivado: { label: '● Desactivado', cls: 'badge-desactivado' },
+    error:       { label: '● Error',       cls: 'badge-error' },
+    legado:      { label: '● Legado',      cls: 'badge-legado' },
+};
+
+// Config simplificada para viewer (solo 2 estados)
+const ESTADO_CONFIG_VIEWER = {
+    activo:      { label: '● Activado',    cls: 'badge-activo' },
+    desactivado: { label: '● Desactivado', cls: 'badge-desactivado' },
+};
+
+function cerrarSesion() {
+    // Resetear estado
+    rolActual = 'admin';
+    todosLosDatos = []; datosFiltrados = [];
+    todosLosConsumos = []; consumosFiltrados = []; consolidadoActual = [];
+    paginaConsumo = 1; paginaEquipos = 1;
+    mapaNumAConsumo = new Map(); mapaImeiAConsumo = new Map();
+    mapaNumADevice  = new Map(); mapaImeiADevice  = new Map();
+    if (mapaLeaflet) { mapaLeaflet.remove(); mapaLeaflet = null; markersLayer = null; }
+    if (chartBarras)          { chartBarras.destroy();          chartBarras = null; }
+    if (chartLineas)          { chartLineas.destroy();          chartLineas = null; }
+    if (chartTorta)           { chartTorta.destroy();           chartTorta = null; }
+    if (chartConsumoHistorico){ chartConsumoHistorico.destroy();chartConsumoHistorico = null; }
+    if (chartConsumoLineas)   { chartConsumoLineas.destroy();   chartConsumoLineas = null; }
+    if (chartConsumoEstados)  { chartConsumoEstados.destroy();  chartConsumoEstados = null; }
+
+    // Volver al login
+    document.getElementById('appPrincipal').style.display = 'none';
+    document.getElementById('loginOverlay').style.display = 'flex';
+    document.getElementById('loginUsuario').value  = '';
+    document.getElementById('loginPassword').value = '';
+    document.getElementById('loginError').style.display = 'none';
+
+    // Resetear tab activo
+    document.getElementById('tabBtnConsumo').classList.add('tab-activo');
+    document.getElementById('tabBtnDispositivos').classList.remove('tab-activo');
+    document.getElementById('tab-consumo').style.display = 'block';
+    document.getElementById('tab-dispositivos').style.display = 'none';
+}
 
 function intentarLogin() {
-    const usuario = document.getElementById('loginUsuario').value.trim();
+    const usuario  = document.getElementById('loginUsuario').value.trim();
     const password = document.getElementById('loginPassword').value;
-    const error = document.getElementById('loginError');
+    const error    = document.getElementById('loginError');
+    const user     = USUARIOS[usuario];
 
-    if (usuario === USUARIO_VALIDO && password === PASSWORD_VALIDO) {
+    if (user && password === user.password) {
+        rolActual = user.rol;
         document.getElementById('loginOverlay').style.display = 'none';
         document.getElementById('appPrincipal').style.display = 'block';
+        aplicarRol();
         iniciarApp();
     } else {
         error.style.display = 'block';
         document.getElementById('loginPassword').value = '';
     }
+}
+
+// Aplica restricciones visuales según el rol del usuario logueado
+function aplicarRol() {
+    if (!esViewer()) return;
+
+    // Filtro estado dispositivos → solo Activado / Desactivado
+    document.getElementById('filtroEstado').innerHTML =
+        '<option value="">Todos</option>' +
+        '<option value="activo">Activado</option>' +
+        '<option value="desactivado">Desactivado</option>';
+
+    // Filtro estado consumo → solo Activado / Desactivado
+    document.getElementById('filtroEstadoConsumo').innerHTML =
+        '<option value="">Todos</option>' +
+        '<option value="activo">Activado</option>' +
+        '<option value="desactivado">Desactivado</option>';
+
+    // Ocultar columna Observación en tabla consumo
+    document.getElementById('thObservacion').style.display = 'none';
+
+    // Actualizar labels de las tarjetas de estadísticas
+    document.querySelector('.stat-activos h3').textContent    = 'Activados';
+    document.querySelector('.stat-desactivados h3').textContent = 'Desactivados';
 }
 
 // Permitir Enter para hacer login
@@ -38,6 +126,8 @@ let paginaActual   = 1;
 const ITEMS_POR_PAGINA = 10;
 let chartBarras, chartLineas, chartTorta;
 let chartConsumoHistorico, chartConsumoLineas, chartConsumoEstados;
+let mapaLeaflet = null;
+let markersLayer = null;
 const COLORES = ['#35398C', '#DA527D', '#B44C80', '#904783', '#644087'];
 
 // Consumo SIM
@@ -49,6 +139,11 @@ let mapaImeiAConsumo  = new Map();
 let mapaNumADevice    = new Map();
 let mapaImeiADevice   = new Map();
 let telefoniaActual   = '';
+let vistaConsumo      = 'lineas'; // 'lineas' | 'equipos'
+let sortLineas        = { col: 'fecha', dir: 'desc' };
+let sortEquipos       = { col: 'rc',    dir: 'asc'  };
+let paginaEquipos     = 1;
+let consolidadoActual = [];
 
 // Normaliza IMEI: convierte notación científica a string entero
 function normalizarImei(val) {
@@ -216,6 +311,7 @@ function mostrarDatos(datos) {
     mostrarEnTabla(datos);
     actualizarEstadisticas(datos);
     crearGraficos(datos);
+    actualizarMapa(datos);
 }
 
 // Helpers para el badge de estado
@@ -228,8 +324,12 @@ const ESTADO_CONFIG = {
 };
 
 function badgeEstado(device) {
-    const est = calcularEstado(device);
-    const cfg = ESTADO_CONFIG[est] || ESTADO_CONFIG['sin_consumo'];
+    const est = estadoDisp(device);
+    if (esViewer()) {
+        const cfg = ESTADO_CONFIG_VIEWER[estadoSimple(est)];
+        return `<span class="badge-estado ${cfg.cls}">${cfg.label}</span>`;
+    }
+    const cfg = ESTADO_CONFIG_DISP[est] || ESTADO_CONFIG_DISP['activo'];
     return `<span class="badge-estado ${cfg.cls}">${cfg.label}</span>`;
 }
 
@@ -255,9 +355,9 @@ function mostrarEnTabla(datos) {
     const fin    = Math.min(inicio + ITEMS_POR_PAGINA, total);
 
     datos.slice(inicio, fin).forEach(fila => {
-        const est = calcularEstado(fila);
-        const tr  = document.createElement('tr');
-        if (est !== 'activo') tr.classList.add('fila-inactiva');
+        const estMostrar = esViewer() ? estadoSimple(estadoDisp(fila)) : estadoDisp(fila);
+        const tr         = document.createElement('tr');
+        if (estMostrar !== 'activo') tr.classList.add('fila-inactiva');
         tr.innerHTML = `
             <td>${badgeEstado(fila)}</td>
             <td><span class="badge-regional">${fila['regional'] || '-'}</span></td>
@@ -323,12 +423,13 @@ function irPagina(num) {
 
 // Actualizar estadísticas
 function actualizarEstadisticas(datos) {
-    const total = datos.length;
-    const activos = datos.filter(d => calcularEstado(d) === 'activo').length;
+    const total   = datos.length;
+    // Activados = activo + sin_consumo; Desactivados = todo lo demás (desactivado, error, legado)
+    const activos   = datos.filter(d => estadoDisp(d) === 'activo').length;
     const inactivos = total - activos;
 
-    document.getElementById('totalRegistros').textContent  = formatearNumero(total);
-    document.getElementById('totalActivos').textContent    = formatearNumero(activos);
+    document.getElementById('totalRegistros').textContent    = formatearNumero(total);
+    document.getElementById('totalActivos').textContent      = formatearNumero(activos);
     document.getElementById('totalDesactivados').textContent = formatearNumero(inactivos);
 }
 
@@ -374,7 +475,14 @@ function crearGraficos(datos) {
             },
             scales: {
                 y: { beginAtZero: true, ticks: { callback: (v) => formatearNumero(v) } }
-            }
+            },
+            onClick: makeDblClickHandler(el => {
+                const regional = regionales[el.index];
+                if (!regional) return;
+                document.getElementById('filtroRegional').value = regional;
+                aplicarFiltros();
+            }),
+            onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; }
         }
     });
 
@@ -417,19 +525,30 @@ function crearGraficos(datos) {
             },
             scales: {
                 y: { beginAtZero: true, ticks: { callback: (v) => formatearNumero(v) } }
-            }
+            },
+            onClick: makeDblClickHandler(el => {
+                const fecha = fechasOrdenadas[el.index];
+                if (!fecha) return;
+                document.getElementById('filtroFecha').value = fecha;
+                aplicarFiltros();
+            }),
+            onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; }
         }
     });
 
-    // Gráfico de Torta — distribución por Regional
+    // Gráfico de Torta — Activados vs Desactivados
+    const totalActivos   = datos.filter(d => estadoDisp(d) === 'activo').length;
+    const totalInactivos = datos.length - totalActivos;
+    const estadoDonutKeys = ['activo', 'desactivado'];
+
     const ctxTorta = document.getElementById('chartTorta').getContext('2d');
     chartTorta = new Chart(ctxTorta, {
-        type: 'pie',
+        type: 'doughnut',
         data: {
-            labels: regionales,
+            labels: ['Activado', 'Desactivado'],
             datasets: [{
-                data: cantidades,
-                backgroundColor: coloresGrafico,
+                data: [totalActivos, totalInactivos],
+                backgroundColor: ['#16a34a', '#dc2626'],
                 borderColor: '#fff',
                 borderWidth: 3
             }]
@@ -448,7 +567,14 @@ function crearGraficos(datos) {
                         }
                     }
                 }
-            }
+            },
+            onClick: makeDblClickHandler(el => {
+                const key = estadoDonutKeys[el.index];
+                if (!key) return;
+                document.getElementById('filtroEstado').value = key;
+                aplicarFiltros();
+            }),
+            onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; }
         }
     });
 
@@ -471,7 +597,11 @@ function aplicarFiltros() {
                         !String(item['sim1_imei'] || '').includes(sim) &&
                         !String(item['sim2_imei'] || '').includes(sim)) return false;
         if (fecha    && String(item['fecha_activacion'] || '').substring(0, 10) !== fecha) return false;
-        if (estado   && calcularEstado(item) !== estado) return false;
+        if (estado) {
+            const estReal = estadoDisp(item);
+            const estComp = esViewer() ? estadoSimple(estReal) : estReal;
+            if (estComp !== estado) return false;
+        }
         return true;
     });
 
@@ -684,6 +814,83 @@ async function ejecutarImport() {
     reader.readAsArrayBuffer(file);
 }
 
+// ── MAPA DE PARAGUAY ────────────────────────────────────────────
+
+// En el mapa solo 2 estados: activo → verde, desactivado/legado/error → rojo
+function estadoMapa(dev) {
+    const est = calcularEstado(dev);
+    return (est === 'desactivado' || est === 'legado' || est === 'error')
+        ? 'desactivado' : 'activo';
+}
+
+// Parsea el campo ubicacion que contiene "lat, lng" como texto
+function parsearCoordenadas(ubicacion) {
+    if (!ubicacion) return null;
+    const m = String(ubicacion).trim().match(/^(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)$/);
+    if (!m) return null;
+    const lat = parseFloat(m[1]);
+    const lng = parseFloat(m[2]);
+    if (isNaN(lat) || isNaN(lng)) return null;
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+    return [lat, lng];
+}
+
+// ── Construcción de un marker ─────────────────────────────────────
+function crearMarker(dev, coords) {
+    const est   = estadoMapa(dev);
+    const color = est === 'activo' ? '#16a34a' : '#dc2626';
+    const label = est === 'activo' ? 'Activado'  : 'Desactivado';
+
+    const marker = L.circleMarker(coords, {
+        radius: 7, fillColor: color, color: '#fff',
+        weight: 2, opacity: 1, fillOpacity: 0.88,
+    });
+
+    marker.bindPopup(`
+        <div style="min-width:200px;font-family:'Segoe UI',sans-serif">
+            <div style="font-size:15px;font-weight:700;color:#1A1A2E;margin-bottom:4px">${dev.codigo || '-'}</div>
+            <div style="font-size:12px;color:#666;margin-bottom:8px">${dev.regional || '-'}</div>
+            <hr style="margin:0 0 8px;border:none;border-top:1px solid #eee">
+            <table style="width:100%;font-size:12px;border-collapse:collapse">
+                <tr><td style="color:#888;padding:2px 0">SIM 1</td>
+                    <td style="padding:2px 0 2px 8px">${dev.sim1_num || '-'}</td></tr>
+                <tr><td style="color:#888;padding:2px 0">SIM 2</td>
+                    <td style="padding:2px 0 2px 8px">${dev.sim2_num || '-'}</td></tr>
+                <tr><td style="color:#888;padding:2px 0">Estado</td>
+                    <td style="padding:2px 0 2px 8px;color:${color};font-weight:700">${label}</td></tr>
+            </table>
+        </div>
+    `, { maxWidth: 250 });
+    return marker;
+}
+
+// ── Renderiza todos los markers ───────────────────────────────────
+function renderizarMarkers(datos) {
+    if (!mapaLeaflet) return;
+    markersLayer.clearLayers();
+    datos.forEach(dev => {
+        const coords = parsearCoordenadas(dev.ubicacion);
+        if (coords) markersLayer.addLayer(crearMarker(dev, coords));
+    });
+}
+
+// ── Inicializar mapa ──────────────────────────────────────────────
+function iniciarMapa() {
+    if (mapaLeaflet) return;
+    mapaLeaflet  = L.map('mapaParaguay', { zoomControl: true }).setView([-23.4425, -58.4438], 6);
+    markersLayer = L.layerGroup().addTo(mapaLeaflet);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 18,
+    }).addTo(mapaLeaflet);
+}
+
+// ── Punto de entrada principal ────────────────────────────────────
+function actualizarMapa(datos) {
+    iniciarMapa();
+    renderizarMarkers(datos);
+}
+
 // Funciones auxiliares
 function formatearNumero(num) {
     if (isNaN(num)) return '0';
@@ -740,6 +947,12 @@ function encontrarRC(consumo) {
     return device ? (device.codigo || '-') : '-';
 }
 
+// Estado para mostrar en el tab Consumo: sin_consumo → activo, error y legado se mantienen
+function estadoConsDisplay(consumo) {
+    const est = calcularEstadoConsumo(consumo);
+    return est === 'sin_consumo' ? 'activo' : est;
+}
+
 // Calcula el estado de una fila de consumo
 function calcularEstadoConsumo(consumo) {
     const obs      = String(consumo.observacion    || '').trim().toLowerCase();
@@ -780,6 +993,8 @@ function cambiarTab(tab) {
         tabCons.style.display = 'none';
         btnDisp.classList.add('tab-activo');
         btnCons.classList.remove('tab-activo');
+        // Leaflet necesita recalcular tamaño al hacerse visible
+        if (mapaLeaflet) setTimeout(() => mapaLeaflet.invalidateSize(), 80);
     } else {
         tabDisp.style.display = 'none';
         tabCons.style.display = 'block';
@@ -822,11 +1037,23 @@ async function cargarConsumos() {
     }
 }
 
-// Wrapper: resetea página, muestra tabla y actualiza gráficos
+// Wrapper: resetea páginas, muestra tabla y actualiza gráficos
 function mostrarDatosConsumo(datos) {
     paginaConsumo = 1;
-    mostrarEnTablaConsumo(datos);
+    paginaEquipos = 1;
+    actualizarTotalConsumo(datos);
+    if (vistaConsumo === 'equipos') {
+        mostrarConsolidado(datos);
+    } else {
+        mostrarEnTablaConsumo(datos);
+    }
     crearGraficosConsumo(datos);
+}
+
+function actualizarTotalConsumo(datos) {
+    const total = (datos || consumosFiltrados).reduce((s, c) => s + (parseFloat(c.consumo_mb) || 0), 0);
+    const el = document.getElementById('totalConsumoResumen');
+    if (el) el.innerHTML = `Total consumo: <strong>${formatearNumero(total)} MB</strong>`;
 }
 
 function mostrarEnTablaConsumo(datos) {
@@ -846,18 +1073,24 @@ function mostrarEnTablaConsumo(datos) {
         return;
     }
 
+    const sorted = sortearLineas(datos);
+    updateSortIcons('tablaConsumo2', sortLineas);
+
     const inicio = (paginaConsumo - 1) * ITEMS_POR_PAGINA;
     const fin    = Math.min(inicio + ITEMS_POR_PAGINA, total);
 
-    datos.slice(inicio, fin).forEach(c => {
-        const est = calcularEstadoConsumo(c);
-        const cfg = ESTADO_CONFIG[est] || ESTADO_CONFIG['sin_consumo'];
+    sorted.slice(inicio, fin).forEach(c => {
+        const est        = estadoConsDisplay(c);
+        const estMostrar = esViewer() ? estadoSimple(est) : est;
+        const cfg        = esViewer()
+            ? (ESTADO_CONFIG_VIEWER[estMostrar] || ESTADO_CONFIG_VIEWER['activo'])
+            : (ESTADO_CONFIG_DISP[est]          || ESTADO_CONFIG_DISP['activo']);
         const rc  = encontrarRC(c);
         const mb  = (c.consumo_mb !== null && c.consumo_mb !== undefined)
             ? formatearNumero(c.consumo_mb) + ' MB'
             : '-';
         const tr  = document.createElement('tr');
-        if (est !== 'activo') tr.classList.add('fila-inactiva');
+        if (estMostrar !== 'activo') tr.classList.add('fila-inactiva');
         tr.innerHTML = `
             <td><span class="badge-estado ${cfg.cls}">${cfg.label}</span></td>
             <td><strong>${rc}</strong></td>
@@ -866,7 +1099,7 @@ function mostrarEnTablaConsumo(datos) {
             <td>${badgeTelefonia(c.telefonia)}</td>
             <td>${mb}</td>
             <td>${formatearFecha(c.fecha_consumo)}</td>
-            <td>${c.observacion || '-'}</td>
+            ${esViewer() ? '' : `<td>${c.observacion || '-'}</td>`}
         `;
         tbody.appendChild(tr);
     });
@@ -904,6 +1137,16 @@ function irPaginaConsumo(num) {
     paginaConsumo = num;
     mostrarEnTablaConsumo(consumosFiltrados);
     document.querySelector('#tab-consumo .table-container').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Detecta doble clic en un gráfico Chart.js
+function makeDblClickHandler(fn) {
+    let last = 0;
+    return (event, elements) => {
+        const now = Date.now();
+        if (now - last < 350 && elements.length) { last = 0; fn(elements[0]); }
+        else last = now;
+    };
 }
 
 // Crea los 3 gráficos del tab de consumo
@@ -964,24 +1207,22 @@ function crearGraficosConsumo(datos) {
     const ctxH = document.getElementById('chartConsumoHistorico').getContext('2d');
     chartConsumoHistorico = new Chart(ctxH, {
         type: 'line',
-        data: {
-            labels: fechas.map(f => formatearFecha(f)),
-            datasets,
-        },
+        data: { labels: fechas.map(f => formatearFecha(f)), datasets },
         options: {
-            responsive: true,
-            maintainAspectRatio: true,
+            responsive: true, maintainAspectRatio: true,
             plugins: {
                 legend: { position: 'bottom', labels: { padding: 14, font: { size: 12 } } },
-                tooltip: {
-                    callbacks: {
-                        label: c => c.dataset.label + ': ' + formatearNumero(c.parsed.y) + ' MB'
-                    }
-                }
+                tooltip: { callbacks: { label: c => c.dataset.label + ': ' + formatearNumero(c.parsed.y) + ' MB' } }
             },
-            scales: {
-                y: { beginAtZero: true, ticks: { callback: v => formatearNumero(v) } }
-            }
+            scales: { y: { beginAtZero: true, ticks: { callback: v => formatearNumero(v) } } },
+            onClick: makeDblClickHandler(el => {
+                const fecha = fechas[el.index];
+                if (!fecha) return;
+                document.getElementById('filtroFechaDesde').value = fecha;
+                document.getElementById('filtroFechaHasta').value = fecha;
+                aplicarFiltrosConsumo();
+            }),
+            onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; }
         }
     });
 
@@ -1015,54 +1256,63 @@ function crearGraficosConsumo(datos) {
             }]
         },
         options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            indexAxis: 'y',
+            responsive: true, maintainAspectRatio: true, indexAxis: 'y',
             plugins: {
                 legend: { display: false },
                 tooltip: { callbacks: { label: c => formatearNumero(c.parsed.x) + ' MB' } }
             },
-            scales: {
-                x: { beginAtZero: true, ticks: { callback: v => formatearNumero(v) } }
-            }
+            scales: { x: { beginAtZero: true, ticks: { callback: v => formatearNumero(v) } } },
+            onClick: makeDblClickHandler(el => {
+                const label = labelsLineas[el.index];
+                if (!label || label === 'Sin ID') return;
+                if (/[a-zA-Z_]/.test(label)) {
+                    document.getElementById('filtroRCConsumo').value  = label;
+                    document.getElementById('filtroNumConsumo').value = '';
+                } else {
+                    document.getElementById('filtroRCConsumo').value  = '';
+                    document.getElementById('filtroNumConsumo').value = label;
+                }
+                aplicarFiltrosConsumo();
+            }),
+            onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; }
         }
     });
 
     // ── 3. Estado de líneas (donut) ──────────────────────────────
     const COLORES_ESTADO = {
         activo:      '#16a34a',
-        sin_consumo: '#ea580c',
         desactivado: '#dc2626',
         legado:      '#7c3aed',
         error:       '#ef4444',
     };
     const porEstado = {};
     datos.forEach(c => {
-        const est = calcularEstadoConsumo(c);
+        const est = esViewer()
+            ? estadoSimple(estadoConsDisplay(c))
+            : estadoConsDisplay(c);
         porEstado[est] = (porEstado[est] || 0) + 1;
     });
-    const estadoKeys   = Object.keys(porEstado);
-    const estadoCounts = estadoKeys.map(e => porEstado[e]);
+    const estadoKeys    = Object.keys(porEstado);
+    const estadoCounts  = estadoKeys.map(e => porEstado[e]);
     const estadoColores = estadoKeys.map(e => COLORES_ESTADO[e] || '#6b7280');
+    const cfgEstado     = esViewer() ? ESTADO_CONFIG_VIEWER : ESTADO_CONFIG_DISP;
     const estadoLabels  = estadoKeys.map(e =>
-        (ESTADO_CONFIG[e]?.label || e).replace('● ', '')
+        (cfgEstado[e]?.label || e).replace('● ', '')
     );
+
+    // Mapa label → key de estado para el onClick
+    const labelToEstadoKey = {};
+    estadoLabels.forEach((lbl, i) => { labelToEstadoKey[lbl] = estadoKeys[i]; });
 
     const ctxE = document.getElementById('chartConsumoEstados').getContext('2d');
     chartConsumoEstados = new Chart(ctxE, {
         type: 'doughnut',
         data: {
             labels: estadoLabels,
-            datasets: [{
-                data: estadoCounts,
-                backgroundColor: estadoColores,
-                borderColor: '#fff',
-                borderWidth: 3,
-            }]
+            datasets: [{ data: estadoCounts, backgroundColor: estadoColores, borderColor: '#fff', borderWidth: 3 }]
         },
         options: {
-            responsive: true,
-            maintainAspectRatio: true,
+            responsive: true, maintainAspectRatio: true,
             plugins: {
                 legend: { position: 'bottom', labels: { padding: 15, font: { size: 12 } } },
                 tooltip: {
@@ -1074,9 +1324,365 @@ function crearGraficosConsumo(datos) {
                         }
                     }
                 }
-            }
+            },
+            onClick: makeDblClickHandler(el => {
+                const lbl = estadoLabels[el.index];
+                document.getElementById('filtroEstadoConsumo').value = labelToEstadoKey[lbl] || '';
+                aplicarFiltrosConsumo();
+            }),
+            onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; }
         }
     });
+}
+
+// ── ORDENAMIENTO ──────────────────────────────────────────────────
+
+function setSortLineas(col) {
+    sortLineas.dir = sortLineas.col === col && sortLineas.dir === 'asc' ? 'desc' : 'asc';
+    sortLineas.col = col;
+    mostrarEnTablaConsumo(consumosFiltrados);
+}
+
+function setSortEquipos(col) {
+    sortEquipos.dir = sortEquipos.col === col && sortEquipos.dir === 'asc' ? 'desc' : 'asc';
+    sortEquipos.col = col;
+    paginaEquipos = 1;
+    mostrarConsolidado(consumosFiltrados);
+}
+
+function sortearLineas(datos) {
+    const { col, dir } = sortLineas;
+    const m = dir === 'asc' ? 1 : -1;
+    return [...datos].sort((a, b) => {
+        let va, vb;
+        switch (col) {
+            case 'estado':    va = estadoConsDisplay(a);          vb = estadoConsDisplay(b);          break;
+            case 'rc':        va = encontrarRC(a);                vb = encontrarRC(b);                break;
+            case 'numero':    va = String(a.numero    || '');     vb = String(b.numero    || '');     break;
+            case 'imei':      va = normalizarImei(a.imei);        vb = normalizarImei(b.imei);        break;
+            case 'telefonia': va = String(a.telefonia || '');     vb = String(b.telefonia || '');     break;
+            case 'mb':        return ((parseFloat(a.consumo_mb) || 0) - (parseFloat(b.consumo_mb) || 0)) * m;
+            case 'fecha':     va = String(a.fecha_consumo || ''); vb = String(b.fecha_consumo || ''); break;
+            default: return 0;
+        }
+        return va.localeCompare(vb) * m;
+    });
+}
+
+function sortearEquipos(filas) {
+    const { col, dir } = sortEquipos;
+    const m = dir === 'asc' ? 1 : -1;
+    return [...filas].sort((a, b) => {
+        switch (col) {
+            case 'rc':       return a.rc.localeCompare(b.rc) * m;
+            case 'regional': return a.regional.localeCompare(b.regional) * m;
+            case 'sim1':     return a.sim1Label.localeCompare(b.sim1Label) * m;
+            case 'sim1mb':   return (a.sim1MB   - b.sim1MB)   * m;
+            case 'sim2':     return a.sim2Label.localeCompare(b.sim2Label) * m;
+            case 'sim2mb':   return (a.sim2MB   - b.sim2MB)   * m;
+            case 'total':    return (a.totalMB  - b.totalMB)  * m;
+            default: return 0;
+        }
+    });
+}
+
+function updateSortIcons(tableId, sortState) {
+    document.querySelectorAll(`#${tableId} thead th[data-sort]`).forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (th.dataset.sort === sortState.col)
+            th.classList.add(sortState.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+    });
+}
+
+// ── VISTA TOGGLE ──────────────────────────────────────────────────
+
+function cambiarVista(vista) {
+    vistaConsumo = vista;
+    document.getElementById('btnVerLineas').classList.toggle('view-activo', vista === 'lineas');
+    document.getElementById('btnVerEquipos').classList.toggle('view-activo', vista === 'equipos');
+
+    const tablaLineas     = document.getElementById('tablaConsumo2');
+    const pagLineas       = document.getElementById('paginacion-consumo');
+    const tablaEquipos    = document.getElementById('tablaConsolidado');
+
+    if (vista === 'lineas') {
+        tablaLineas.style.display  = '';
+        pagLineas.style.display    = '';
+        tablaEquipos.style.display = 'none';
+        document.getElementById('paginacion-equipos').innerHTML = '';
+        paginaConsumo = 1;
+        mostrarEnTablaConsumo(consumosFiltrados);
+    } else {
+        tablaLineas.style.display  = 'none';
+        pagLineas.style.display    = 'none';
+        tablaEquipos.style.display = '';
+        paginaEquipos = 1;
+        mostrarConsolidado(consumosFiltrados);
+    }
+}
+
+// ── VISTA CONSOLIDADA POR EQUIPO ──────────────────────────────────
+
+// Devuelve true cuando no hay filtros que requieran escanear consumo_sim
+// (en ese caso podemos usar la vista materializada de la BD)
+function puedeUsarVistaMat() {
+    const desde     = document.getElementById('filtroFechaDesde').value;
+    const hasta     = document.getElementById('filtroFechaHasta').value;
+    const telefonia = document.getElementById('filtroTelefonia').value;
+    const num       = document.getElementById('filtroNumConsumo').value.trim();
+    const estado    = document.getElementById('filtroEstadoConsumo').value;
+    return !desde && !hasta && !telefonia && !num && !estado;
+}
+
+function buildConsolidado(datos) {
+    const porRC = new Map();
+    datos.forEach(c => {
+        const rc = encontrarRC(c);
+        if (!porRC.has(rc)) porRC.set(rc, []);
+        porRC.get(rc).push(c);
+    });
+
+    const filas = [];
+    porRC.forEach((consumos, rc) => {
+        // Buscar dispositivo asociado
+        let device = null;
+        for (const c of consumos) {
+            const num  = String(c.numero || '').trim();
+            const imei = normalizarImei(c.imei);
+            device = mapaNumADevice.get(num) || mapaImeiADevice.get(imei) || null;
+            if (device) break;
+        }
+
+        const sim1Num  = device ? String(device.sim1_num  || '').trim() : '';
+        const sim2Num  = device ? String(device.sim2_num  || '').trim() : '';
+        const sim1Imei = device ? normalizarImei(device.sim1_imei) : '';
+        const sim2Imei = device ? normalizarImei(device.sim2_imei) : '';
+        const sim1M2M  = sim1Num.toLowerCase() === 'm2m';
+        const sim2M2M  = sim2Num.toLowerCase() === 'm2m';
+
+        const sim1Rows = consumos.filter(c => {
+            const n = String(c.numero || '').trim();
+            const i = normalizarImei(c.imei);
+            return sim1M2M ? i === sim1Imei : (n === sim1Num || i === sim1Imei);
+        });
+        const sim2Rows = consumos.filter(c => {
+            const n = String(c.numero || '').trim();
+            const i = normalizarImei(c.imei);
+            return sim2M2M ? i === sim2Imei : (n === sim2Num || i === sim2Imei);
+        });
+
+        const sim1MB   = sim1Rows.reduce((s, c) => s + (parseFloat(c.consumo_mb) || 0), 0);
+        const sim2MB   = sim2Rows.reduce((s, c) => s + (parseFloat(c.consumo_mb) || 0), 0);
+        const totalMB  = consumos.reduce((s, c) => s + (parseFloat(c.consumo_mb) || 0), 0);
+
+        filas.push({
+            rc,
+            regional:   device?.regional || '-',
+            sim1Label:  sim1M2M ? 'M2M' : (sim1Num || (sim1Rows[0]?.numero) || '-'),
+            sim1MB,
+            sim2Label:  sim2M2M ? 'M2M' : (sim2Num || (sim2Rows[0]?.numero) || '-'),
+            sim2MB,
+            totalMB,
+        });
+    });
+
+    return filas.sort((a, b) => a.rc.localeCompare(b.rc));
+}
+
+// Renderiza filas del consolidado (acepta tanto objetos de DB como del cliente)
+function renderFilasConsolidado(filas) {
+    const tbody = document.getElementById('tablaConsolidadoBody');
+    tbody.innerHTML = '';
+    filas.forEach(f => {
+        const sim1Label = f.sim1_label ?? f.sim1Label ?? '-';
+        const sim2Label = f.sim2_label ?? f.sim2Label ?? '-';
+        const sim1MB    = f.sim1_mb    ?? f.sim1MB    ?? 0;
+        const sim2MB    = f.sim2_mb    ?? f.sim2MB    ?? 0;
+        const totalMB   = f.total_mb   ?? f.totalMB   ?? 0;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><strong>${f.rc}</strong></td>
+            <td><span class="badge-regional">${f.regional}</span></td>
+            <td>${sim1Label}</td>
+            <td>${formatearNumero(sim1MB)} MB</td>
+            <td>${sim2Label !== '-' ? sim2Label : '<span style="color:#bbb">—</span>'}</td>
+            <td>${sim2Label !== '-' ? formatearNumero(sim2MB) + ' MB' : '<span style="color:#bbb">—</span>'}</td>
+            <td><strong>${formatearNumero(totalMB)} MB</strong></td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+// Punto de entrada: decide si usa vista materializada o cliente según los filtros activos
+async function mostrarConsolidado(datos) {
+    if (puedeUsarVistaMat()) {
+        await mostrarConsolidadoDB();
+    } else {
+        mostrarConsolidadoCliente(datos);
+    }
+}
+
+// ── Via vista materializada (BD) ──────────────────────────────────────
+async function mostrarConsolidadoDB() {
+    const tbody  = document.getElementById('tablaConsolidadoBody');
+    const infoEl = document.getElementById('paginacion-info-consumo');
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:#35398C">⏳ Cargando...</td></tr>';
+
+    const rc = document.getElementById('filtroRCConsumo').value.trim();
+
+    // Mapeo columna JS → nombre en la vista
+    const colMap = {
+        rc: 'rc', regional: 'regional',
+        sim1: 'sim1_label', sim1mb: 'sim1_mb',
+        sim2: 'sim2_label', sim2mb: 'sim2_mb',
+        total: 'total_mb',
+    };
+    const dbCol = colMap[sortEquipos.col] || 'rc';
+
+    let query = window.clienteSupabase
+        .from('consumo_consolidado')
+        .select('*', { count: 'exact' })
+        .order(dbCol, { ascending: sortEquipos.dir === 'asc' });
+
+    if (rc) query = query.ilike('rc', `%${rc}%`);
+
+    const from = (paginaEquipos - 1) * ITEMS_POR_PAGINA;
+    query = query.range(from, from + ITEMS_POR_PAGINA - 1);
+
+    const { data, error, count } = await query;
+
+    if (error || !data) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#ef4444">❌ ${error?.message || 'Error al consultar vista'}</td></tr>`;
+        infoEl.innerHTML = '';
+        document.getElementById('paginacion-equipos').innerHTML = '';
+        return;
+    }
+
+    if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px">No se encontraron resultados.</td></tr>';
+        infoEl.innerHTML = '';
+        document.getElementById('paginacion-equipos').innerHTML = '';
+        return;
+    }
+
+    renderFilasConsolidado(data);
+    updateSortIcons('tablaConsolidado', sortEquipos);
+
+    const fin = Math.min(from + ITEMS_POR_PAGINA, count);
+    infoEl.innerHTML = `Mostrando <strong>${from + 1}–${fin}</strong> de <strong>${formatearNumero(count)}</strong> equipos <span style="color:#aaa;font-size:12px">(vista DB)</span>`;
+    renderPaginacionEquipos(Math.ceil(count / ITEMS_POR_PAGINA));
+}
+
+// ── Via cliente (cuando hay filtros de fecha / telefonia / num) ───────
+function mostrarConsolidadoCliente(datos) {
+    const tbody  = document.getElementById('tablaConsolidadoBody');
+    const infoEl = document.getElementById('paginacion-info-consumo');
+    tbody.innerHTML = '';
+
+    consolidadoActual = sortearEquipos(buildConsolidado(datos));
+    updateSortIcons('tablaConsolidado', sortEquipos);
+
+    const total        = consolidadoActual.length;
+    const totalPaginas = Math.max(1, Math.ceil(total / ITEMS_POR_PAGINA));
+    if (paginaEquipos > totalPaginas) paginaEquipos = totalPaginas;
+
+    if (total === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px">No se encontraron resultados.</td></tr>';
+        infoEl.innerHTML = '';
+        document.getElementById('paginacion-equipos').innerHTML = '';
+        return;
+    }
+
+    const inicio = (paginaEquipos - 1) * ITEMS_POR_PAGINA;
+    const fin    = Math.min(inicio + ITEMS_POR_PAGINA, total);
+
+    renderFilasConsolidado(consolidadoActual.slice(inicio, fin));
+    infoEl.innerHTML = `Mostrando <strong>${inicio + 1}–${fin}</strong> de <strong>${formatearNumero(total)}</strong> equipos · <strong>${formatearNumero(datos.length)}</strong> líneas`;
+    renderPaginacionEquipos(totalPaginas);
+}
+
+function renderPaginacionEquipos(totalPaginas) {
+    const cont = document.getElementById('paginacion-equipos');
+    if (totalPaginas <= 1) { cont.innerHTML = ''; return; }
+
+    const prev = paginaEquipos === 1;
+    const next = paginaEquipos === totalPaginas;
+
+    let html = '<div class="pag-controles">';
+    html += `<button class="pag-btn" onclick="irPaginaEquipos(${paginaEquipos - 1})" ${prev ? 'disabled' : ''}>← Anterior</button>`;
+    paginasVisibles(paginaEquipos, totalPaginas).forEach(p => {
+        if (p === '...') {
+            html += '<span class="pag-dots">…</span>';
+        } else {
+            html += `<button class="pag-btn pag-num ${p === paginaEquipos ? 'pag-activa' : ''}" onclick="irPaginaEquipos(${p})">${p}</button>`;
+        }
+    });
+    html += `<button class="pag-btn" onclick="irPaginaEquipos(${paginaEquipos + 1})" ${next ? 'disabled' : ''}>Siguiente →</button>`;
+    html += '</div>';
+    cont.innerHTML = html;
+}
+
+function irPaginaEquipos(num) {
+    if (num < 1) return;
+    paginaEquipos = num;
+    mostrarConsolidado(consumosFiltrados);
+    document.querySelector('#tab-consumo .table-container').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── EXPORTAR ──────────────────────────────────────────────────────
+
+function exportarConsumo() {
+    const wb = XLSX.utils.book_new();
+
+    if (vistaConsumo === 'equipos') {
+        const filas = buildConsolidado(consumosFiltrados);
+        const rows  = filas.map(f => ({
+            'RC':              f.rc,
+            'Regional':        f.regional,
+            'SIM Principal':   f.sim1Label,
+            'MB SIM Principal': f.sim1MB,
+            'SIM Respaldo':    f.sim2Label !== '-' ? f.sim2Label : '',
+            'MB SIM Respaldo': f.sim2Label !== '-' ? f.sim2MB    : '',
+            'Total MB':        f.totalMB,
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Por Equipo');
+    } else {
+        const rows = consumosFiltrados.map(c => {
+            const est = estadoConsDisplay(c);
+            const cfg = esViewer() ? ESTADO_CONFIG_VIEWER[estadoSimple(est)] : ESTADO_CONFIG_DISP[est];
+            const row = {
+                'Estado':    (cfg?.label || est).replace('● ', ''),
+                'RC':        encontrarRC(c),
+                'Número':    c.numero    || '',
+                'IMEI':      normalizarImei(c.imei) || '',
+                'Telefonía': c.telefonia || '',
+                'MB':        parseFloat(c.consumo_mb) || 0,
+                'Fecha':     c.fecha_consumo || '',
+            };
+            if (!esViewer()) row['Observación'] = c.observacion || '';
+            return row;
+        });
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Por Línea');
+    }
+
+    const fecha = new Date().toISOString().substring(0, 10);
+    XLSX.writeFile(wb, `consumo_ANDE_${fecha}.xlsx`);
+}
+
+// ── IMPRIMIR ──────────────────────────────────────────────────────
+
+function imprimirReporte() {
+    const desde = document.getElementById('filtroFechaDesde').value;
+    const hasta = document.getElementById('filtroFechaHasta').value;
+    const titulo = vistaConsumo === 'equipos' ? 'Reporte de Consumo por Equipo' : 'Reporte de Consumo por Línea';
+    const periodo = (desde || hasta)
+        ? `Período: ${desde ? formatearFecha(desde) : 'inicio'} — ${hasta ? formatearFecha(hasta) : 'hoy'}`
+        : 'Todos los períodos';
+
+    document.getElementById('printTitulo').textContent  = titulo;
+    document.getElementById('printPeriodo').textContent = periodo;
+    document.getElementById('printFecha').textContent   = new Date().toLocaleDateString('es-PY');
+    window.print();
 }
 
 // ── FILTROS CONSUMO ────────────────────────────────────────────────
@@ -1084,14 +1690,23 @@ function crearGraficosConsumo(datos) {
 function aplicarFiltrosConsumo() {
     const telefonia = document.getElementById('filtroTelefonia').value;
     const estado    = document.getElementById('filtroEstadoConsumo').value;
+    const rc        = document.getElementById('filtroRCConsumo').value.trim().toLowerCase();
     const num       = document.getElementById('filtroNumConsumo').value.trim();
-    const fecha     = document.getElementById('filtroFechaConsumo').value;
+    const desde     = document.getElementById('filtroFechaDesde').value;
+    const hasta     = document.getElementById('filtroFechaHasta').value;
 
     consumosFiltrados = todosLosConsumos.filter(c => {
         if (telefonia && c.telefonia !== telefonia) return false;
-        if (estado    && calcularEstadoConsumo(c) !== estado) return false;
+        if (estado) {
+            const estReal = estadoConsDisplay(c);
+            const estComp = esViewer() ? estadoSimple(estReal) : estReal;
+            if (estComp !== estado) return false;
+        }
+        if (rc  && !encontrarRC(c).toLowerCase().includes(rc)) return false;
         if (num && !String(c.numero || '').includes(num) && !normalizarImei(c.imei).includes(num)) return false;
-        if (fecha && String(c.fecha_consumo || '').substring(0, 10) !== fecha) return false;
+        const f = String(c.fecha_consumo || '').substring(0, 10);
+        if (desde && f < desde) return false;
+        if (hasta && f > hasta) return false;
         return true;
     });
 
@@ -1101,8 +1716,10 @@ function aplicarFiltrosConsumo() {
 function limpiarFiltrosConsumo() {
     document.getElementById('filtroTelefonia').value     = '';
     document.getElementById('filtroEstadoConsumo').value = '';
+    document.getElementById('filtroRCConsumo').value     = '';
     document.getElementById('filtroNumConsumo').value    = '';
-    document.getElementById('filtroFechaConsumo').value  = '';
+    document.getElementById('filtroFechaDesde').value    = '';
+    document.getElementById('filtroFechaHasta').value    = '';
     consumosFiltrados = todosLosConsumos;
     mostrarDatosConsumo(consumosFiltrados);
 }
@@ -1285,6 +1902,8 @@ async function ejecutarImportConsumo() {
             // Recargar ambas pestañas para reflejar cambios
             setTimeout(async () => {
                 cerrarImportConsumo();
+                // Refrescar vista materializada en la BD
+                await window.clienteSupabase.rpc('refresh_consumo_consolidado').catch(() => {});
                 await cargarDatos();      // actualiza mapas + tab dispositivos
                 cargarConsumos();         // recarga tab consumo
             }, 1800);
