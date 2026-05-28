@@ -362,6 +362,21 @@ button:hover {
     background: #B44C80;
 }
 
+.btn-refresh {
+    background: #0e7490;
+}
+
+.btn-refresh:hover {
+    background: #0891b2;
+}
+
+.btn-refresh:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
 /* Estadísticas */
 .stats {
     display: grid;
@@ -840,6 +855,10 @@ tbody tr:nth-child(odd) {
     background: linear-gradient(135deg, #16a34a 0%, #15803d 100%) !important;
 }
 
+.stat-sin-consumo {
+    background: linear-gradient(135deg, #f97316 0%, #ea580c 100%) !important;
+}
+
 .stat-desactivados {
     background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
 }
@@ -859,9 +878,23 @@ tbody tr:nth-child(odd) {
     color: #15803d;
 }
 
+/* badge-sin-consumo = slot SIM con 0 MB (tabla consumo) */
 .badge-sin-consumo {
     background: rgba(234, 88, 12, 0.12);
     color: #c2410c;
+}
+
+/* badge-sin-consumo-rc = estado RC naranja */
+.badge-sin-consumo-rc {
+    background: rgba(249, 115, 22, 0.15);
+    color: #c2410c;
+    border: 1px solid rgba(249, 115, 22, 0.35);
+}
+
+/* Filas con estado Sin Consumo */
+.fila-sin-consumo td {
+    opacity: 0.85;
+    background: rgba(249, 115, 22, 0.04);
 }
 
 .badge-desactivado {
@@ -1140,6 +1173,383 @@ tbody tr:nth-child(odd) {
 #mapaParaguay {
     height: 520px;
     width: 100%;
+}
+
+/* ── LINKS CLICABLES EN TABLAS ── */
+.link-rc, .link-num {
+    cursor: pointer;
+    color: #35398C;
+    font-weight: 700;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 3px;
+    transition: color 0.15s;
+}
+.link-rc:hover, .link-num:hover { color: #8A35AB; }
+
+/* ── PANEL DE DETALLE RC / SIM ── */
+#panelOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(26, 18, 46, 0.45);
+    backdrop-filter: blur(3px);
+    z-index: 1500;
+    display: flex;
+    justify-content: flex-end;
+}
+
+#panelContenido {
+    width: 420px;
+    max-width: 100vw;
+    background: white;
+    height: 100%;
+    overflow-y: auto;
+    box-shadow: -8px 0 40px rgba(0,0,0,0.18);
+    display: flex;
+    flex-direction: column;
+    animation: panelSlideIn 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes panelSlideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to   { transform: translateX(0);    opacity: 1; }
+}
+
+.panel-header {
+    background: linear-gradient(135deg, #1A1A2E 0%, #2D1B4E 100%);
+    padding: 20px 20px 16px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.panel-titulo {
+    color: white;
+    font-size: 1.1em;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+.panel-close-btn {
+    background: rgba(255,255,255,0.15);
+    border: none;
+    color: white;
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    padding: 0;
+    transition: background 0.2s;
+    transform: none;
+    box-shadow: none;
+}
+.panel-close-btn:hover { background: rgba(255,255,255,0.3); transform: none; box-shadow: none; }
+
+.panel-titulo-link {
+    color: white;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 3px;
+    transition: opacity 0.15s;
+}
+.panel-titulo-link:hover { opacity: 0.8; }
+
+.panel-header-badge {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    vertical-align: middle;
+}
+.badge-legado-h {
+    background: rgba(124, 58, 237, 0.35);
+    color: #ddd6fe;
+    border: 1px solid rgba(167, 139, 250, 0.5);
+}
+.badge-satelital-h {
+    background: rgba(14, 165, 233, 0.35);
+    color: #bae6fd;
+    border: 1px solid rgba(56, 189, 248, 0.5);
+}
+.badge-satelital {
+    background: rgba(14, 165, 233, 0.12);
+    color: #0369a1;
+}
+
+/* ── BADGES DE TIPO ── */
+.badge-tipo {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+}
+.badge-tipo-activado {
+    background: #ccfbf1;
+    color: #0f766e;
+    border: 1px solid #5eead4;
+}
+.badge-tipo-legado {
+    background: #ede9fe;
+    color: #5b21b6;
+    border: 1px solid #c4b5fd;
+}
+.badge-tipo-satelital {
+    background: #dbeafe;
+    color: #1d4ed8;
+    border: 1px solid #93c5fd;
+}
+.badge-tipo-error {
+    background: #fee2e2;
+    color: #dc2626;
+    border: 1px solid #fca5a5;
+}
+
+.panel-cuerpo {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.panel-section { margin-bottom: 22px; }
+
+.panel-section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: #aaa;
+    margin-bottom: 10px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.panel-info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.panel-info-item {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+
+.panel-info-label {
+    font-size: 10px;
+    color: #aaa;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+.panel-info-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1A1A2E;
+}
+
+.panel-info-full {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-top: 8px;
+}
+
+.panel-sim-card {
+    background: #fafbff;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 8px;
+}
+.panel-sim-card-vacio {
+    background: #fff5f5;
+    border-color: #fecaca;
+    opacity: 0.8;
+}
+
+.panel-sim-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.panel-sim-est {
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.panel-sim-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #8A35AB;
+}
+
+.panel-sim-mb {
+    font-size: 12px;
+    color: #16a34a;
+    font-weight: 700;
+    background: rgba(22,163,74,0.08);
+    border-radius: 12px;
+    padding: 2px 8px;
+}
+
+.panel-sim-numero {
+    font-size: 16px;
+    font-weight: 700;
+    color: #35398C;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 3px;
+    transition: color 0.15s;
+}
+.panel-sim-numero:hover { color: #8A35AB; }
+
+.panel-sim-imei {
+    font-size: 11px;
+    color: #aaa;
+    font-family: monospace;
+    margin-top: 5px;
+}
+
+.panel-chart-wrap {
+    height: 160px;
+    position: relative;
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 10px;
+}
+
+.panel-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.btn-panel {
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1.5px solid;
+    transition: background 0.15s, box-shadow 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex: none;
+    width: 100%;
+    transform: none;
+    box-shadow: none;
+    text-align: center;
+}
+.btn-panel:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.1); transform: none; }
+
+.btn-panel-cambiar  { background: rgba(53,57,140,0.06); color: #35398C; border-color: #c7cae8; }
+.btn-panel-cambiar:hover  { background: rgba(53,57,140,0.12); border-color: #35398C; }
+
+.btn-panel-saldo  { background: rgba(22,163,74,0.06); color: #15803d; border-color: #86efac; }
+.btn-panel-saldo:hover  { background: rgba(22,163,74,0.12); border-color: #22c55e; }
+
+.btn-panel-desactivar  { background: rgba(220,38,38,0.06); color: #b91c1c; border-color: #fca5a5; }
+.btn-panel-desactivar:hover  { background: rgba(220,38,38,0.12); border-color: #ef4444; }
+
+.btn-panel-activar  { background: rgba(22,163,74,0.06); color: #15803d; border-color: #86efac; }
+.btn-panel-activar:hover  { background: rgba(22,163,74,0.12); border-color: #22c55e; }
+
+.panel-historial {
+    width: 100%;
+    font-size: 12px;
+    border-collapse: collapse;
+    margin-top: 4px;
+    border-radius: 8px;
+    overflow: hidden;
+}
+.panel-historial th {
+    background: #f0f2f8;
+    color: #35398C;
+    padding: 8px 10px;
+    font-size: 10px;
+    font-weight: 700;
+    text-align: left;
+    border: none;
+}
+.panel-historial td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #f5f5f5;
+    color: #444;
+    vertical-align: top;
+    border: none;
+}
+.panel-historial tbody tr:last-child td { border-bottom: none; }
+.panel-historial tbody tr:hover { background: #fafbff; }
+
+.panel-empty {
+    text-align: center;
+    padding: 20px;
+    color: #bbb;
+    font-size: 13px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+/* ── Historial de estados en panel SIM ── */
+.sim-hist-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+.sim-hist-table th {
+    padding: 6px 8px;
+    text-align: left;
+    background: #f8fafc;
+    color: #64748b;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-bottom: 2px solid #e2e8f0;
+}
+.sim-hist-table td {
+    padding: 7px 8px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+}
+.sim-hist-table tbody tr:last-child td { border-bottom: none; }
+.sim-hist-table tbody tr:hover { background: #fafbff; }
+
+.panel-loading {
+    text-align: center;
+    padding: 60px 20px;
+    color: #35398C;
+    font-size: 14px;
+}
+
+@media (max-width: 480px) {
+    #panelContenido { width: 100vw; }
 }
 
 /* ── TELEFONÍA DETECTADA ── */
