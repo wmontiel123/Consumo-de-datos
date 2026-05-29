@@ -1,9 +1,8 @@
-// Credenciales de acceso
-const USUARIOS = {
-    admin: { password: 'demo2025', rol: 'admin' },
-    ande:  { password: 'ande2025', rol: 'viewer' },
-};
-let rolActual = 'admin';
+// Rol del usuario autenticado.
+let rolActual = 'viewer';
+
+// Guard para evitar que callbacks async actualicen la UI después del logout.
+let _sesionActiva = false;
 
 // Helpers de rol
 function esViewer() { return rolActual === 'viewer'; }
@@ -101,9 +100,10 @@ function rcEstadoDesdeSimEstados(s1e, s2e) {
 }
 
 function cerrarSesion() {
+    _sesionActiva = false;
     sessionStorage.removeItem('session');
     // Resetear estado
-    rolActual = 'admin';
+    rolActual = 'viewer';
     todosLosDatos = []; datosFiltrados = [];
     todosLosConsumos = []; consumosFiltrados = []; consolidadoActual = [];
     paginaConsumo = 1; paginaEquipos = 1;
@@ -115,8 +115,14 @@ function cerrarSesion() {
     if (chartLineas)          { chartLineas.destroy();          chartLineas = null; }
     if (chartTorta)           { chartTorta.destroy();           chartTorta = null; }
     if (chartConsumoHistorico){ chartConsumoHistorico.destroy();chartConsumoHistorico = null; }
-    if (chartConsumoLineas)   { chartConsumoLineas.destroy();   chartConsumoLineas = null; }
-    if (chartConsumoEstados)  { chartConsumoEstados.destroy();  chartConsumoEstados = null; }
+    if (chartConsumoLineas)    { chartConsumoLineas.destroy();    chartConsumoLineas    = null; }
+    if (chartConsumoTelefonia) { chartConsumoTelefonia.destroy(); chartConsumoTelefonia = null; }
+    if (chartLineasEstado)     { chartLineasEstado.destroy();     chartLineasEstado     = null; }
+    if (chartLineasTelefonia)  { chartLineasTelefonia.destroy();  chartLineasTelefonia  = null; }
+    if (chartLineasTop10)      { chartLineasTop10.destroy();      chartLineasTop10      = null; }
+    if (chartEquipoHistorico) { chartEquipoHistorico.destroy(); chartEquipoHistorico = null; }
+    if (chartEquipoTop5)      { chartEquipoTop5.destroy();      chartEquipoTop5 = null; }
+    if (chartEquipoRegional)  { chartEquipoRegional.destroy();  chartEquipoRegional = null; }
     if (chartPanelRC)  { chartPanelRC.destroy();  chartPanelRC  = null; }
     if (chartPanelSIM) { chartPanelSIM.destroy(); chartPanelSIM = null; }
     cerrarPanel();
@@ -128,30 +134,69 @@ function cerrarSesion() {
     document.getElementById('loginPassword').value = '';
     document.getElementById('loginError').style.display = 'none';
 
-    // Resetear tab activo
+    // Resetear tab activo y sub-vista a Consumo
     document.getElementById('tabBtnConsumo').classList.add('tab-activo');
     document.getElementById('tabBtnDispositivos').classList.remove('tab-activo');
     document.getElementById('tab-consumo').style.display = 'block';
     document.getElementById('tab-dispositivos').style.display = 'none';
+    vistaConsumo = 'lineas';
+    document.getElementById('btnVerLineas')?.classList.add('view-activo');
+    document.getElementById('btnVerLineasBD')?.classList.remove('view-activo');
+    document.getElementById('btnVerEquipos')?.classList.remove('view-activo');
 }
 
-function intentarLogin() {
+async function intentarLogin() {
     const usuario  = document.getElementById('loginUsuario').value.trim();
     const password = document.getElementById('loginPassword').value;
-    const error    = document.getElementById('loginError');
-    const user     = USUARIOS[usuario];
+    const errorEl  = document.getElementById('loginError');
+    const btn      = document.getElementById('loginBtn');
 
-    if (user && password === user.password) {
-        rolActual = user.rol;
-        sessionStorage.setItem('session', JSON.stringify({ usuario, rol: user.rol }));
-        document.getElementById('loginOverlay').style.display = 'none';
-        document.getElementById('appPrincipal').style.display = 'block';
-        aplicarRol();
-        iniciarApp();
-    } else {
-        error.style.display = 'block';
-        document.getElementById('loginPassword').value = '';
+    if (!usuario || !password) { errorEl.style.display = 'block'; return; }
+
+    btn.disabled    = true;
+    btn.textContent = 'Ingresando…';
+    errorEl.style.display = 'none';
+
+    // Guardia: el cliente debe estar listo
+    if (!window.clienteSupabase) {
+        btn.disabled = false; btn.textContent = 'Ingresar';
+        errorEl.textContent = 'Error: cliente no inicializado. Recargá la página.';
+        errorEl.style.display = 'block';
+        return;
     }
+
+    // Verificación server-side: la contraseña NUNCA sale del servidor
+    const { data: rol, error } = await window.clienteSupabase.rpc('verificar_login', {
+        p_usuario:  usuario,
+        p_password: password,
+    });
+
+    btn.disabled    = false;
+    btn.textContent = 'Ingresar';
+
+    console.log('[login] rol:', rol, '| error:', error?.message, error?.code);
+
+    if (error || !rol) {
+        const SVG_ERR = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+        errorEl.innerHTML = SVG_ERR + ' ' + (error ? `Error: ${error.message}` : 'Usuario o contraseña incorrectos.');
+        errorEl.style.display = 'block';
+        document.getElementById('loginPassword').value = '';
+        return;
+    }
+
+    _activarSesion(usuario, rol);
+}
+
+// Activa la UI y guarda la sesión en sessionStorage (se borra al cerrar la pestaña)
+function _activarSesion(usuario, rol) {
+    _sesionActiva = true;
+    rolActual = rol;
+    sessionStorage.setItem('session', JSON.stringify({ usuario, rol }));
+    document.getElementById('loginOverlay').style.display = 'none';
+    document.getElementById('appPrincipal').style.display = 'block';
+    document.getElementById('loginError').style.display   = 'none';
+    aplicarRol();
+    iniciarApp();
 }
 
 // Aplica restricciones visuales según el rol del usuario logueado
@@ -170,20 +215,34 @@ function aplicarRol() {
         '<option value="activo">Activado</option>' +
         '<option value="desactivado">Desactivado</option>';
 
-    // Ocultar columna Observación en tabla consumo
+    // Ocultar columna Observación (TH) en tabla consumo (TDs se omiten en renderizado)
     document.getElementById('thObservacion').style.display = 'none';
 
-    // Ocultar columna Tipo y filtro Tipo (solo admin)
-    document.getElementById('thTipo').style.display       = 'none';
+    // Ocultar filtro Observación en Consumo
+    document.getElementById('filtroObservacionGroup').style.display = 'none';
+
+    // Ocultar filtro Tipo (solo admin lo ve)
     document.getElementById('filtroTipoGroup').style.display = 'none';
 
+    // Ocultar botones de importación (solo admin puede importar datos)
+    document.getElementById('btnImportDispositivos').style.display = 'none';
+    document.getElementById('btnImportConsumo').style.display      = 'none';
+
+    // Ocultar botón "Actualizar Estados" (escribe en BD)
+    document.getElementById('btnActualizarEstados').style.display  = 'none';
+
     // Actualizar labels de las tarjetas de estadísticas
-    document.querySelector('.stat-activos h3').textContent    = 'Activados';
+    document.querySelector('.stat-activos h3').textContent      = 'Activados';
     document.querySelector('.stat-desactivados h3').textContent = 'Desactivados';
 }
 
-// Permitir Enter para hacer login + restaurar sesión si el tab sigue abierto
+// Inicializar Supabase + restaurar sesión de la pestaña actual
 document.addEventListener('DOMContentLoaded', function() {
+
+    // Crear cliente Supabase antes del login (necesario para el RPC de verificación)
+    window.clienteSupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // Permitir Enter en los campos del login
     ['loginUsuario', 'loginPassword'].forEach(function(id) {
         document.getElementById(id).addEventListener('keydown', function(e) {
             if (e.key === 'Enter') intentarLogin();
@@ -195,12 +254,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const saved = sessionStorage.getItem('session');
         if (saved) {
             const { usuario, rol } = JSON.parse(saved);
-            if (USUARIOS[usuario] && USUARIOS[usuario].rol === rol) {
-                rolActual = rol;
-                document.getElementById('loginOverlay').style.display = 'none';
-                document.getElementById('appPrincipal').style.display = 'block';
-                aplicarRol();
-                iniciarApp();
+            if (usuario && ['admin', 'viewer'].includes(rol)) {
+                _activarSesion(usuario, rol);
             } else {
                 sessionStorage.removeItem('session');
             }
@@ -221,10 +276,15 @@ let activosSet     = new Set();
 let paginaActual   = 1;
 const ITEMS_POR_PAGINA = 10;
 let chartBarras, chartLineas, chartTorta;
-let chartConsumoHistorico, chartConsumoLineas, chartConsumoEstados;
+let chartConsumoHistorico, chartConsumoLineas, chartConsumoTelefonia;
+let chartLineasEstado = null, chartLineasTelefonia = null, chartLineasTop10 = null;
+let chartEquipoHistorico = null;
+let chartEquipoTop5      = null;   // pseudo-instancia (HTML nativo)
+let chartEquipoRegional  = null;
 let chartPanelRC  = null;
 let chartPanelSIM = null;
 let cambioSimActual = { codigo: null, slot: null };
+let archivosCSVPendientes = [];   // archivos CSV seleccionados para importar
 let mapaLeaflet = null;
 let markersLayer = null;
 const COLORES = ['#35398C', '#DA527D', '#B44C80', '#904783', '#644087'];
@@ -234,6 +294,8 @@ let todosLosConsumos     = [];
 let consumosFiltrados    = [];   // datos para gráficos / consolidado (hasta 50 k filas)
 let totalConsumoServidor = 0;    // total real en BD (para paginación)
 let paginaConsumo        = 1;
+let _consumosTimestamp   = 0;    // timestamp del último fetch completo (para caché)
+const CONSUMOS_TTL_MS    = 3 * 60 * 1000; // 3 minutos
 let mapaNumAConsumo       = new Map();
 let mapaImeiAConsumo      = new Map();
 let mapaNumADevice        = new Map();
@@ -241,30 +303,46 @@ let mapaImeiADevice       = new Map();
 let mapaNumAEstadoActual  = new Map(); // numero → estado actual (tabla sim_estados)
 let mapaImeiAEstadoActual = new Map(); // imei   → estado actual (tabla sim_estados)
 let telefoniaActual   = '';
-let vistaConsumo      = 'lineas'; // 'lineas' | 'equipos'
+let vistaConsumo      = 'lineas';    // 'lineas-bd' | 'equipos' | 'lineas'
 let sortLineas        = { col: 'fecha', dir: 'desc' };
 let sortEquipos       = { col: 'rc',    dir: 'asc'  };
 let paginaEquipos     = 1;
+let paginaLineasBD    = 1;
+let totalLineasBD     = 0;
 let consolidadoActual = [];
 
-// Trae TODOS los registros de una tabla paginando de a 1000 (límite de Supabase)
+// Trae TODOS los registros paginando de a 1000 con hasta 5 páginas en paralelo
 async function fetchTodos(tabla, columnas, orden, ascendente = true) {
-    const LOTE = 1000;
-    let desde = 0;
-    let todos = [];
-    while (true) {
-        const { data, error } = await window.clienteSupabase
-            .from(tabla)
-            .select(columnas)
-            .order(orden, { ascending: ascendente })
-            .range(desde, desde + LOTE - 1);
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        todos = todos.concat(data);
-        if (data.length < LOTE) break;
-        desde += LOTE;
+    const LOTE        = 1000;
+    const CONCURRENCIA = 5;
+
+    // 1. Obtener total (head request, sin datos)
+    const { count, error: cErr } = await window.clienteSupabase
+        .from(tabla).select('*', { count: 'exact', head: true });
+    if (cErr) throw cErr;
+    if (!count) return [];
+
+    const totalPaginas = Math.ceil(count / LOTE);
+    const resultado    = new Array(totalPaginas);
+
+    // 2. Fetch en batches de CONCURRENCIA páginas a la vez
+    for (let batch = 0; batch < totalPaginas; batch += CONCURRENCIA) {
+        const tamBatch = Math.min(CONCURRENCIA, totalPaginas - batch);
+        const paginas  = await Promise.all(
+            Array.from({ length: tamBatch }, (_, j) => {
+                const p = batch + j;
+                return window.clienteSupabase
+                    .from(tabla).select(columnas)
+                    .order(orden, { ascending: ascendente })
+                    .range(p * LOTE, (p + 1) * LOTE - 1);
+            })
+        );
+        paginas.forEach((r, j) => {
+            if (r.error) throw r.error;
+            resultado[batch + j] = r.data || [];
+        });
     }
-    return todos;
+    return resultado.flat();
 }
 
 // Parsea texto de fecha en varios formatos → 'YYYY-MM-DD' o null si no es fecha
@@ -298,10 +376,10 @@ function normalizarImei(val) {
     return s;
 }
 
-// Estado del dispositivo: viene directo de la DB (activo / sin_consumo / desactivado)
+// Estado del dispositivo: viene directo de la DB (activo / sin_consumo / desactivado / desactivado_manual)
 function calcularEstado(device) {
     const e = (device.estado || '').toLowerCase();
-    if (e === 'desactivado') return 'desactivado';
+    if (e === 'desactivado' || e === 'desactivado_manual') return 'desactivado';
     if (e === 'sin_consumo') return 'sin_consumo';
     return 'activo';
 }
@@ -320,22 +398,11 @@ function togglePassword() {
 
 // El inicio de la app se dispara desde el login, no automáticamente
 
-// Iniciar la aplicación
+// Iniciar la aplicación (el cliente Supabase ya existe desde DOMContentLoaded)
 async function iniciarApp() {
     try {
-        // Crear cliente de Supabase
-        console.log('📡 Creando cliente Supabase...');
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        console.log('✅ Cliente creado');
-        
-        // Guardar globalmente
-        window.clienteSupabase = supabase;
-        
-        // Cargar datos (dispositivos + mapas de consumo)
         await cargarDatos();
-        // Cargar consumo (tab por defecto)
         await cargarConsumos();
-        
     } catch (error) {
         console.error('❌ Error al iniciar:', error);
         document.getElementById('loading').innerHTML = `❌ Error: ${error.message}`;
@@ -359,9 +426,12 @@ async function sincronizarEstadosDispositivos(forzarTodos = false) {
     };
 
     for (const dev of todosLosDatos) {
-        // En sincronización automática (startup / post-import) se respetan los desactivados
-        // manuales: solo el botón "Actualizar Estados" puede volver a calcularlos.
-        if (!forzarTodos && (dev.estado || '').toLowerCase() === 'desactivado') continue;
+        const estadoDev = (dev.estado || '').toLowerCase();
+        // desactivado_manual: NUNCA se recalcula automáticamente ni con el botón.
+        // Solo se sale de ese estado con "Marcar Activado" desde el panel RC.
+        if (estadoDev === 'desactivado_manual') continue;
+        // desactivado normal: solo el botón "Actualizar Estados" puede recalcularlo.
+        if (!forzarTodos && estadoDev === 'desactivado') continue;
 
         const s1n = String(dev.sim1_num  || '').trim();
         const s1i = normalizarImei(dev.sim1_imei);
@@ -414,11 +484,12 @@ async function cargarDatos() {
         loading.textContent = 'Conectando con la base de datos...';
         loading.style.display = 'block';
 
-        // Cargar ambas tablas en paralelo (paginando para superar el límite de 1000)
+        // 3 fetches en paralelo: dispositivos + consumo + estados SIM
         const [data, consumoData] = await Promise.all([
             fetchTodos('dispositivos_ande', '*', 'regional', true),
             fetchTodos('consumo_sim', 'numero,imei,observacion,estado_operador,consumo_mb,estado,fecha_consumo,telefonia', 'fecha_consumo', false)
-                .catch(e => { console.warn('⚠️ No se pudo cargar consumo_sim:', e.message); return []; })
+                .catch(e => { console.warn('⚠️ No se pudo cargar consumo_sim:', e.message); return []; }),
+            cargarEstadosSIM()   // no depende de los otros — va en paralelo
         ]);
 
         // Construir mapas de consumo (datos vienen DESC → primer aparición = más reciente)
@@ -431,9 +502,6 @@ async function cargarDatos() {
             if (imei && !mapaImeiAConsumo.has(imei)) mapaImeiAConsumo.set(imei, c);
         });
         console.log(`✅ ${consumoData.length} registros en consumo_sim`);
-
-        // Cargar estados actuales desde sim_estados
-        await cargarEstadosSIM();
 
         // Construir mapas de dispositivos para cruzar RC en consumo
         construirMapasDevice(data);
@@ -453,10 +521,13 @@ async function cargarDatos() {
         todosLosDatos  = data;
         datosFiltrados = data;
 
-        // Sincronizar estado de RCs según sus SIMs antes de mostrar
-        await sincronizarEstadosDispositivos();
-
+        // Mostrar tabla inmediatamente sin esperar la sincronización de estados
         mostrarDatos(todosLosDatos);
+
+        // Sincronizar estado de RCs en background (escribe a BD, no bloquea la UI)
+        sincronizarEstadosDispositivos()
+            .then(() => { if (_sesionActiva && todosLosDatos.length) mostrarDatos(todosLosDatos); })
+            .catch(e => console.warn('⚠️ sincronizar estados:', e));
 
     } catch (error) {
         console.error('❌ Error crítico:', error);
@@ -487,13 +558,19 @@ async function cargarEstadosSIM() {
 
 // Poblar dropdown de Regional dinámicamente
 function poblarFiltroRegional(datos) {
-    const select = document.getElementById('filtroRegional');
     const regionales = [...new Set(datos.map(d => d['regional']).filter(Boolean))].sort();
+
+    const selectDisp = document.getElementById('filtroRegional');
+    const selectRC   = document.getElementById('filtroRCRegional');
+
     regionales.forEach(r => {
-        const opt = document.createElement('option');
-        opt.value = r;
-        opt.textContent = r;
-        select.appendChild(opt);
+        [selectDisp, selectRC].forEach(sel => {
+            if (!sel) return;
+            const opt = document.createElement('option');
+            opt.value = r;
+            opt.textContent = r;
+            sel.appendChild(opt);
+        });
     });
 }
 
@@ -629,17 +706,19 @@ function mostrarEnTabla(datos) {
         const tipoCfg  = tipoDisp ? TIPO_CONFIG[tipoDisp] : null;
         const i1 = normalizarImei(fila['sim1_imei']);
         const i2 = normalizarImei(fila['sim2_imei']);
+        const tipoBadge = (tipoCfg && tipoDisp !== 'activado')
+            ? ` <span class="badge-tipo ${tipoCfg.cls}">${tipoCfg.label}</span>`
+            : '';
         tr.innerHTML = `
             <td>${badgeEstado(fila)}</td>
             <td><span class="badge-regional">${fila['regional'] || '-'}</span></td>
-            <td>${fila['codigo'] ? `<span class="link-rc" onclick="abrirPanelRC('${fila['codigo']}')">${fila['codigo']}</span>` : '-'}</td>
+            <td>${fila['codigo'] ? `<span class="link-rc" onclick="abrirPanelRC('${fila['codigo']}')">${fila['codigo']}</span>${tipoBadge}` : '-'}</td>
             <td class="td-ubicacion">${fila['ubicacion'] || '-'}</td>
             <td>${simNumDisplay(fila['sim1_num'], i1)}</td>
             <td class="td-imei">${simImeiDisplay(fila['sim1_num'], fila['sim1_imei'])}</td>
             <td>${simNumDisplay(fila['sim2_num'], i2)}</td>
             <td class="td-imei">${simImeiDisplay(fila['sim2_num'], fila['sim2_imei'])}</td>
             <td>${formatearFecha(fila['fecha_activacion'])}</td>
-            <td style="display:none">${tipoCfg ? `<span class="badge-tipo ${tipoCfg.cls}">${tipoCfg.label}</span>` : ''}</td>
         `;
         tbody.appendChild(tr);
     });
@@ -744,7 +823,7 @@ function crearGraficos(datos) {
         },
         options: {
             responsive: true,
-            maintainAspectRatio: true,
+            maintainAspectRatio: false,
             plugins: {
                 legend: { display: false },
                 tooltip: { callbacks: { label: (c) => 'Dispositivos: ' + formatearNumero(c.parsed.y) } }
@@ -794,7 +873,7 @@ function crearGraficos(datos) {
         },
         options: {
             responsive: true,
-            maintainAspectRatio: true,
+            maintainAspectRatio: false,
             plugins: {
                 legend: { display: true },
                 tooltip: { callbacks: { label: (c) => 'Activaciones: ' + formatearNumero(c.parsed.y) } }
@@ -836,7 +915,7 @@ function crearGraficos(datos) {
         },
         options: {
             responsive: true,
-            maintainAspectRatio: true,
+            maintainAspectRatio: false,
             plugins: {
                 legend: { position: 'bottom', labels: { padding: 15, font: { size: 12 } } },
                 tooltip: {
@@ -1234,26 +1313,54 @@ function encontrarRC(consumo) {
     return device ? (device.codigo || '-') : '-';
 }
 
-// Estado para mostrar en el tab Consumo.
-// Prioridad: tabla sim_estados (estado actual del número) →
-//            registro más reciente en mapaNumAConsumo       →
-//            campo estado de la propia fila (fallback legacy).
-// Esto garantiza que todas las filas del mismo número muestren el mismo estado actual.
-function estadoConsDisplay(consumo) {
-    const num  = String(consumo.numero || '').trim();
-    const imei = normalizarImei(consumo.imei);
+// Función unificada de estado SIM — única fuente de verdad para los tres tabs.
+// Prioridad:
+//   1. Regla fija: Personal + "backup" en observacion → siempre desactivado
+//   2. sim_estados (tabla de estados actuales, fuente de verdad por número/IMEI)
+//   3. estado_operador (campo del CSV del operador)
+//   4. campo estado calculado por la app (fallback legacy)
+function getEstadoSIM(row) {
+    // 1. Backup siempre desactivado
+    if ((row.telefonia || '').toLowerCase() === 'personal' &&
+        String(row.observacion || '').toLowerCase().includes('backup')) return 'desactivado';
 
-    // 1. Fuente de verdad: sim_estados
-    if (num  && mapaNumAEstadoActual.has(num))   return mapaNumAEstadoActual.get(num);
+    const num  = String(row.numero || '').trim();
+    const imei = normalizarImei(row.imei);
+
+    // 2. sim_estados (fuente de verdad)
+    if (num && num.toLowerCase() !== 'm2m' && mapaNumAEstadoActual.has(num))
+        return mapaNumAEstadoActual.get(num);
     if (imei && mapaImeiAEstadoActual.has(imei)) return mapaImeiAEstadoActual.get(imei);
 
-    // 2. Fallback: estado del registro más reciente del número
+    // 3. estado_operador (CSV del operador)
+    const opLow = (row.estado_operador || '').trim().toLowerCase();
+    if (opLow.includes('desactiv') || opLow === 'baja') return 'desactivado';
+    if (opLow === 'legado')           return 'legado';
+    if (opLow.includes('satelit'))    return 'satelital';
+
+    // 4. campo estado de la app (fallback — colapsa estados internos a activo)
+    const est = (row.estado || '').trim().toLowerCase();
+    if (est === 'desactivado') return 'desactivado';
+    return 'activo';
+}
+
+// Estado para mostrar en el tab Consumo. Delega a getEstadoSIM y agrega
+// un fallback al registro más reciente en mapaNumAConsumo para datos legacy.
+function estadoConsDisplay(consumo) {
+    const base = getEstadoSIM(consumo);
+    if (base !== 'activo') return base;
+
+    // Fallback legacy: el registro más reciente del número puede tener un estado
+    // distinto al de la fila histórica (p.ej. el registro fue re-importado después).
+    const num  = String(consumo.numero || '').trim();
+    const imei = normalizarImei(consumo.imei);
     const latest = (num && num.toLowerCase() !== 'm2m' ? mapaNumAConsumo.get(num) : null)
                 || (imei ? mapaImeiAConsumo.get(imei) : null);
-    const src = latest || consumo;
-    const est = (src.estado || 'activo').toLowerCase();
-    if (est === 'sin_consumo' || est === 'legado' || est === 'error') return 'activo';
-    return est;
+    if (latest && latest !== consumo) {
+        const latEst = (latest.estado || '').trim().toLowerCase();
+        if (latEst === 'desactivado') return 'desactivado';
+    }
+    return 'activo';
 }
 
 // Calcula el estado de una fila de consumo
@@ -1303,7 +1410,7 @@ function cambiarTab(tab) {
         tabCons.style.display = 'block';
         btnDisp.classList.remove('tab-activo');
         btnCons.classList.add('tab-activo');
-        cargarConsumos();  // refresca al volver al tab
+        cargarConsumos();  // usa caché si datos frescos (< 3 min)
     }
 }
 
@@ -1328,7 +1435,7 @@ function resolverFiltros() {
     const num       = document.getElementById('filtroNumConsumo').value.trim() || null;
     const desde     = document.getElementById('filtroFechaDesde').value || null;
     const hasta     = document.getElementById('filtroFechaHasta').value || null;
-
+    const obs       = document.getElementById('filtroObservacion').value.trim() || null;
     // 'activo' en la UI engloba todos los estados no-desactivado (incluye legacy: sin_consumo, legado, error)
     let estados = null;
     if (estadoUI) {
@@ -1353,44 +1460,78 @@ function resolverFiltros() {
         if (numeros.length === 0 && imeis.length === 0) return null;
     }
 
-    return { telefonia, estados, desde, hasta, numeros, imeis, num_like: num };
+    return { telefonia, estados, desde, hasta, numeros, imeis, num_like: num, obs_like: obs };
 }
 
-// Consulta server-side sobre consumo_sim (tabla paginada)
-async function consultarConsumos(soloTabla = true) {
-    const f = resolverFiltros();
-    if (f === null) return { data: [], count: 0 };
-
-    let query = window.clienteSupabase
-        .from('consumo_sim')
-        .select(soloTabla ? '*' : 'consumo_mb,fecha_consumo,telefonia,numero,imei,estado,observacion,estado_operador',
-                { count: 'exact' });
-
+// Aplica los filtros activos a una query de consumo_sim
+function _aplicarFiltrosConsumoQuery(query, f) {
     if (f.telefonia) query = query.eq('telefonia', f.telefonia);
     if (f.desde)     query = query.gte('fecha_consumo', f.desde);
     if (f.hasta)     query = query.lte('fecha_consumo', f.hasta);
     if (f.num_like)  query = query.or(`numero.ilike.%${f.num_like}%,imei.ilike.%${f.num_like}%`);
+    if (f.obs_like)  query = query.ilike('observacion', `%${f.obs_like}%`);
     if (f.estados)   query = f.estados.length > 1 ? query.in('estado', f.estados) : query.eq('estado', f.estados[0]);
     if (f.numeros !== null || f.imeis !== null) {
-        const orParts = [
+        const parts = [
             ...(f.numeros || []).map(n => `numero.eq.${n}`),
             ...(f.imeis   || []).map(i => `imei.eq.${i}`),
         ];
-        if (orParts.length) query = query.or(orParts.join(','));
+        if (parts.length) query = query.or(parts.join(','));
     }
+    return query;
+}
+
+// Consulta server-side sobre consumo_sim
+async function consultarConsumos(soloTabla = true) {
+    const f = resolverFiltros();
+    if (f === null) return { data: [], count: 0 };
+
+    const COLS_CONSOLIDADO = 'consumo_mb,fecha_consumo,telefonia,numero,imei,estado,observacion,estado_operador';
 
     if (soloTabla) {
-        const from = (paginaConsumo - 1) * ITEMS_POR_PAGINA;
-        query = query
-            .order(dbColLineas(), { ascending: sortLineas.dir === 'asc' })
-            .range(from, from + ITEMS_POR_PAGINA - 1);
-    } else {
-        query = query.order('fecha_consumo', { ascending: true }).limit(50000);
+        // Página actual de la tabla (una sola request paginada)
+        const from  = (paginaConsumo - 1) * ITEMS_POR_PAGINA;
+        let query   = window.clienteSupabase.from('consumo_sim').select('*', { count: 'exact' });
+        query       = _aplicarFiltrosConsumoQuery(query, f);
+        query       = query.order(dbColLineas(), { ascending: sortLineas.dir === 'asc' })
+                           .range(from, from + ITEMS_POR_PAGINA - 1);
+        const { data, error, count } = await query;
+        if (error) throw error;
+        return { data: data || [], count: count || 0 };
     }
 
-    const { data, error, count } = await query;
-    if (error) throw error;
-    return { data: data || [], count: count || 0 };
+    // Consolidado: paginar en paralelo para traer TODAS las filas
+    // (igual que fetchTodos — evita el cap de 1000 de PostgREST)
+    const LOTE = 1000, CONC = 5;
+
+    // 1. Count
+    let cntQ = window.clienteSupabase.from('consumo_sim').select('*', { count: 'exact', head: true });
+    cntQ     = _aplicarFiltrosConsumoQuery(cntQ, f);
+    const { count, error: cErr } = await cntQ;
+    if (cErr) throw cErr;
+    if (!count) return { data: [], count: 0 };
+
+    // 2. Fetch paralelo en batches
+    const totalPags = Math.ceil(count / LOTE);
+    const resultado = new Array(totalPags);
+
+    for (let b = 0; b < totalPags; b += CONC) {
+        const tam = Math.min(CONC, totalPags - b);
+        const res = await Promise.all(
+            Array.from({ length: tam }, (_, j) => {
+                const p = b + j;
+                let q = window.clienteSupabase.from('consumo_sim').select(COLS_CONSOLIDADO);
+                q     = _aplicarFiltrosConsumoQuery(q, f);
+                return q.order('fecha_consumo', { ascending: true })
+                        .range(p * LOTE, (p + 1) * LOTE - 1);
+            })
+        );
+        res.forEach((r, j) => {
+            if (r.error) throw r.error;
+            resultado[b + j] = r.data || [];
+        });
+    }
+    return { data: resultado.flat(), count };
 }
 
 // Llama a la función SQL consumo_resumen para obtener total + gráficos agregados
@@ -1411,34 +1552,59 @@ async function cargarResumenConsumo() {
     return data || { total_mb: 0, historico: [], top15: [], por_estado: [] };
 }
 
-async function cargarConsumos() {
+async function cargarConsumos(force = false) {
+    // ── Caché: si los datos son frescos y ya hay algo cargado, evitar re-fetch ──
+    const ahora    = Date.now();
+    const esFresco = !force && (ahora - _consumosTimestamp < CONSUMOS_TTL_MS) && consumosFiltrados.length > 0;
+
+    if (esFresco) {
+        document.getElementById('loadingConsumo').style.display = 'none';
+        if      (vistaConsumo === 'equipos')   mostrarConsolidado(consumosFiltrados);
+        else if (vistaConsumo === 'lineas-bd') cargarLineasBD();
+        else {
+            // Para Consumo (lineas), siempre re-paginar (datos paginados, livianos)
+            consultarConsumos(true).then(({ data, count }) => {
+                if (!_sesionActiva) return;
+                totalConsumoServidor = count;
+                mostrarEnTablaConsumo(data, count);
+            }).catch(e => console.error('❌', e));
+        }
+        return;
+    }
+
+    _consumosTimestamp = ahora;
     const loading = document.getElementById('loadingConsumo');
     loading.style.display = 'block';
     document.getElementById('tablaDatosConsumo').innerHTML = '';
     paginaConsumo = 1;
     paginaEquipos = 1;
 
+    // Consolidado pesado (todas las filas) solo si se necesita para RC o Consumo
+    const necesitaConsolidado = vistaConsumo !== 'lineas-bd';
+
     try {
-        // 3 consultas en paralelo:
-        // 1) página actual de la tabla
-        // 2) resumen agregado para gráficos + total (via RPC, sin límite de filas)
-        // 3) filas livianas para consolidado / exportar (hasta 50k)
         const [tablaRes, resumen, consolidadoRes] = await Promise.all([
             consultarConsumos(true),
             cargarResumenConsumo(),
-            consultarConsumos(false),
+            necesitaConsolidado
+                ? consultarConsumos(false)
+                : Promise.resolve({ data: consumosFiltrados, count: 0 }),
         ]);
 
+        if (!_sesionActiva) return;
         loading.style.display = 'none';
         totalConsumoServidor = tablaRes.count;
-        consumosFiltrados    = consolidadoRes.data;
+        if (necesitaConsolidado) consumosFiltrados = consolidadoRes.data;
         console.log(`✅ ${tablaRes.count} consumos en BD`);
 
         actualizarTotalConsumo(resumen.total_mb);
-        crearGraficosConsumo(resumen);
+        crearGraficosConsumo(resumen, consumosFiltrados);
 
         if (vistaConsumo === 'equipos') {
             mostrarConsolidado(consumosFiltrados);
+        } else if (vistaConsumo === 'lineas-bd') {
+            paginaLineasBD = 1;
+            cargarLineasBD();
         } else {
             mostrarEnTablaConsumo(tablaRes.data, tablaRes.count);
         }
@@ -1494,9 +1660,9 @@ function mostrarEnTablaConsumo(filas, totalServidor) {
         if (estMostrar !== 'activo') tr.classList.add('fila-inactiva');
         tr.innerHTML = `
             <td><span class="badge-estado ${cfg.cls}">${cfg.label}</span></td>
-            <td>${rc !== '-' ? `<span class="link-rc" onclick="abrirPanelRC('${rc}')">${rc}</span>` : '-'}</td>
             <td>${c.numero ? `${dot}<span class="link-num" onclick="abrirPanelSIM('${c.numero}')">${c.numero}</span>` : '-'}</td>
             <td class="td-imei">${normalizarImei(c.imei) || '-'}</td>
+            <td>${rc !== '-' ? `<span class="link-rc" onclick="abrirPanelRC('${rc}')">${rc}</span>` : '-'}</td>
             <td>${badgeTelefonia(c.telefonia)}</td>
             <td>${mb}</td>
             <td>${formatearFecha(c.fecha_consumo)}</td>
@@ -1587,17 +1753,17 @@ function makeClickDblHandler(singleFn, doubleFn) {
     };
 }
 
-// Crea los 3 gráficos del tab de consumo a partir de datos pre-agregados (RPC)
-function crearGraficosConsumo(resumen) {
-    if (chartConsumoHistorico) chartConsumoHistorico.destroy();
-    if (chartConsumoLineas)    chartConsumoLineas.destroy();
-    if (chartConsumoEstados)   chartConsumoEstados.destroy();
+// Crea los 3 gráficos de la vista "Consumo" (histórico, top5 y MB por telefonía)
+function crearGraficosConsumo(resumen, datos) {
+    if (chartConsumoHistorico)  chartConsumoHistorico.destroy();
+    if (chartConsumoLineas)     chartConsumoLineas.destroy();
+    if (chartConsumoTelefonia)  chartConsumoTelefonia.destroy();
 
-    const historico = resumen?.historico  || [];
-    const top15raw  = resumen?.top15      || [];
-    const porEstDB  = resumen?.por_estado || [];
+    const historico  = resumen?.historico  || [];
+    const top15raw   = resumen?.top15      || [];
+    const datosDount = datos || consumosFiltrados;   // usado por crearGraficosEquipo
 
-    if (!historico.length && !top15raw.length && !porEstDB.length) return;
+    if (!historico.length && !top15raw.length && !datosDount.length) return;
 
     const TELEFONIA_CHART = {
         Personal:    { color: '#1d4ed8', bg: 'rgba(37,99,235,0.08)' },
@@ -1636,12 +1802,35 @@ function crearGraficosConsumo(resumen) {
         };
     });
 
+    // Línea de Total (suma de todas las telefonías por fecha)
+    if (telefonias.length > 1) {
+        const totalPorFecha = fechas.map(f =>
+            telefonias.reduce((sum, tel) => sum + (mbPorTelFecha[tel][f] || 0), 0)
+        );
+        datasets.push({
+            label: 'Total',
+            data: totalPorFecha,
+            borderColor: '#1e293b',
+            backgroundColor: 'rgba(30,41,59,0.05)',
+            borderWidth: 3,
+            borderDash: [6, 3],
+            fill: false,
+            tension: 0.4,
+            pointBackgroundColor: '#1e293b',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            order: -1,
+        });
+    }
+
     const ctxH = document.getElementById('chartConsumoHistorico').getContext('2d');
     chartConsumoHistorico = new Chart(ctxH, {
         type: 'line',
         data: { labels: fechas.map(f => formatearFecha(f)), datasets },
         options: {
-            responsive: true, maintainAspectRatio: true,
+            responsive: true, maintainAspectRatio: false,
             plugins: {
                 legend: { position: 'bottom', labels: { padding: 14, font: { size: 12 } } },
                 tooltip: { callbacks: { label: c => c.dataset.label + ': ' + formatearNumero(c.parsed.y) + ' MB' } }
@@ -1658,116 +1847,364 @@ function crearGraficosConsumo(resumen) {
         }
     });
 
-    // ── 2. Top 15 líneas por MB ──────────────────────────────────────
+    // ── 2. Top 5 líneas por MB ───────────────────────────────────────
     // clave = numero SIM; buscamos RC en el mapa de dispositivos para mostrar
-    const clavesLineas  = top15raw.map(r => String(r.clave || ''));
-    const labelsLineas  = top15raw.map(r => {
+    const top5raw = top15raw.slice(0, 5);
+    const clavesLineas  = top5raw.map(r => String(r.clave || ''));
+    const labelsLineas  = top5raw.map(r => {
         const dev = mapaNumADevice.get(String(r.clave || '').trim());
         return dev ? (dev.codigo || r.clave) : (r.clave || 'Sin ID');
     });
-    const valoresLineas = top15raw.map(r => parseFloat(r.total_mb || 0));
+    const valoresLineas = top5raw.map(r => parseFloat(r.total_mb || 0));
     const coloresLineas = labelsLineas.map((_, i) => COLORES[i % COLORES.length]);
 
     // Acción compartida al pulsar un label (barra o eje-Y)
+    const _esRC = label => label && label !== 'Sin ID' && /[a-zA-Z_]/.test(label);
+
+    // Click simple: abre panel RC o SIM según el label
     const _abrirLinea = (label, clave) => {
         if (!label || label === 'Sin ID') return;
-        if (/[a-zA-Z_]/.test(label)) abrirPanelRC(label);
+        if (_esRC(label)) abrirPanelRC(label);
         else abrirPanelSIM(clave || label);
     };
-    const _clickDblLineas = makeClickDblHandler(
-        el => _abrirLinea(labelsLineas[el.index], clavesLineas[el.index]),
-        el => {
-            const label = labelsLineas[el.index];
-            const clave = clavesLineas[el.index];
-            if (!label || label === 'Sin ID') return;
-            if (/[a-zA-Z_]/.test(label)) {
-                document.getElementById('filtroRCConsumo').value  = label;
-                document.getElementById('filtroNumConsumo').value = '';
-            } else {
-                document.getElementById('filtroRCConsumo').value  = '';
-                document.getElementById('filtroNumConsumo').value = clave || label;
-            }
+
+    // Doble click: si es RC → ir a dispositivos y filtrar; si es SIM → filtrar en consumo
+    const _filtrarLinea = (label, clave) => {
+        if (!label || label === 'Sin ID') return;
+        if (_esRC(label)) {
+            irADispositivosFiltrado(label);
+        } else {
+            document.getElementById('filtroRCConsumo').value  = '';
+            document.getElementById('filtroNumConsumo').value = clave || label;
             aplicarFiltrosConsumo();
         }
-    );
+    };
 
-    const ctxL = document.getElementById('chartConsumoLineas').getContext('2d');
-    chartConsumoLineas = new Chart(ctxL, {
-        type: 'bar',
-        data: {
-            labels: labelsLineas,
-            datasets: [{ label: 'MB', data: valoresLineas, backgroundColor: coloresLineas, borderColor: coloresLineas, borderWidth: 2, borderRadius: 6 }]
-        },
-        options: {
-            responsive: true, maintainAspectRatio: true, indexAxis: 'y',
-            plugins: {
-                legend: { display: false },
-                tooltip: { callbacks: { label: c => formatearNumero(c.parsed.x) + ' MB' } }
-            },
-            scales: {
-                x: { beginAtZero: true, ticks: { callback: v => formatearNumero(v) } },
-                y: { ticks: { color: '#4f46e5', font: { size: 12 } } }
-            },
-            onClick: (event, elements, chart) => {
-                if (elements.length) {
-                    _clickDblLineas(event, elements);
-                    return;
-                }
-                // Clic en etiqueta del eje-Y → abrir panel directamente
-                const idx = _yAxisLabelIndex(event, chart);
-                if (idx >= 0) _abrirLinea(labelsLineas[idx], clavesLineas[idx]);
-            },
-            onHover: (e, els, chart) => {
-                if (els.length) { e.native.target.style.cursor = 'pointer'; return; }
-                e.native.target.style.cursor = _yAxisLabelIndex(e, chart) >= 0 ? 'pointer' : 'default';
+    // ── Barras 3D (HTML nativo — labels completamente clicables) ─────
+    const maxMB = Math.max(...valoresLineas, 1);
+
+    const _lighten = (hex, f) => {
+        const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+        return `rgb(${Math.min(255,Math.round(r+f*(255-r)))},${Math.min(255,Math.round(g+f*(255-g)))},${Math.min(255,Math.round(b+f*(255-b)))})`;
+    };
+    const _darken = (hex, f) => {
+        const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+        return `rgb(${Math.round(r*f)},${Math.round(g*f)},${Math.round(b*f)})`;
+    };
+
+    const rowsHtml = labelsLineas.map((label, i) => {
+        const mb   = valoresLineas[i];
+        const pct  = Math.max((mb / maxMB * 100), 1).toFixed(1);
+        const col  = coloresLineas[i];
+        const top  = _lighten(col, 0.38);
+        const side = _darken(col, 0.52);
+        const grad = `linear-gradient(180deg,${_lighten(col,0.20)},${col})`;
+        return `<div class="bar3d-row" data-idx="${i}" title="Click: panel · Doble click: ir a Dispositivos">
+            <div class="bar3d-label">${label}</div>
+            <div class="bar3d-track">
+                <div class="bar3d-outer" style="width:${pct}%">
+                    <div class="bar3d-front" style="background:${grad}"></div>
+                    <div class="bar3d-top"   style="background:${top}"></div>
+                    <div class="bar3d-side"  style="background:${side}"></div>
+                </div>
+                <span class="bar3d-value">${formatearNumero(mb)} MB</span>
+            </div>
+        </div>`;
+    }).join('');
+
+    const lineasCont = document.getElementById('chartConsumoLineas');
+    lineasCont.innerHTML = `<div class="bars3d-wrap">${rowsHtml}</div>`;
+
+    // Click simple → panel RC/SIM | Doble click → ir a Dispositivos/filtrar consumo
+    let _b3Timer = null, _b3Last = { idx: -1, t: 0 };
+    lineasCont.querySelectorAll('.bar3d-row').forEach(row => {
+        row.addEventListener('click', () => {
+            const idx = Number(row.dataset.idx);
+            const now = Date.now();
+            if (_b3Last.idx === idx && now - _b3Last.t < 350) {
+                clearTimeout(_b3Timer);
+                _b3Last = { idx: -1, t: 0 };
+                _filtrarLinea(labelsLineas[idx], clavesLineas[idx]);
+            } else {
+                _b3Last = { idx, t: now };
+                clearTimeout(_b3Timer);
+                _b3Timer = setTimeout(() => {
+                    _b3Last = { idx: -1, t: 0 };
+                    _abrirLinea(labelsLineas[idx], clavesLineas[idx]);
+                }, 370);
             }
+        });
+    });
+
+    // Pseudo-instancia para que los .destroy() existentes no fallen
+    chartConsumoLineas = {
+        destroy() { const el = document.getElementById('chartConsumoLineas'); if (el) el.innerHTML = ''; }
+    };
+
+    // ── 3. MB por Telefonía (doughnut) ───────────────────────────────
+    const TEL_COLORS = { Personal: '#1d4ed8', Claro: '#dc2626' };
+    const mbPorTel = {};
+    (datosDount || []).forEach(r => {
+        const t = (r.telefonia || 'Sin dato').trim() || 'Sin dato';
+        mbPorTel[t] = (mbPorTel[t] || 0) + (parseFloat(r.consumo_mb) || 0);
+    });
+    const telKeys    = Object.keys(mbPorTel);
+    const telVals    = telKeys.map(k => mbPorTel[k]);
+    const telColores = telKeys.map(k => TEL_COLORS[k] || '#6b7280');
+    const totalMBTel = telVals.reduce((a, b) => a + b, 0);
+
+    const centerMBTelPlugin = {
+        id: 'centerMBTel',
+        afterDraw(chart) {
+            const { ctx, chartArea } = chart;
+            if (!chartArea) return;
+            const cx = chartArea.left + chartArea.width  / 2;
+            const cy = chartArea.top  + chartArea.height / 2;
+            ctx.save();
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.font      = `bold ${Math.min(20, chartArea.width * 0.12)}px Arial`;
+            ctx.fillStyle = '#1A1A2E';
+            ctx.fillText(formatearNumero(Math.round(totalMBTel)) + ' MB', cx, cy - 9);
+            ctx.font      = `${Math.min(10, chartArea.width * 0.06)}px Arial`;
+            ctx.fillStyle = '#888';
+            ctx.fillText('consumo total', cx, cy + 11);
+            ctx.restore();
+        }
+    };
+
+    if (telKeys.length) {
+        const ctxT = document.getElementById('chartConsumoTelefonia').getContext('2d');
+        chartConsumoTelefonia = new Chart(ctxT, {
+            type: 'doughnut',
+            plugins: [centerMBTelPlugin],
+            data: {
+                labels: telKeys,
+                datasets: [{ data: telVals, backgroundColor: telColores, borderColor: '#fff', borderWidth: 3 }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                cutout: '65%',
+                plugins: {
+                    legend: { position: 'bottom', labels: { padding: 15, font: { size: 12 } } },
+                    tooltip: {
+                        callbacks: {
+                            label(ctx) {
+                                const pct = ((ctx.parsed / totalMBTel) * 100).toFixed(1);
+                                return ctx.label + ': ' + formatearNumero(Math.round(ctx.parsed)) + ' MB (' + pct + '%)';
+                            }
+                        }
+                    }
+                },
+                onClick: makeDblClickHandler(el => {
+                    document.getElementById('filtroTelefonia').value = telKeys[el.index] || '';
+                    aplicarFiltrosConsumo();
+                }),
+                onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; }
+            }
+        });
+    }
+
+    // Construir también los gráficos de la vista RC
+    crearGraficosEquipo(datosDount);
+}
+
+// ── GRÁFICOS VISTA POR EQUIPO ─────────────────────────────────────
+
+function crearGraficosEquipo(datos) {
+    // Destruir instancias anteriores
+    if (chartEquipoHistorico) { chartEquipoHistorico.destroy(); chartEquipoHistorico = null; }
+    if (chartEquipoTop5)      { chartEquipoTop5.destroy();      chartEquipoTop5 = null; }
+    if (chartEquipoRegional)  { chartEquipoRegional.destroy();  chartEquipoRegional = null; }
+
+    if (!datos || !datos.length) return;
+
+    // ── Helpers de color 3D ──────────────────────────────────────
+    const _eq_lighten = (hex, f) => {
+        const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+        return `rgb(${Math.min(255,Math.round(r+f*(255-r)))},${Math.min(255,Math.round(g+f*(255-g)))},${Math.min(255,Math.round(b+f*(255-b)))})`;
+    };
+    const _eq_darken = (hex, f) => {
+        const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+        return `rgb(${Math.round(r*f)},${Math.round(g*f)},${Math.round(b*f)})`;
+    };
+
+    // ── Agrupar por RC ───────────────────────────────────────────
+    const porRC    = new Map();  // rc → { totalMB, byFecha: {} }
+    const fechasSet = new Set();
+
+    datos.forEach(c => {
+        const num  = String(c.numero || '').trim();
+        const imei = normalizarImei(c.imei);
+        const dev  = mapaNumADevice.get(num) || mapaImeiADevice.get(imei) || null;
+        const rc   = dev ? (dev.codigo || '-') : '-';
+        if (!porRC.has(rc)) porRC.set(rc, { totalMB: 0, byFecha: {}, regional: dev?.regional || '-' });
+        const entry = porRC.get(rc);
+        const mb = parseFloat(c.consumo_mb) || 0;
+        entry.totalMB += mb;
+        if (c.fecha_consumo) {
+            fechasSet.add(c.fecha_consumo);
+            entry.byFecha[c.fecha_consumo] = (entry.byFecha[c.fecha_consumo] || 0) + mb;
         }
     });
 
-    // ── 3. Estado de líneas (donut) ──────────────────────────────────
-    const COLORES_ESTADO = { activo: '#16a34a', desactivado: '#dc2626', legado: '#7c3aed', error: '#ef4444' };
+    const fechas = [...fechasSet].sort();
 
-    // Fusionar sin_consumo → activo; filtrar según rol
-    const estadoMerged = {};
-    porEstDB.forEach(r => {
-        const key = (r.estado === 'sin_consumo' || r.estado === 'legado') ? 'activo' : (r.estado || 'activo');
-        if (esViewer() && !['activo','desactivado'].includes(key)) return;
-        estadoMerged[key] = (estadoMerged[key] || 0) + parseInt(r.conteo || 0);
+    // Top 5 RCs por totalMB
+    const top5rc = [...porRC.entries()]
+        .filter(([rc]) => rc !== '-')
+        .sort((a, b) => b[1].totalMB - a[1].totalMB)
+        .slice(0, 5);
+
+    // ── 1. Histórico top 5 equipos ───────────────────────────────
+    const datasetsH = top5rc.map(([rc, info], idx) => {
+        const color = COLORES[idx % COLORES.length];
+        return {
+            label: rc,
+            data: fechas.map(f => info.byFecha[f] || 0),
+            borderColor: color, backgroundColor: color + '14',
+            borderWidth: 2.5, fill: false, tension: 0.4,
+            pointBackgroundColor: color, pointBorderColor: '#fff',
+            pointBorderWidth: 2, pointRadius: 4, pointHoverRadius: 6,
+        };
     });
 
-    const cfgEstado    = esViewer() ? ESTADO_CONFIG_VIEWER : ESTADO_CONFIG_DISP;
-    const estadoKeys   = Object.keys(estadoMerged);
-    const estadoCounts = estadoKeys.map(k => estadoMerged[k]);
-    const estadoColores = estadoKeys.map(k => COLORES_ESTADO[k] || '#6b7280');
-    const estadoLabels  = estadoKeys.map(k => (cfgEstado[k]?.label || k).replace('● ', ''));
+    const ctxH = document.getElementById('chartEquipoHistorico').getContext('2d');
+    chartEquipoHistorico = new Chart(ctxH, {
+        type: 'line',
+        data: { labels: fechas.map(f => formatearFecha(f)), datasets: datasetsH },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { padding: 12, font: { size: 12 } } },
+                tooltip: { callbacks: { label: c => c.dataset.label + ': ' + formatearNumero(c.parsed.y) + ' MB' } }
+            },
+            scales: { y: { beginAtZero: true, ticks: { callback: v => formatearNumero(v) } } },
+            onClick: makeDblClickHandler(el => {
+                const rc = top5rc[el.datasetIndex]?.[0];
+                if (rc && rc !== '-') abrirPanelRC(rc);
+            }),
+            onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; }
+        }
+    });
 
-    const labelToEstadoKey = {};
-    estadoLabels.forEach((lbl, i) => { labelToEstadoKey[lbl] = estadoKeys[i]; });
+    // ── 2. Top 5 equipos — barras 3D ─────────────────────────────
+    const labelsTop5  = top5rc.map(([rc]) => rc);
+    const valoresTop5 = top5rc.map(([, info]) => info.totalMB);
+    const maxMBEq     = Math.max(...valoresTop5, 1);
 
-    const ctxE = document.getElementById('chartConsumoEstados').getContext('2d');
-    chartConsumoEstados = new Chart(ctxE, {
+    const rowsHtmlEq = labelsTop5.map((label, i) => {
+        const mb   = valoresTop5[i];
+        const pct  = Math.max((mb / maxMBEq * 100), 1).toFixed(1);
+        const col  = COLORES[i % COLORES.length];
+        const top  = _eq_lighten(col, 0.38);
+        const side = _eq_darken(col, 0.52);
+        const grad = `linear-gradient(180deg,${_eq_lighten(col,0.20)},${col})`;
+        return `<div class="bar3d-row" data-idx="${i}" title="Click: abrir panel RC · Doble click: filtrar">
+            <div class="bar3d-label">${label}</div>
+            <div class="bar3d-track">
+                <div class="bar3d-outer" style="width:${pct}%">
+                    <div class="bar3d-front" style="background:${grad}"></div>
+                    <div class="bar3d-top"   style="background:${top}"></div>
+                    <div class="bar3d-side"  style="background:${side}"></div>
+                </div>
+                <span class="bar3d-value">${formatearNumero(mb)} MB</span>
+            </div>
+        </div>`;
+    }).join('');
+
+    const eqTop5El = document.getElementById('chartEquipoTop5');
+    eqTop5El.innerHTML = `<div class="bars3d-wrap">${rowsHtmlEq}</div>`;
+
+    let _eqTimer = null, _eqLast = { idx: -1, t: 0 };
+    eqTop5El.querySelectorAll('.bar3d-row').forEach(row => {
+        row.addEventListener('click', () => {
+            const idx = Number(row.dataset.idx);
+            const now = Date.now();
+            if (_eqLast.idx === idx && now - _eqLast.t < 350) {
+                clearTimeout(_eqTimer);
+                _eqLast = { idx: -1, t: 0 };
+                // Doble click → filtrar en RC por ese código
+                const rcEl = document.getElementById('filtroRCBuscar');
+                if (rcEl) rcEl.value = labelsTop5[idx] || '';
+                aplicarFiltroRC();
+            } else {
+                _eqLast = { idx, t: now };
+                clearTimeout(_eqTimer);
+                _eqTimer = setTimeout(() => {
+                    _eqLast = { idx: -1, t: 0 };
+                    if (labelsTop5[idx] && labelsTop5[idx] !== '-') abrirPanelRC(labelsTop5[idx]);
+                }, 370);
+            }
+        });
+    });
+
+    chartEquipoTop5 = { destroy() { const el = document.getElementById('chartEquipoTop5'); if (el) el.innerHTML = ''; } };
+
+    // ── 3. Consumo por Regional (donut) ──────────────────────────
+    const porRegional = new Map();
+    datos.forEach(c => {
+        const num  = String(c.numero || '').trim();
+        const imei = normalizarImei(c.imei);
+        const dev  = mapaNumADevice.get(num) || mapaImeiADevice.get(imei) || null;
+        const reg  = dev?.regional || 'Sin Regional';
+        const mb   = parseFloat(c.consumo_mb) || 0;
+        porRegional.set(reg, (porRegional.get(reg) || 0) + mb);
+    });
+
+    const regKeys   = [...porRegional.keys()].sort();
+    const regVals   = regKeys.map(k => porRegional.get(k));
+    const regColors = regKeys.map((_, i) => COLORES[i % COLORES.length]);
+    const totalMBRegional = regVals.reduce((s, v) => s + v, 0);
+
+    const centerMBPlugin = {
+        id: 'centerMB',
+        afterDraw(chart) {
+            const { ctx, chartArea } = chart;
+            if (!chartArea) return;
+            const cx = chartArea.left + chartArea.width  / 2;
+            const cy = chartArea.top  + chartArea.height / 2;
+            ctx.save();
+            ctx.textAlign    = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font         = `bold ${Math.min(18, chartArea.width * 0.11)}px Arial`;
+            ctx.fillStyle    = '#1A1A2E';
+            ctx.fillText(formatearNumero(totalMBRegional), cx, cy - 9);
+            ctx.font      = `${Math.min(11, chartArea.width * 0.065)}px Arial`;
+            ctx.fillStyle = '#888';
+            ctx.fillText('MB total', cx, cy + 11);
+            ctx.restore();
+        }
+    };
+
+    const ctxR = document.getElementById('chartEquipoRegional').getContext('2d');
+    chartEquipoRegional = new Chart(ctxR, {
         type: 'doughnut',
+        plugins: [centerMBPlugin],
         data: {
-            labels: estadoLabels,
-            datasets: [{ data: estadoCounts, backgroundColor: estadoColores, borderColor: '#fff', borderWidth: 3 }]
+            labels: regKeys,
+            datasets: [{ data: regVals, backgroundColor: regColors, borderColor: '#fff', borderWidth: 3 }]
         },
         options: {
-            responsive: true, maintainAspectRatio: true,
+            responsive: true, maintainAspectRatio: false,
+            cutout: '65%',
             plugins: {
-                legend: { position: 'bottom', labels: { padding: 15, font: { size: 12 } } },
+                legend: { position: 'bottom', labels: { padding: 10, font: { size: 11 } } },
                 tooltip: {
                     callbacks: {
                         label: function(ctx) {
                             const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
-                            const pct = ((ctx.parsed / total) * 100).toFixed(1);
-                            return ctx.label + ': ' + formatearNumero(ctx.parsed) + ' (' + pct + '%)';
+                            const pct   = total ? ((ctx.parsed / total) * 100).toFixed(1) : 0;
+                            return ctx.label + ': ' + formatearNumero(ctx.parsed) + ' MB (' + pct + '%)';
                         }
                     }
                 }
             },
             onClick: makeDblClickHandler(el => {
-                document.getElementById('filtroEstadoConsumo').value = labelToEstadoKey[estadoLabels[el.index]] || '';
-                aplicarFiltrosConsumo();
+                const regional = regKeys[el.index];
+                if (!regional || regional === 'Sin Regional') return;
+                document.getElementById('filtroRegional').value = regional;
+                cambiarTab('dispositivos');
+                aplicarFiltros();
             }),
             onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; }
         }
@@ -1842,30 +2279,443 @@ function updateSortIcons(tableId, sortState) {
 
 function cambiarVista(vista) {
     vistaConsumo = vista;
-    document.getElementById('btnVerLineas').classList.toggle('view-activo', vista === 'lineas');
-    document.getElementById('btnVerEquipos').classList.toggle('view-activo', vista === 'equipos');
+    document.getElementById('btnVerLineasBD').classList.toggle('view-activo', vista === 'lineas-bd');
+    document.getElementById('btnVerEquipos').classList.toggle('view-activo',  vista === 'equipos');
+    document.getElementById('btnVerLineas').classList.toggle('view-activo',   vista === 'lineas');
 
-    const tablaLineas     = document.getElementById('tablaConsumo2');
-    const pagLineas       = document.getElementById('paginacion-consumo');
-    const tablaEquipos    = document.getElementById('tablaConsolidado');
+    // Ocultar todas las tablas y sus paginaciones
+    document.getElementById('tablaConsumo2').style.display          = 'none';
+    document.getElementById('paginacion-consumo').style.display     = 'none';
+    document.getElementById('tablaConsolidado').style.display       = 'none';
+    document.getElementById('paginacion-equipos').innerHTML         = '';
+    document.getElementById('tablaLineasBD').style.display          = 'none';
+    document.getElementById('paginacion-lineas-bd').style.display   = 'none';
 
-    if (vista === 'lineas') {
-        tablaLineas.style.display  = '';
-        pagLineas.style.display    = '';
-        tablaEquipos.style.display = 'none';
-        document.getElementById('paginacion-equipos').innerHTML = '';
+    // Filtros: cada pestaña muestra solo sus propios filtros
+    document.getElementById('filtroLineasBar').style.display = vista === 'lineas-bd' ? '' : 'none';
+    document.getElementById('filtroRCBar').style.display     = vista === 'equipos'   ? '' : 'none';
+    document.getElementById('filtrosConsumo').style.display  = vista === 'lineas'    ? '' : 'none';
+
+    // Totales: cada pestaña muestra su propio resumen
+    document.getElementById('totalConsumoResumen').style.display = vista === 'lineas'    ? '' : 'none';
+    document.getElementById('totalLineasResumen').style.display  = vista === 'lineas-bd' ? '' : 'none';
+
+    // Gráficos: cada vista tiene su bloque
+    document.getElementById('chartsLineasBD').style.display = vista === 'lineas-bd' ? '' : 'none';
+    document.getElementById('chartsEquipos').style.display  = vista === 'equipos'   ? '' : 'none';
+    document.getElementById('chartsLineas').style.display   = vista === 'lineas'    ? '' : 'none';
+
+    if (vista === 'lineas-bd') {
+        document.getElementById('tablaLineasBD').style.display        = '';
+        document.getElementById('paginacion-lineas-bd').style.display = '';
+        paginaLineasBD = 1;
+        cargarLineasBD();
+
+    } else if (vista === 'equipos') {
+        document.getElementById('tablaConsolidado').style.display = '';
+        paginaEquipos = 1;
+        mostrarConsolidado(consumosFiltrados);
+
+    } else if (vista === 'lineas') {
+        document.getElementById('tablaConsumo2').style.display      = '';
+        document.getElementById('paginacion-consumo').style.display = '';
         paginaConsumo = 1;
         consultarConsumos(true).then(({ data, count }) => {
             totalConsumoServidor = count;
             mostrarEnTablaConsumo(data, count);
         }).catch(e => console.error('❌', e));
-    } else {
-        tablaLineas.style.display  = 'none';
-        pagLineas.style.display    = 'none';
-        tablaEquipos.style.display = '';
-        paginaEquipos = 1;
-        mostrarConsolidado(consumosFiltrados);
     }
+}
+
+// ── VISTA LÍNEAS (vista_lineas_estado) ────────────────────────────
+
+// Agrega los mismos filtros de filtrosLineas() a una query ya iniciada
+// Usa estado_operador (columna expuesta por vista_lineas_estado).
+// El import sincroniza estado_operador='desactivado' al marcar líneas de baja.
+function _aplicarFiltrosLineasQuery(q, f) {
+    if (f.telefonia) q = q.eq('telefonia', f.telefonia);
+    if (f.buscar) q = q.or(`numero.ilike.%${f.buscar}%,imei.ilike.%${f.buscar}%,rc.ilike.%${f.buscar}%,observacion.ilike.%${f.buscar}%`);
+    if (f.estado === 'activo') {
+        // NULL se trata como activo; excluir desactiv* y baja
+        q = q.or('estado_operador.is.null,and(estado_operador.not.ilike.*desactiv*,estado_operador.neq.baja)');
+    }
+    if (f.estado === 'desactivado') {
+        // Líneas marcadas como desactivado (estado_operador sincronizado por el import)
+        q = q.or('estado_operador.ilike.*desactiv*,estado_operador.eq.baja');
+    }
+    return q;
+}
+
+// Consulta los totales de MB para el label de la pestaña Líneas
+async function consultarTotalesLineasBD() {
+    const f = filtrosLineas();
+    let q = window.clienteSupabase
+        .from('vista_lineas_estado')
+        .select('mes:consumo_mes_mb.sum(),total:consumo_total_mb.sum()');
+    q = _aplicarFiltrosLineasQuery(q, f);
+    const { data, error } = await q;
+    if (error) { console.warn('⚠️ totales líneas:', error.message); return null; }
+    return data?.[0] ?? null;
+}
+
+function actualizarTotalesLineas(totales) {
+    const el = document.getElementById('totalLineasResumen');
+    if (!el) return;
+    if (!totales) { el.innerHTML = ''; return; }
+    const mes   = parseFloat(totales.mes)   || 0;
+    const total = parseFloat(totales.total) || 0;
+    el.innerHTML = `MB Mes: <strong>${formatearNumero(mes)} MB</strong> &nbsp;|&nbsp; MB Total: <strong>${formatearNumero(total)} MB</strong>`;
+}
+
+// Lee los filtros del buscador dedicado de la vista Líneas
+function filtrosLineas() {
+    return {
+        telefonia: document.getElementById('filtroLineasTelefonia')?.value || null,
+        buscar:    document.getElementById('filtroLineasBuscar')?.value.trim() || null,
+        estado:    document.getElementById('filtroLineasEstado')?.value || null,
+    };
+}
+
+// Llama a lineas_charts RPC → devuelve { por_estado, por_telefonia, top10 }
+async function consultarLineasCharts() {
+    const f = filtrosLineas();
+    const { data, error } = await window.clienteSupabase.rpc('lineas_charts', {
+        p_telefonia: f.telefonia || null,
+        p_buscar:    f.buscar    || null,
+        p_rc_like:   null,
+        p_estado:    f.estado    || null,
+    });
+    if (error) { console.error('❌ lineas_charts RPC:', error); throw error; }
+    return data || {};
+}
+
+async function consultarLineasBD() {
+    const f = filtrosLineas();
+    let q = window.clienteSupabase
+        .from('vista_lineas_estado')
+        .select('*', { count: 'exact' });
+    q = _aplicarFiltrosLineasQuery(q, f);
+    const from = (paginaLineasBD - 1) * ITEMS_POR_PAGINA;
+    q = q.order('numero', { ascending: true, nullsFirst: false })
+         .range(from, from + ITEMS_POR_PAGINA - 1);
+    const { data, error, count } = await q;
+    if (error) throw error;
+    return { data: data || [], count: count || 0 };
+}
+
+async function cargarLineasBD() {
+    const tbody  = document.getElementById('tablaLineasBDBody');
+    const infoEl = document.getElementById('paginacion-info-consumo');
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:#35398C">⏳ Cargando...</td></tr>';
+    infoEl.innerHTML = '';
+    try {
+        const [{ data, count }, chartsData, totales] = await Promise.all([
+            consultarLineasBD(),
+            consultarLineasCharts().catch(e => { console.error('❌ lineas_charts:', e); return {}; }),
+            consultarTotalesLineasBD().catch(() => null),
+        ]);
+        if (!_sesionActiva) return;
+        totalLineasBD = count;
+        mostrarLineasBD(data, count);
+        crearGraficosLineasBD(chartsData, count);
+        actualizarTotalesLineas(totales);
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#ef4444">❌ ${e.message}</td></tr>`;
+        console.error('❌ cargarLineasBD:', e);
+    }
+}
+
+function crearGraficosLineasBD(cd, totalCount) {
+    if (chartLineasEstado)    { chartLineasEstado.destroy();    chartLineasEstado    = null; }
+    if (chartLineasTelefonia) { chartLineasTelefonia.destroy(); chartLineasTelefonia = null; }
+    if (chartLineasTop10)     { chartLineasTop10.destroy();     chartLineasTop10     = null; }
+
+    const porEstado   = cd?.por_estado   || [];
+    const porTelefon  = cd?.por_telefonia || [];
+    const top10       = cd?.top10         || [];
+
+    // ── 1. Estado de Líneas (donut) ──────────────────────────────
+    const estadoMap = {};
+    porEstado.forEach(r => { estadoMap[r.estado] = Number(r.total || 0); });
+    const totalLineas  = Object.values(estadoMap).reduce((a,b)=>a+b, 0);
+    const estKeys      = Object.keys(estadoMap);
+    const EST_COLORES  = { activo: '#16a34a', desactivado: '#dc2626' };
+    const EST_LABELS   = { activo: 'Activado', desactivado: 'Desactivado' };
+
+    // totalCount viene de cargarLineasBD → coincide exactamente con el label de la tabla
+    const centerTotal = totalCount != null ? totalCount : totalLineas;
+
+    if (estKeys.length) {
+        const centerPlugin = {
+            id: 'clCenter',
+            afterDraw(chart) {
+                const { ctx, chartArea } = chart;
+                if (!chartArea) return;
+                const cx = chartArea.left + chartArea.width  / 2;
+                const cy = chartArea.top  + chartArea.height / 2;
+                ctx.save();
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.font      = `bold ${Math.min(22, chartArea.width * 0.13)}px Arial`;
+                ctx.fillStyle = '#1A1A2E';
+                ctx.fillText(formatearNumero(centerTotal), cx, cy - 9);
+                ctx.font      = `${Math.min(11, chartArea.width * 0.065)}px Arial`;
+                ctx.fillStyle = '#888';
+                ctx.fillText('líneas únicas', cx, cy + 11);
+                ctx.restore();
+            }
+        };
+        chartLineasEstado = new Chart(
+            document.getElementById('chartLineasEstado').getContext('2d'), {
+            type: 'doughnut',
+            plugins: [centerPlugin],
+            data: {
+                labels: estKeys.map(k => EST_LABELS[k] || k),
+                datasets: [{ data: estKeys.map(k => estadoMap[k]),
+                             backgroundColor: estKeys.map(k => EST_COLORES[k] || '#6b7280'),
+                             borderColor: '#fff', borderWidth: 3 }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, cutout: '65%',
+                plugins: {
+                    legend: { position: 'bottom', labels: { padding: 15, font: { size: 12 } } },
+                    tooltip: { callbacks: { label(ctx) {
+                        const pct = ((ctx.parsed / totalLineas)*100).toFixed(1);
+                        return ctx.label + ': ' + formatearNumero(ctx.parsed) + ' (' + pct + '%)';
+                    }}}
+                },
+                onClick: makeDblClickHandler(el => {
+                    document.getElementById('filtroLineasEstado').value = estKeys[el.index] || '';
+                    aplicarFiltrosLineas();
+                }),
+                onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; }
+            }
+        });
+    }
+
+    // ── 2. Líneas por Telefonía (barras horizontales) ─────────────
+    const TEL_COLORS = { Personal: '#1d4ed8', Claro: '#dc2626' };
+    if (porTelefon.length) {
+        const tLabels = porTelefon.map(r => r.telefonia);
+        const tVals   = porTelefon.map(r => Number(r.total));
+        const tColors = tLabels.map(k => TEL_COLORS[k] || '#6b7280');
+        chartLineasTelefonia = new Chart(
+            document.getElementById('chartLineasTelefonia').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: tLabels,
+                datasets: [{ label: 'Líneas', data: tVals,
+                             backgroundColor: tColors.map(c => c + 'cc'),
+                             borderColor: tColors, borderWidth: 2,
+                             borderRadius: 6 }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label(ctx) { return ' ' + formatearNumero(ctx.parsed.x) + ' líneas'; } } }
+                },
+                scales: {
+                    x: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' },
+                         ticks: { callback: v => formatearNumero(v) } },
+                    y: { grid: { display: false } }
+                },
+                onClick: makeDblClickHandler(el => {
+                    document.getElementById('filtroLineasTelefonia').value = tLabels[el.index] || '';
+                    aplicarFiltrosLineas();
+                }),
+                onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; }
+            }
+        });
+    }
+
+    // ── 3. Top 10 consumo total (barras horizontales) ─────────────
+    if (top10.length) {
+        const t10Labels = top10.map(r => r.linea || '-');
+        const t10Vals   = top10.map(r => parseFloat(r.consumo_total_mb) || 0);
+        const GRAD_BASE = ['#35398C','#DA527D','#B44C80','#904783','#644087',
+                           '#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6'];
+        chartLineasTop10 = new Chart(
+            document.getElementById('chartLineasTop10').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: t10Labels,
+                datasets: [{ label: 'MB total', data: t10Vals,
+                             backgroundColor: t10Labels.map((_, i) => GRAD_BASE[i % GRAD_BASE.length] + 'cc'),
+                             borderColor:     t10Labels.map((_, i) => GRAD_BASE[i % GRAD_BASE.length]),
+                             borderWidth: 2, borderRadius: 6 }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label(ctx) { return ' ' + formatearNumero(Math.round(ctx.parsed.x)) + ' MB'; } } }
+                },
+                scales: {
+                    x: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' },
+                         ticks: { callback: v => formatearNumero(v) + ' MB' } },
+                    y: { grid: { display: false },
+                         ticks: { font: { size: 11 },
+                                  callback(v) { const l = t10Labels[v]; return l && l.length > 14 ? l.slice(0,14)+'…' : l; } } }
+                },
+                onClick: makeDblClickHandler(el => {
+                    document.getElementById('filtroLineasBuscar').value = t10Labels[el.index] || '';
+                    aplicarFiltrosLineas();
+                }),
+                onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; }
+            }
+        });
+    }
+}
+
+function mostrarLineasBD(filas, totalServidor) {
+    const tbody  = document.getElementById('tablaLineasBDBody');
+    const infoEl = document.getElementById('paginacion-info-consumo');
+    const pagEl  = document.getElementById('paginacion-lineas-bd');
+    tbody.innerHTML = '';
+
+    const total        = totalServidor ?? filas.length;
+    const totalPaginas = Math.max(1, Math.ceil(total / ITEMS_POR_PAGINA));
+    const from         = (paginaLineasBD - 1) * ITEMS_POR_PAGINA;
+
+    if (total === 0 || filas.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px">No se encontraron líneas.</td></tr>';
+        infoEl.innerHTML = '';
+        pagEl.innerHTML  = '';
+        return;
+    }
+
+    const fin = from + filas.length;
+    infoEl.innerHTML = `Mostrando <strong>${from + 1}–${fin}</strong> de <strong>${formatearNumero(total)}</strong> líneas`;
+
+    filas.forEach(row => {
+        // Estado unificado — misma lógica que Consumo y panel de RC
+        const est = getEstadoSIM(row);
+
+        const cfgEst = esViewer()
+            ? (ESTADO_CONFIG_VIEWER[estadoSimple(est)] || ESTADO_CONFIG_VIEWER.activo)
+            : (ESTADO_CONFIG_DISP[est] || ESTADO_CONFIG_DISP.activo);
+
+        const dotColor = est === 'desactivado' ? '#dc2626' : '#16a34a';
+
+        // Número — navega a pestaña Consumo filtrado por ese número
+        const numCell = row.numero
+            ? `<span style="color:${dotColor};font-size:10px;margin-right:4px">●</span><span class="link-num" onclick="irAConsumoFiltrado('${row.numero}')" title="Ver consumo →">${row.numero}</span>`
+            : '-';
+
+        // IMEI — navega a pestaña Consumo filtrado por ese IMEI
+        const imei = row.imei || '';
+        const imeiCell = imei
+            ? `<span class="link-num" onclick="irAConsumoFiltrado('${imei}')" title="Ver consumo →">${imei.length > 12 ? imei.slice(0,12)+'…' : imei}</span>`
+            : '-';
+
+        // RC — link a panel RC
+        const rcCell = row.rc
+            ? `<span class="link-rc" onclick="abrirPanelRC('${row.rc}')">${row.rc}</span>`
+            : '-';
+
+        const tr = document.createElement('tr');
+        if (est === 'desactivado') tr.classList.add('fila-inactiva');
+
+        tr.innerHTML = `
+            <td><span class="badge-estado ${cfgEst.cls}">${cfgEst.label}</span></td>
+            <td>${numCell}</td>
+            <td class="td-imei">${imeiCell}</td>
+            <td>${badgeTelefonia(row.telefonia)}</td>
+            <td>${rcCell}</td>
+            <td style="text-align:right">${formatearNumero(parseFloat(row.consumo_mes_mb) || 0)} MB</td>
+            <td style="text-align:right">${formatearNumero(parseFloat(row.consumo_total_mb) || 0)} MB</td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    renderPaginacionLineasBD(totalPaginas);
+}
+
+function renderPaginacionLineasBD(totalPaginas) {
+    const cont = document.getElementById('paginacion-lineas-bd');
+    if (totalPaginas <= 1) { cont.innerHTML = ''; return; }
+
+    const prev = paginaLineasBD === 1;
+    const next = paginaLineasBD === totalPaginas;
+    let html = '<div class="pag-controles">';
+    html += `<button class="pag-btn" onclick="irPaginaLineasBD(${paginaLineasBD - 1})" ${prev ? 'disabled' : ''}>← Anterior</button>`;
+    paginasVisibles(paginaLineasBD, totalPaginas).forEach(p => {
+        if (p === '...') html += '<span class="pag-dots">…</span>';
+        else html += `<button class="pag-btn pag-num ${p === paginaLineasBD ? 'pag-activa' : ''}" onclick="irPaginaLineasBD(${p})">${p}</button>`;
+    });
+    html += `<button class="pag-btn" onclick="irPaginaLineasBD(${paginaLineasBD + 1})" ${next ? 'disabled' : ''}>Siguiente →</button>`;
+    html += '</div>';
+    cont.innerHTML = html;
+}
+
+async function irPaginaLineasBD(num) {
+    if (num < 1) return;
+    paginaLineasBD = num;
+    await cargarLineasBD();
+    document.querySelector('#tab-consumo .table-container').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function aplicarFiltrosLineas() {
+    paginaLineasBD = 1;
+    await cargarLineasBD();
+}
+
+function limpiarFiltrosLineas() {
+    const b = document.getElementById('filtroLineasBuscar');
+    const t = document.getElementById('filtroLineasTelefonia');
+    const e = document.getElementById('filtroLineasEstado');
+    if (b) b.value = '';
+    if (t) t.value = '';
+    if (e) e.value = '';
+    aplicarFiltrosLineas();
+}
+
+let _lineasDebTimer = null;
+function debounceFiltrosLineas() {
+    clearTimeout(_lineasDebTimer);
+    _lineasDebTimer = setTimeout(aplicarFiltrosLineas, 400);
+}
+
+// ── FILTROS VISTA RC ──────────────────────────────────────────────
+
+async function aplicarFiltroRC() {
+    paginaEquipos = 1;
+    await mostrarConsolidado(consumosFiltrados);
+
+    // Actualizar charts con data filtrada por RC/Regional
+    const rcText   = document.getElementById('filtroRCBuscar')?.value.trim().toLowerCase()  || '';
+    const regional = document.getElementById('filtroRCRegional')?.value.trim() || '';
+    let datos = consumosFiltrados;
+    if (rcText || regional) {
+        datos = consumosFiltrados.filter(c => {
+            const rc  = encontrarRC(c);
+            const num = String(c.numero || '').trim();
+            const imi = normalizarImei(c.imei);
+            const dev = mapaNumADevice.get(num) || mapaImeiADevice.get(imi) || null;
+            const reg = dev?.regional || '';
+            return (!rcText   || rc.toLowerCase().includes(rcText))
+                && (!regional || reg === regional);
+        });
+    }
+    crearGraficosEquipo(datos);
+}
+
+function limpiarFiltroRC() {
+    const b = document.getElementById('filtroRCBuscar');
+    const r = document.getElementById('filtroRCRegional');
+    if (b) b.value = '';
+    if (r) r.value = '';
+    paginaEquipos = 1;
+    mostrarConsolidado(consumosFiltrados);
+    crearGraficosEquipo(consumosFiltrados);
+}
+
+let _rcDebTimer = null;
+function debounceRC() {
+    clearTimeout(_rcDebTimer);
+    _rcDebTimer = setTimeout(aplicarFiltroRC, 400);
 }
 
 // ── VISTA CONSOLIDADA POR EQUIPO ──────────────────────────────────
@@ -1975,7 +2825,8 @@ async function mostrarConsolidadoDB() {
     const infoEl = document.getElementById('paginacion-info-consumo');
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:#35398C">⏳ Cargando...</td></tr>';
 
-    const rc = document.getElementById('filtroRCConsumo').value.trim();
+    const rc       = document.getElementById('filtroRCBuscar')?.value.trim()    || '';
+    const regional = document.getElementById('filtroRCRegional')?.value.trim() || '';
 
     // Mapeo columna JS → nombre en la vista
     const colMap = {
@@ -1991,7 +2842,8 @@ async function mostrarConsolidadoDB() {
         .select('*', { count: 'exact' })
         .order(dbCol, { ascending: sortEquipos.dir === 'asc' });
 
-    if (rc) query = query.ilike('rc', `%${rc}%`);
+    if (rc)       query = query.ilike('rc', `%${rc}%`);
+    if (regional) query = query.eq('regional', regional);
 
     const from = (paginaEquipos - 1) * ITEMS_POR_PAGINA;
     query = query.range(from, from + ITEMS_POR_PAGINA - 1);
@@ -2015,7 +2867,7 @@ async function mostrarConsolidadoDB() {
     renderFilasConsolidado(data);
     updateSortIcons('tablaConsolidado', sortEquipos);
 
-    const fin = Math.min(from + ITEMS_POR_PAGINA, count);
+    const fin = from + data.length;
     infoEl.innerHTML = `Mostrando <strong>${from + 1}–${fin}</strong> de <strong>${formatearNumero(count)}</strong> equipos <span style="color:#aaa;font-size:12px">(vista DB)</span>`;
     renderPaginacionEquipos(Math.ceil(count / ITEMS_POR_PAGINA));
 }
@@ -2121,7 +2973,9 @@ function exportarConsumo() {
 function imprimirReporte() {
     const desde = document.getElementById('filtroFechaDesde').value;
     const hasta = document.getElementById('filtroFechaHasta').value;
-    const titulo = vistaConsumo === 'equipos' ? 'Reporte de Consumo por Equipo' : 'Reporte de Consumo por Línea';
+    const titulo = vistaConsumo === 'equipos' ? 'Reporte de Consumo por Equipo'
+                 : vistaConsumo === 'lineas-bd' ? 'Reporte de Líneas Activas'
+                 : 'Reporte de Consumo por Línea';
     const periodo = (desde || hasta)
         ? `Período: ${desde ? formatearFecha(desde) : 'inicio'} — ${hasta ? formatearFecha(hasta) : 'hoy'}`
         : 'Todos los períodos';
@@ -2135,25 +2989,34 @@ function imprimirReporte() {
 // ── FILTROS CONSUMO ────────────────────────────────────────────────
 
 async function aplicarFiltrosConsumo() {
-    paginaConsumo = 1;
-    paginaEquipos = 1;
+    _consumosTimestamp = 0; // invalidar caché al aplicar filtros
+    paginaConsumo  = 1;
+    paginaEquipos  = 1;
+    paginaLineasBD = 1;
     const loading = document.getElementById('loadingConsumo');
     loading.style.display = 'block';
+
+    const necesitaConsolidado = vistaConsumo !== 'lineas-bd';
     try {
         const [tablaRes, resumen, consolidadoRes] = await Promise.all([
             consultarConsumos(true),
             cargarResumenConsumo(),
-            consultarConsumos(false),
+            necesitaConsolidado
+                ? consultarConsumos(false)
+                : Promise.resolve({ data: consumosFiltrados, count: 0 }),
         ]);
         loading.style.display = 'none';
         totalConsumoServidor = tablaRes.count;
-        consumosFiltrados    = consolidadoRes.data;
+        if (necesitaConsolidado) consumosFiltrados = consolidadoRes.data;
 
         actualizarTotalConsumo(resumen.total_mb);
-        crearGraficosConsumo(resumen);
+        crearGraficosConsumo(resumen, consumosFiltrados);
 
         if (vistaConsumo === 'equipos') {
             mostrarConsolidado(consumosFiltrados);
+        } else if (vistaConsumo === 'lineas-bd') {
+            paginaLineasBD = 1;
+            cargarLineasBD();
         } else {
             mostrarEnTablaConsumo(tablaRes.data, tablaRes.count);
         }
@@ -2170,7 +3033,9 @@ function limpiarFiltrosConsumo() {
     document.getElementById('filtroNumConsumo').value    = '';
     document.getElementById('filtroFechaDesde').value    = '';
     document.getElementById('filtroFechaHasta').value    = '';
-    cargarConsumos();
+    document.getElementById('filtroObservacion').value   = '';
+    _consumosTimestamp = 0; // invalidar caché
+    cargarConsumos(true);
 }
 
 // ── IMPORTACIÓN CSV CONSUMO ────────────────────────────────────────
@@ -2184,30 +3049,81 @@ function cerrarImportConsumo() {
     document.getElementById('importConsumoStatus').style.display = 'none';
     document.getElementById('archivoCSV').value = '';
     document.getElementById('dropLabelConsumo').innerHTML =
-        'Arrastrá el archivo acá o <span>hacé clic para seleccionar</span>';
+        'Arrastrá uno o varios archivos acá o <span>hacé clic para seleccionar</span>';
     document.getElementById('dropZoneConsumo').classList.remove('drop-active');
     document.getElementById('telefoniaDetectada').style.display = 'none';
+    document.getElementById('fileListConsumo').style.display = 'none';
+    document.getElementById('fileListConsumo').innerHTML = '';
     const fill = document.getElementById('progressFillConsumo');
     fill.style.width = '0%';
     fill.style.background = '';
     telefoniaActual = '';
+    archivosCSVPendientes = [];
 }
 
 function cerrarImportConsumoOverlay(e) {
     if (e.target === document.getElementById('importConsumoModal')) cerrarImportConsumo();
 }
 
-function archivoCSVSeleccionado(e) {
-    const f = e.target.files[0];
-    if (!f) return;
-    document.getElementById('dropLabelConsumo').innerHTML =
-        `<strong>📄 ${f.name}</strong> &nbsp;<span style="font-size:12px;color:#888">(${(f.size/1024).toFixed(0)} KB)</span>`;
-    document.getElementById('dropZoneConsumo').classList.add('drop-active');
+// Renderiza la lista de archivos seleccionados
+function actualizarListaArchivos() {
+    const lista = document.getElementById('fileListConsumo');
+    const dropZone = document.getElementById('dropZoneConsumo');
+    const dropLabel = document.getElementById('dropLabelConsumo');
 
-    telefoniaActual = detectarTelefonia(f.name);
-    const det = document.getElementById('telefoniaDetectada');
-    document.getElementById('telefoniaLabel').textContent = telefoniaActual;
-    det.style.display = 'flex';
+    if (!archivosCSVPendientes.length) {
+        lista.style.display = 'none';
+        lista.innerHTML = '';
+        dropZone.classList.remove('drop-active');
+        dropLabel.innerHTML = 'Arrastrá uno o varios archivos acá o <span>hacé clic para seleccionar</span>';
+        document.getElementById('telefoniaDetectada').style.display = 'none';
+        return;
+    }
+
+    lista.style.display = 'flex';
+    lista.innerHTML = archivosCSVPendientes.map((f, i) => {
+        const tel = detectarTelefonia(f.name);
+        return `<div class="file-item" id="file-item-${i}">
+            <span class="file-item-name" title="${f.name}">${f.name}</span>
+            <span class="file-item-tel">${tel}</span>
+            <span class="file-item-size">${(f.size / 1024).toFixed(0)} KB</span>
+            <span class="file-item-status" id="file-status-${i}"></span>
+            <button class="file-item-remove" onclick="removerArchivoCSV(${i})" title="Quitar">✕</button>
+        </div>`;
+    }).join('');
+
+    const n = archivosCSVPendientes.length;
+    dropZone.classList.add('drop-active');
+    dropLabel.innerHTML = n === 1
+        ? `<strong>📄 ${archivosCSVPendientes[0].name}</strong>`
+        : `<strong>📦 ${n} archivos seleccionados</strong>`;
+
+    // Telefonía solo si hay 1 archivo
+    if (n === 1) {
+        telefoniaActual = detectarTelefonia(archivosCSVPendientes[0].name);
+        document.getElementById('telefoniaLabel').textContent = telefoniaActual;
+        document.getElementById('telefoniaDetectada').style.display = 'flex';
+    } else {
+        telefoniaActual = '';
+        document.getElementById('telefoniaDetectada').style.display = 'none';
+    }
+}
+
+// Elimina un archivo de la lista pendiente
+function removerArchivoCSV(idx) {
+    archivosCSVPendientes.splice(idx, 1);
+    document.getElementById('archivoCSV').value = '';
+    actualizarListaArchivos();
+}
+
+function archivoCSVSeleccionado(e) {
+    const nuevos = Array.from(e.target.files);
+    if (!nuevos.length) return;
+    // Agregar sin duplicados por nombre
+    nuevos.forEach(f => {
+        if (!archivosCSVPendientes.find(x => x.name === f.name)) archivosCSVPendientes.push(f);
+    });
+    actualizarListaArchivos();
 }
 
 function dragOverConsumo(e) {
@@ -2222,14 +3138,13 @@ function dragLeaveConsumo(e) {
 function dropFileConsumo(e) {
     e.preventDefault();
     document.getElementById('dropZoneConsumo').classList.remove('drag-hover');
-    const f = e.dataTransfer.files[0];
-    if (f) {
-        const dt = new DataTransfer();
-        dt.items.add(f);
-        const input = document.getElementById('archivoCSV');
-        input.files = dt.files;
-        archivoCSVSeleccionado({ target: input });
-    }
+    const files = Array.from(e.dataTransfer.files)
+        .filter(f => /\.(csv|txt)$/i.test(f.name));
+    if (!files.length) return;
+    files.forEach(f => {
+        if (!archivosCSVPendientes.find(x => x.name === f.name)) archivosCSVPendientes.push(f);
+    });
+    actualizarListaArchivos();
 }
 
 function setProgressConsumo(pct, texto, color) {
@@ -2239,7 +3154,7 @@ function setProgressConsumo(pct, texto, color) {
     document.getElementById('progressTextConsumo').textContent = texto;
 }
 
-// Parsear CSV semicolon-separated: numero;imei;estado_operador;consumo_mb;fecha(DD/MM/YYYY);observacion
+// Parsear CSV (separador auto-detectado: ',' o ';'): numero,imei,estado_operador,consumo_mb,fecha(DD/MM/YYYY),observacion
 function parsearCSVConsumo(texto, telefonia) {
     const lineas = texto
         .replace(/^﻿/, '')  // quitar BOM si existe
@@ -2247,10 +3162,13 @@ function parsearCSVConsumo(texto, telefonia) {
         .map(l => l.trim())
         .filter(l => l.length > 0);
 
+    // Auto-detectar separador desde la primera línea
+    const sep = lineas.length && lineas[0].split(',').length > lineas[0].split(';').length ? ',' : ';';
+
     const registros = [];
 
     for (const linea of lineas) {
-        const cols = linea.split(';');
+        const cols = linea.split(sep);
         if (cols.length < 4) continue;
 
         const numero   = (cols[0] || '').trim();
@@ -2262,14 +3180,23 @@ function parsearCSVConsumo(texto, telefonia) {
 
         if (!numero && !imei) continue;
 
-        const consumo_mb = mbRaw !== '' ? parseFloat(mbRaw) : null;
+        const _mbParsed = parseFloat(mbRaw);
+        const consumo_mb = (mbRaw !== '' && !isNaN(_mbParsed)) ? _mbParsed : null;
 
-        // Parsear fecha DD/MM/YYYY → YYYY-MM-DD
+        // Parsear fecha → YYYY-MM-DD
+        // Soporta: DD/MM/YYYY · DD-MM-YYYY · YYYY-MM-DD · YYYY/MM/DD
         let fecha_consumo = null;
         if (fechaRaw) {
-            const parts = fechaRaw.split('/');
-            if (parts.length === 3) {
-                fecha_consumo = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            // Ya está en formato ISO: YYYY-MM-DD o YYYY/MM/DD
+            const iso = fechaRaw.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/);
+            if (iso) {
+                fecha_consumo = `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`;
+            } else {
+                // Formato DD/MM/YYYY o DD-MM-YYYY
+                const dmy = fechaRaw.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
+                if (dmy) {
+                    fecha_consumo = `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+                }
             }
         }
 
@@ -2324,12 +3251,41 @@ function irADispositivosFiltrado(codigo) {
     aplicarFiltros();
 }
 
-// Ir al tab Consumo con ese número filtrado
-function irAConsumoFiltrado(numero) {
+// ── Navegación entre pestañas ─────────────────────────────────────
+// Muestra el tab Consumo sin relanzar cargarConsumos(); luego cambiarVista se encarga.
+function _mostrarTabConsumo() {
+    const tDisp = document.getElementById('tab-dispositivos');
+    const tCons = document.getElementById('tab-consumo');
+    if (tCons && tCons.style.display === 'none') {
+        if (tDisp) tDisp.style.display = 'none';
+        tCons.style.display = 'block';
+        document.getElementById('tabBtnDispositivos')?.classList.remove('tab-activo');
+        document.getElementById('tabBtnConsumo')?.classList.add('tab-activo');
+    }
+}
+
+// Desde panel (o cualquier tab) → va a Líneas (lineas-bd) filtrado por número/IMEI/texto
+function irALineasFiltrado(buscar) {
     cerrarPanel();
-    document.getElementById('filtroNumConsumo').value = numero;
-    document.getElementById('filtroRCConsumo').value  = '';
-    cambiarTab('consumo');
+    const el = document.getElementById('filtroLineasBuscar');
+    const t  = document.getElementById('filtroLineasTelefonia');
+    const e  = document.getElementById('filtroLineasEstado');
+    if (el) el.value = String(buscar || '');
+    if (t)  t.value  = '';
+    if (e)  e.value  = '';
+    _mostrarTabConsumo();
+    cambiarVista('lineas-bd');
+}
+
+// Desde Líneas tab → va a Consumo (lineas) filtrado por ese número/IMEI
+function irAConsumoFiltrado(buscar) {
+    cerrarPanel();
+    const numEl = document.getElementById('filtroNumConsumo');
+    const rcEl  = document.getElementById('filtroRCConsumo');
+    if (numEl) numEl.value = String(buscar || '');
+    if (rcEl)  rcEl.value  = '';
+    _mostrarTabConsumo();
+    cambiarVista('lineas');
 }
 
 // ── Panel RC ───────────────────────────────────────────────────────
@@ -2452,17 +3408,6 @@ async function abrirPanelRC(codigo) {
         const sim2Card = renderPanelSimCard(sim2n, sim2i, sim2MB, 'sim2', sim2Est);
 
         cuerpo.innerHTML = `
-            <div class="panel-section">
-                <div class="panel-section-title">Acciones</div>
-                <div class="panel-actions">
-                    <button class="btn-panel btn-panel-cambiar" onclick="abrirCambiarSIM('${safeCode}','sim1')">🔄 Cambiar SIM 1</button>
-                    ${hasSim2 ? `<button class="btn-panel btn-panel-cambiar" onclick="abrirCambiarSIM('${safeCode}','sim2')">🔄 Cambiar SIM 2</button>` : ''}
-                    <button class="btn-panel btn-panel-saldo" onclick="void 0">💳 Cargar Saldo</button>
-                    <button class="btn-panel btn-panel-activar"    onclick="marcarEstadoRC('${safeCode}','activo')">🟢 Marcar Activado</button>
-                    <button class="btn-panel btn-panel-desactivar" onclick="marcarEstadoRC('${safeCode}','desactivado')">🔴 Marcar Desactivado</button>
-                </div>
-            </div>
-
             ${device ? `
             <div class="panel-section">
                 <div class="panel-section-title">Equipo</div>
@@ -2497,6 +3442,22 @@ async function abrirPanelRC(codigo) {
                 <div class="panel-section-title">Historial de Cambios SIM</div>
                 ${renderHistorialSIM(historialData)}
             </div>
+
+            <div class="panel-section">
+                <div class="panel-section-title">Acciones</div>
+                <div class="panel-actions">
+                ${esViewer() ? `
+                    <button class="btn-panel btn-panel-desactivar" onclick="solicitarDesactivacionRC('${safeCode}')">🔴 Solicitar Desactivación</button>
+                    <button class="btn-panel btn-panel-cambiar"    onclick="abrirCambiarSIM('${safeCode}','sim1')">🔄 Solicitar Cambio SIM 1</button>
+                    ${hasSim2 ? `<button class="btn-panel btn-panel-cambiar" onclick="abrirCambiarSIM('${safeCode}','sim2')">🔄 Solicitar Cambio SIM 2</button>` : ''}
+                ` : `
+                    <button class="btn-panel btn-panel-activar"    onclick="marcarEstadoRC('${safeCode}','activo')">🟢 Marcar Activado</button>
+                    <button class="btn-panel btn-panel-desactivar" onclick="marcarEstadoRC('${safeCode}','desactivado')">🔴 Marcar Desactivado</button>
+                    <button class="btn-panel btn-panel-cambiar"    onclick="abrirCambiarSIM('${safeCode}','sim1')">🔄 Solicitar Cambio SIM 1</button>
+                    ${hasSim2 ? `<button class="btn-panel btn-panel-cambiar" onclick="abrirCambiarSIM('${safeCode}','sim2')">🔄 Solicitar Cambio SIM 2</button>` : ''}
+                `}
+                </div>
+            </div>
         `;
 
         crearChartPanelRC(consumoData, sim1n, sim1i, sim2n, sim2i);
@@ -2520,7 +3481,7 @@ async function abrirPanelSIM(numero, imei = null) {
 
     // Identificador legible: número real > IMEI
     const id = (!m2m && n) ? n : i;
-    titulo.innerHTML = `<span class="panel-titulo-link" onclick="irAConsumoFiltrado('${id}')" title="Ver en Consumo →">📱 ${id}</span>`;
+    titulo.innerHTML = `<span class="panel-titulo-link" onclick="irALineasFiltrado('${id}')" title="Ver en Líneas →">📱 ${id}</span>`;
     cuerpo.innerHTML   = '<div class="panel-loading">⏳ Cargando...</div>';
     overlay.style.display = 'flex';
 
@@ -2553,7 +3514,7 @@ async function abrirPanelSIM(numero, imei = null) {
                     .select('estado,fecha_cambio,fecha_consumo,usuario')
                     .or(histFilter)
                     .order('fecha_cambio', { ascending: false })
-                    .limit(100)
+                    .limit(10)
                 : Promise.resolve({ data: [] }),
         ]);
         if (error) throw error;
@@ -2563,24 +3524,25 @@ async function abrirPanelSIM(numero, imei = null) {
         const telefonia   = consumoData.find(c => c.telefonia)?.telefonia || null;
         const estadoRows  = histEstados || [];
 
-        // Render del historial de estados
+        // Render del historial de estados (compacto, últimos 10)
         const renderHistEstados = () => {
-            if (!estadoRows.length) return '<div class="panel-empty">Sin historial registrado</div>';
-            return `<table class="sim-hist-table">
-                <thead><tr>
-                    <th>Estado</th><th>Periodo</th><th>Registrado</th><th>Usuario</th>
-                </tr></thead>
-                <tbody>${estadoRows.map(r => {
-                    const cls = r.estado === 'desactivado' ? 'badge-desactivado' : 'badge-activo';
-                    const lbl = r.estado === 'desactivado' ? '● Desactivado'     : '● Activado';
-                    return `<tr>
-                        <td><span class="badge-estado ${cls}" style="font-size:11px;padding:2px 8px">${lbl}</span></td>
-                        <td>${formatearFecha(r.fecha_consumo) || '-'}</td>
-                        <td>${formatearFecha(r.fecha_cambio)  || '-'}</td>
-                        <td style="color:#64748b">${r.usuario || 'sistema'}</td>
-                    </tr>`;
-                }).join('')}</tbody>
-            </table>`;
+            if (!estadoRows.length) return '<div class="panel-empty" style="font-size:12px;color:#94a3b8;padding:6px 0">Sin historial registrado</div>';
+            return `<div style="overflow-x:auto">
+                <table class="sim-hist-table" style="font-size:11px;width:100%">
+                    <thead><tr>
+                        <th>Estado</th><th>Período</th><th>Registrado</th>
+                    </tr></thead>
+                    <tbody>${estadoRows.map(r => {
+                        const cls = r.estado === 'desactivado' ? 'badge-desactivado' : 'badge-activo';
+                        const lbl = r.estado === 'desactivado' ? '● Desactivado'     : '● Activado';
+                        return `<tr>
+                            <td><span class="badge-estado ${cls}" style="font-size:10px;padding:1px 6px">${lbl}</span></td>
+                            <td>${formatearFecha(r.fecha_consumo) || '-'}</td>
+                            <td style="color:#64748b">${formatearFecha(r.fecha_cambio) || '-'}</td>
+                        </tr>`;
+                    }).join('')}</tbody>
+                </table>
+            </div>`;
         };
 
         cuerpo.innerHTML = `
@@ -2620,7 +3582,8 @@ async function abrirPanelSIM(numero, imei = null) {
             <div class="panel-section">
                 <div class="panel-section-title">Acciones</div>
                 <div class="panel-actions">
-                    <button class="btn-panel btn-panel-saldo" onclick="void 0">💳 Cargar Saldo</button>
+                    <button class="btn-panel btn-panel-saldo" onclick="solicitarCargaSaldo('${id}')">💳 Solicitar Saldo</button>
+                    <button class="btn-panel btn-panel-cambiar" onclick="irALineasFiltrado('${id}')">📋 Ver en Líneas</button>
                     <button class="btn-panel btn-panel-cambiar" onclick="irAConsumoFiltrado('${id}')">📊 Ver en Consumo</button>
                 </div>
             </div>
@@ -2662,7 +3625,7 @@ function renderPanelSimCard(num, imei, totalMB, slot, estado) {
 
     const numDisplay = isM2M
         ? `${dot}<span style="color:${txtColor||'#aaa'};font-style:italic;font-size:13px">M2M</span>`
-        : `${dot}<span class="panel-sim-numero"${txtColor ? ` style="color:${txtColor}"` : ''} onclick="irAConsumoFiltrado('${num}')" title="Ver consumo →">${num}</span>`;
+        : `${dot}<span class="panel-sim-numero"${txtColor ? ` style="color:${txtColor}"` : ''} onclick="irALineasFiltrado('${num}')" title="Ver en Líneas →">${num}</span>`;
 
     return `
         <div class="panel-sim-card">
@@ -2795,10 +3758,15 @@ function abrirCambiarSIM(codigo, slot) {
     cambioSimActual = { codigo, slot };
     const device    = todosLosDatos.find(d => d.codigo === codigo);
     const slotLabel = slot === 'sim1' ? 'SIM Principal' : 'SIM Respaldo';
+    const accion    = esViewer() ? 'Solicitar Cambio' : 'Cambiar';
 
     document.getElementById('modalSimTitulo').innerHTML = `
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-        Cambiar ${slotLabel} — ${codigo}`;
+        ${accion} ${slotLabel} — ${codigo}`;
+
+    // Adaptar etiqueta del botón de confirmación
+    const lbl = document.getElementById('simCambioBtnLabel');
+    if (lbl) lbl.textContent = esViewer() ? 'Enviar Solicitud' : 'Confirmar Cambio';
 
     const numAct  = device ? (slot === 'sim1' ? device.sim1_num  : device.sim2_num)  || '' : '';
     const imeiAct = device ? normalizarImei(slot === 'sim1' ? device.sim1_imei : device.sim2_imei) : '';
@@ -2840,6 +3808,32 @@ async function ejecutarCambioSIM() {
     st.style.display = 'block';
     st.style.color   = '#35398C';
     st.style.background = '#f0f2f8';
+
+    // ── Perfil viewer: genera solicitud en lugar de escribir directamente ──
+    if (esViewer()) {
+        st.textContent = '⏳ Enviando solicitud...';
+        try {
+            const device = todosLosDatos.find(d => d.codigo === codigo);
+            await enviarSolicitud('cambio_sim', {
+                codigo,
+                slot,
+                num_actual:  device ? (slot === 'sim1' ? device.sim1_num  : device.sim2_num)  : null,
+                imei_actual: device ? (slot === 'sim1' ? device.sim1_imei : device.sim2_imei) : null,
+                num_nuevo:   numNuevo,
+                imei_nuevo:  imeiNuevo,
+                observacion: obs,
+            });
+            st.style.color = '#16a34a'; st.style.background = '#f0fdf4';
+            st.textContent = '✅ Solicitud enviada correctamente.';
+            setTimeout(() => cerrarModalSim(), 1800);
+        } catch(e) {
+            st.style.color = '#ef4444'; st.style.background = '#fff5f5';
+            st.textContent = '❌ ' + e.message;
+        }
+        return;
+    }
+
+    // ── Admin: escritura directa ───────────────────────────────────────────
     st.textContent   = '⏳ Guardando cambio...';
 
     try {
@@ -2890,18 +3884,124 @@ async function ejecutarCambioSIM() {
     }
 }
 
+// ── Solicitudes (perfil viewer → genera solicitud en BD) ───────────
+
+// Escribe una fila en la tabla solicitudes con el usuario actual
+async function enviarSolicitud(tipo, datos) {
+    const s = JSON.parse(sessionStorage.getItem('session') || '{}');
+    const { error } = await window.clienteSupabase.from('solicitudes').insert({
+        tipo,
+        datos,
+        usuario: s.usuario || 'desconocido',
+    });
+    if (error) throw error;
+}
+
+// Solicita la desactivación de un RC (viewer)
+async function solicitarDesactivacionRC(codigo) {
+    if (!confirm(`¿Solicitar la desactivación de ${codigo}?\n\nSe enviará una solicitud al administrador.`)) return;
+    const btns = document.querySelectorAll('#panelCuerpo .btn-panel');
+    btns.forEach(b => { b.disabled = true; });
+    try {
+        await enviarSolicitud('desactivar_rc', { codigo });
+        const actDiv = document.querySelector('#panelCuerpo .panel-actions');
+        if (actDiv) actDiv.innerHTML =
+            '<div style="color:#16a34a;font-size:13px;text-align:center;padding:10px;background:#f0fdf4;border-radius:8px">✅ Solicitud de desactivación enviada correctamente.</div>';
+    } catch(e) {
+        btns.forEach(b => { b.disabled = false; });
+        alert('Error al enviar la solicitud: ' + e.message);
+    }
+}
+
+// Abre el modal de carga de saldo (viewer y admin)
+function solicitarCargaSaldo(numero) {
+    document.getElementById('saldoNumero').value = numero || '';
+    document.getElementById('saldoMonto').value  = '';
+    document.getElementById('saldoObs').value    = '';
+    const st = document.getElementById('saldoStatus');
+    st.style.display = 'none'; st.textContent = '';
+    document.getElementById('modalSaldo').style.display = 'flex';
+}
+
+function cerrarModalSaldo() {
+    document.getElementById('modalSaldo').style.display = 'none';
+}
+
+function cerrarModalSaldoOverlay(e) {
+    if (e.target === document.getElementById('modalSaldo')) cerrarModalSaldo();
+}
+
+async function ejecutarSolicitudSaldo() {
+    const numero = document.getElementById('saldoNumero').value.trim();
+    const monto  = parseFloat(document.getElementById('saldoMonto').value) || null;
+    const obs    = document.getElementById('saldoObs').value.trim() || null;
+    if (!monto || monto <= 0) { alert('Ingresá un monto válido.'); return; }
+
+    const st = document.getElementById('saldoStatus');
+    st.style.display = 'block';
+    st.style.color   = '#35398C'; st.style.background = '#f0f2f8';
+    st.textContent   = '⏳ Enviando solicitud...';
+
+    try {
+        await enviarSolicitud('carga_saldo', { numero, monto, observacion: obs });
+        st.style.color = '#16a34a'; st.style.background = '#f0fdf4';
+        st.textContent = '✅ Solicitud enviada correctamente.';
+        setTimeout(() => cerrarModalSaldo(), 1800);
+    } catch(e) {
+        st.style.color = '#ef4444'; st.style.background = '#fff5f5';
+        st.textContent = '❌ ' + e.message;
+    }
+}
+
 // ── Marcar estado del RC (activo / desactivado) ────────────────────
 async function marcarEstadoRC(codigo, estado) {
     const label = estado === 'activo' ? 'Activado' : 'Desactivado';
     if (!confirm(`¿Marcar ${codigo} como ${label}?`)) return;
     try {
-        const { error } = await window.clienteSupabase
+        let estadoFinal = estado;
+        let sim1_estado = undefined;
+        let sim2_estado = undefined;
+
+        if (estado === 'desactivado') {
+            // Guardar como desactivado_manual para protegerlo del sync automático
+            estadoFinal = 'desactivado_manual';
+
+        } else if (estado === 'activo') {
+            // Al activar: recalcular el estado real desde las SIMs
+            const dev = todosLosDatos.find(d => d.codigo === codigo);
+            if (dev) {
+                const s1n = String(dev.sim1_num  || '').trim();
+                const s1i = normalizarImei(dev.sim1_imei);
+                const s2n = String(dev.sim2_num  || '').trim();
+                const s2i = normalizarImei(dev.sim2_imei);
+                sim1_estado = calcularSimEstadoDetallado(s1n, s1i);
+                sim2_estado = calcularSimEstadoDetallado(s2n, s2i);
+                estadoFinal = rcEstadoDesdeSimEstados(sim1_estado, sim2_estado) ?? 'activo';
+            }
+        }
+
+        const update = { estado: estadoFinal };
+        if (sim1_estado !== undefined) update.sim1_estado = sim1_estado;
+        if (sim2_estado !== undefined) update.sim2_estado = sim2_estado;
+
+        const { data: filaActualizada, error } = await window.clienteSupabase
             .from('dispositivos_ande')
-            .update({ estado })
-            .eq('codigo', codigo);
+            .update(update)
+            .eq('codigo', codigo)
+            .select();
         if (error) throw error;
+        if (!filaActualizada || filaActualizada.length === 0) {
+            throw new Error(
+                `La BD no actualizó ningún registro.\n\n` +
+                `Posibles causas:\n` +
+                `• RLS (Row Level Security) bloqueando UPDATE en dispositivos_ande\n` +
+                `• El código "${codigo}" no existe en la tabla`
+            );
+        }
+
         const idx = todosLosDatos.findIndex(d => d.codigo === codigo);
-        if (idx >= 0) todosLosDatos[idx].estado = estado;
+        if (idx >= 0) Object.assign(todosLosDatos[idx], filaActualizada[0]);
+
         alert(`✅ ${codigo} marcado como ${label}.`);
         cerrarPanel();
         mostrarDatos(datosFiltrados);
@@ -2937,157 +4037,118 @@ async function actualizarEstados() {
 
 // ══════════════════════════════════════════════════════════════════
 // ── Recalcular estados post-import ───────────────────────────────
-// Compara la fecha más alta del lote importado contra la fecha
-// anterior en la BD y actualiza consumo_sim + dispositivos_ande.
+// Lógica por número:
+//   • Para cada número del archivo, toma el registro con fecha más alta.
+//   • Si ese registro es Personal + observacion "backup" → desactivado.
+//   • Si consumo_mb = 0 → sin_consumo; sino → activo.
+// Números de la misma telefonía que existen en la BD pero NO en el
+// archivo → desactivado (líneas que se dieron de baja).
 // ══════════════════════════════════════════════════════════════════
 async function recalcularEstadosPostImport(filas) {
-    // 1. fechaMax del lote
-    const fechasImport = filas.map(r => r.fecha_consumo).filter(Boolean).sort();
-    if (!fechasImport.length) return;
-    const fechaMax = fechasImport[fechasImport.length - 1];
+    if (!filas.length) return;
 
-    // 2. Conjuntos de números/IMEIs presentes en fechaMax
-    const rowsMax   = filas.filter(r => r.fecha_consumo === fechaMax);
-    const numEnMax  = new Set(rowsMax.map(r => String(r.numero  || '').trim()).filter(Boolean));
-    const imeiEnMax = new Set(rowsMax.map(r => normalizarImei(r.imei)).filter(Boolean));
+    const telefonia = filas.find(r => r.telefonia)?.telefonia || null;
 
-    // Personal backup → quitar del conjunto "activo"
-    const backupNums = new Set(
-        rowsMax
-            .filter(r => r.telefonia === 'Personal' &&
-                         String(r.observacion || '').toLowerCase().includes('backup'))
-            .map(r => String(r.numero || '').trim())
-            .filter(Boolean)
-    );
-    backupNums.forEach(n => numEnMax.delete(n));
+    // 1. Por cada número/IMEI: encontrar el registro con la fecha más alta
+    const maxPorNum  = new Map(); // numero → { fecha, isBackup, mb }
+    const maxPorImei = new Map(); // imei   → { fecha, isBackup, mb }
 
-    // Mapa global de estado por número / IMEI
-    // 'activo' > 'sin_consumo' > 'desactivado' (desactivado siempre gana, activo gana sobre sin_consumo)
-    const estadoNum  = new Map(); // numero  → 'activo' | 'sin_consumo' | 'desactivado'
-    const estadoImei = new Map(); // imei    → 'activo' | 'sin_consumo' | 'desactivado'
-    const _setEst = (map, key, est) => {
-        const prev = map.get(key);
-        if (!prev)                              { map.set(key, est); return; }
-        if (est === 'desactivado')              { map.set(key, est); return; }
-        if (prev === 'desactivado')             return;  // desactivado no se pisa
-        if (est === 'activo')                   { map.set(key, est); return; }
-        // est === 'sin_consumo' y prev es 'activo' → no pisar
-    };
-    rowsMax.forEach(r => {
+    filas.forEach(r => {
         const n   = String(r.numero || '').trim();
         const i   = normalizarImei(r.imei);
+        const f   = r.fecha_consumo || '';
+        const bk  = r.telefonia === 'Personal' &&
+                    String(r.observacion || '').toLowerCase().includes('backup');
         const mb  = parseFloat(r.consumo_mb) || 0;
-        const est = (n && backupNums.has(n)) ? 'desactivado'
-                  : mb === 0                  ? 'sin_consumo'
-                  : 'activo';
-        if (n) _setEst(estadoNum,  n, est);
-        if (i) _setEst(estadoImei, i, est);
+
+        const update = (map, key) => {
+            const prev = map.get(key);
+            if (!prev || f > prev.fecha) map.set(key, { fecha: f, isBackup: bk, mb });
+        };
+        if (n) update(maxPorNum,  n);
+        if (i) update(maxPorImei, i);
     });
 
-    // 3. fechaAnterior = fecha más alta en la BD antes de fechaMax
-    const { data: prevD } = await window.clienteSupabase
-        .from('consumo_sim')
-        .select('fecha_consumo')
-        .lt('fecha_consumo', fechaMax)
-        .order('fecha_consumo', { ascending: false })
-        .limit(1);
-    const fechaAnterior = prevD?.[0]?.fecha_consumo || null;
+    // 2. Determinar estado para cada número/IMEI del archivo
+    const estadoNum  = new Map();
+    const estadoImei = new Map();
 
-    if (fechaAnterior) {
-        // 4. Traer números/IMEIs de fechaAnterior (con paginación)
-        let anteriorRows = [];
-        let from = 0;
+    for (const [n, info] of maxPorNum)
+        estadoNum.set(n,  info.isBackup ? 'desactivado' : info.mb === 0 ? 'sin_consumo' : 'activo');
+    for (const [i, info] of maxPorImei)
+        estadoImei.set(i, info.isBackup ? 'desactivado' : info.mb === 0 ? 'sin_consumo' : 'activo');
+
+    // 3. Números de la misma telefonía en la BD que NO están en el archivo → desactivado
+    if (telefonia && telefonia !== 'Desconocida') {
         const PAGE = 1000;
+        let from = 0;
         while (true) {
             const { data, error } = await window.clienteSupabase
                 .from('consumo_sim')
-                .select('numero, imei')
-                .eq('fecha_consumo', fechaAnterior)
+                .select('numero,imei')
+                .eq('telefonia', telefonia)
                 .range(from, from + PAGE - 1);
             if (error || !data?.length) break;
-            anteriorRows = anteriorRows.concat(data);
+            data.forEach(r => {
+                const n = String(r.numero || '').trim();
+                const i = normalizarImei(r.imei);
+                if (n && !estadoNum.has(n))  estadoNum.set(n,  'desactivado');
+                if (i && !estadoImei.has(i)) estadoImei.set(i, 'desactivado');
+            });
             if (data.length < PAGE) break;
             from += PAGE;
         }
-
-        // Números que estaban en fechaAnterior pero NO en fechaMax → desactivado
-        const numDesact = [...new Set(
-            anteriorRows
-                .map(r => String(r.numero || '').trim())
-                .filter(n => n && !numEnMax.has(n) && !backupNums.has(n))
-        )];
-        const imeiDesact = [...new Set(
-            anteriorRows
-                .map(r => normalizarImei(r.imei))
-                .filter(i => i && !imeiEnMax.has(i))
-        )];
-
-        numDesact.forEach(n  => estadoNum.set(n,  'desactivado'));
-        imeiDesact.forEach(i => estadoImei.set(i, 'desactivado'));
     }
 
-    // 5. Actualizar TODAS las ocurrencias de cada número/IMEI en consumo_sim
-    const byEst = (map, est) => [...map.entries()].filter(([,e]) => e === est).map(([k]) => k);
-    const numActivos    = byEst(estadoNum,  'activo');
-    const numSinCons    = byEst(estadoNum,  'sin_consumo');
-    const numDesactAll  = byEst(estadoNum,  'desactivado');
-    const imeiActivos   = byEst(estadoImei, 'activo');
-    const imeiSinCons   = byEst(estadoImei, 'sin_consumo');
-    const imeiDesactAll = byEst(estadoImei, 'desactivado');
-
+    // 4. Actualizar consumo_sim en bulk
     const CHUNK = 100;
+    const byEst = (map, est) => [...map.entries()].filter(([,e]) => e === est).map(([k]) => k);
     const bulkUpdate = async (campo, lista, estado) => {
-        for (let i = 0; i < lista.length; i += CHUNK) {
+        // Al desactivar: sincronizar también estado_operador para que la vista lo refleje
+        const payload = estado === 'desactivado'
+            ? { estado, estado_operador: 'desactivado' }
+            : { estado };
+        for (let i = 0; i < lista.length; i += CHUNK)
             await window.clienteSupabase.from('consumo_sim')
-                .update({ estado })
-                .in(campo, lista.slice(i, i + CHUNK));
-        }
+                .update(payload).in(campo, lista.slice(i, i + CHUNK));
     };
-    await bulkUpdate('numero', numActivos,   'activo');
-    await bulkUpdate('numero', numSinCons,   'sin_consumo');
-    await bulkUpdate('numero', numDesactAll, 'desactivado');
-    await bulkUpdate('imei',   imeiActivos,   'activo');
-    await bulkUpdate('imei',   imeiSinCons,   'sin_consumo');
-    await bulkUpdate('imei',   imeiDesactAll, 'desactivado');
+    await Promise.all([
+        bulkUpdate('numero', byEst(estadoNum,  'activo'),      'activo'),
+        bulkUpdate('numero', byEst(estadoNum,  'sin_consumo'), 'sin_consumo'),
+        bulkUpdate('numero', byEst(estadoNum,  'desactivado'), 'desactivado'),
+        bulkUpdate('imei',   byEst(estadoImei, 'activo'),      'activo'),
+        bulkUpdate('imei',   byEst(estadoImei, 'sin_consumo'), 'sin_consumo'),
+        bulkUpdate('imei',   byEst(estadoImei, 'desactivado'), 'desactivado'),
+    ]);
 
-    // 6. Registrar en sim_estados (historial; solo acepta 'activo'/'desactivado')
-    //    sin_consumo se persiste como 'activo' (el SIM está habilitado, solo sin MB)
+    // 5. Registrar en sim_estados (solo acepta 'activo'/'desactivado')
+    const fechaMax = [...maxPorNum.values(), ...maxPorImei.values()]
+        .map(v => v.fecha).filter(Boolean).sort().slice(-1)[0] || null;
     const ahora = new Date().toISOString();
     const histInserts = [];
-    for (const [num, est] of estadoNum.entries()) {
-        const estHist = est === 'sin_consumo' ? 'activo' : est;
-        histInserts.push({
-            numero: num,
-            estado: estHist,
-            fecha_consumo: fechaMax,
-            usuario: rolActual || 'sistema',
-            fecha_cambio: ahora,
-        });
-        mapaNumAEstadoActual.set(num, estHist); // actualizar mapa en memoria
-    }
-    for (const [imei, est] of estadoImei.entries()) {
-        const estHist = est === 'sin_consumo' ? 'activo' : est;
-        histInserts.push({
-            imei,
-            estado: estHist,
-            fecha_consumo: fechaMax,
-            usuario: rolActual || 'sistema',
-            fecha_cambio: ahora,
-        });
-        mapaImeiAEstadoActual.set(imei, estHist); // actualizar mapa en memoria
-    }
-    for (let i = 0; i < histInserts.length; i += CHUNK) {
-        await window.clienteSupabase.from('sim_estados').insert(histInserts.slice(i, i + CHUNK));
-    }
-    console.log(`📝 sim_estados: ${histInserts.length} registros insertados`);
 
-    // 7. Actualizar dispositivos_ande (estado RC + sim1_estado / sim2_estado)
+    for (const [num, est] of estadoNum) {
+        const estHist = est === 'sin_consumo' ? 'activo' : est;
+        histInserts.push({ numero: num, estado: estHist, fecha_consumo: fechaMax,
+                           usuario: rolActual || 'sistema', fecha_cambio: ahora });
+        mapaNumAEstadoActual.set(num, estHist);
+    }
+    for (const [imei, est] of estadoImei) {
+        const estHist = est === 'sin_consumo' ? 'activo' : est;
+        histInserts.push({ imei, estado: estHist, fecha_consumo: fechaMax,
+                           usuario: rolActual || 'sistema', fecha_cambio: ahora });
+        mapaImeiAEstadoActual.set(imei, estHist);
+    }
+    for (let i = 0; i < histInserts.length; i += CHUNK)
+        await window.clienteSupabase.from('sim_estados').insert(histInserts.slice(i, i + CHUNK));
+    console.log(`📝 sim_estados: ${histInserts.length} registros`);
+
+    // 6. Actualizar dispositivos_ande (respeta desactivado_manual)
     const { data: devices } = await window.clienteSupabase
         .from('dispositivos_ande')
         .select('codigo, tipo, estado, sim1_num, sim1_imei, sim2_num, sim2_imei, sim1_estado, sim2_estado');
     if (!devices?.length) return;
 
-    // Estado detallado de un slot usando los mapas del lote importado (num+imei como conjunto)
     const getSimEstImport = (num, imei) => {
         const n   = String(num || '').trim();
         const i   = normalizarImei(imei);
@@ -3098,111 +4159,142 @@ async function recalcularEstadosPostImport(filas) {
         if (!eN && !eI) return 'no_asignado';
         if (eN === 'desactivado' || eI === 'desactivado') return 'inactivo';
         if (eN === 'activo'      || eI === 'activo')      return 'activo';
-        return 'sin_consumo';  // todos los encontrados tienen 0 MB
+        return 'sin_consumo';
     };
 
     const grupos = new Map();
-    const addGrupo = (codigo, estado, s1e, s2e) => {
-        const key = `${estado}|${s1e}|${s2e}`;
-        if (!grupos.has(key)) grupos.set(key, { estado, sim1_estado: s1e, sim2_estado: s2e, codigos: [] });
-        grupos.get(key).codigos.push(codigo);
-    };
-
     for (const dev of devices) {
+        if ((dev.estado || '').toLowerCase() === 'desactivado_manual') continue;
         const s1n = String(dev.sim1_num || '').trim();
         const s1i = normalizarImei(dev.sim1_imei);
         const s2n = String(dev.sim2_num || '').trim();
         const s2i = normalizarImei(dev.sim2_imei);
-        const isSatelital = (dev.tipo || '').trim().toLowerCase() === 'satelital';
-
         const s1e = getSimEstImport(s1n, s1i);
         const s2e = getSimEstImport(s2n, s2i);
-
         const rcNuevo     = rcEstadoDesdeSimEstados(s1e, s2e);
         const estadoFinal = rcNuevo ?? dev.estado ?? 'desactivado';
-
         if (estadoFinal !== dev.estado || s1e !== dev.sim1_estado || s2e !== dev.sim2_estado) {
-            addGrupo(dev.codigo, estadoFinal, s1e, s2e);
+            const key = `${estadoFinal}|${s1e}|${s2e}`;
+            if (!grupos.has(key)) grupos.set(key, { estado: estadoFinal, sim1_estado: s1e, sim2_estado: s2e, codigos: [] });
+            grupos.get(key).codigos.push(dev.codigo);
         }
     }
-
-    for (const [, grp] of grupos) {
-        for (let i = 0; i < grp.codigos.length; i += CHUNK) {
+    for (const [, grp] of grupos)
+        for (let i = 0; i < grp.codigos.length; i += CHUNK)
             await window.clienteSupabase.from('dispositivos_ande')
                 .update({ estado: grp.estado, sim1_estado: grp.sim1_estado, sim2_estado: grp.sim2_estado })
                 .in('codigo', grp.codigos.slice(i, i + CHUNK));
-        }
-    }
 }
 
 async function ejecutarImportConsumo() {
-    const input = document.getElementById('archivoCSV');
-    if (!input.files.length) {
-        alert('Seleccioná un archivo CSV primero.');
+    if (!archivosCSVPendientes.length) {
+        alert('Seleccioná al menos un archivo CSV primero.');
         return;
     }
-    if (!telefoniaActual || telefoniaActual === 'Desconocida') {
-        if (!confirm('No se detectó la telefonía en el nombre del archivo.\n¿Querés importar igual? Se guardará como "Desconocida".')) return;
-    }
 
-    const modo    = document.querySelector('input[name="importConsumoMode"]:checked').value;
-    const file    = input.files[0];
+    const modo     = document.querySelector('input[name="importConsumoMode"]:checked').value;
     const statusEl = document.getElementById('importConsumoStatus');
     statusEl.style.display = 'block';
     document.getElementById('progressFillConsumo').style.background = '';
-    setProgressConsumo(0, 'Leyendo archivo...');
 
-    const reader = new FileReader();
-    reader.onload = async function(e) {
+    const total = archivosCSVPendientes.length;
+
+    // Si modo reemplazar, limpiar tabla antes de cualquier archivo
+    if (modo === 'replace') {
+        setProgressConsumo(3, 'Eliminando consumos anteriores...');
+        const { error } = await window.clienteSupabase.from('consumo_sim').delete().gte('id', 1);
+        if (error) {
+            setProgressConsumo(100, '❌ Error al limpiar: ' + error.message, '#ef4444');
+            return;
+        }
+    }
+
+    const todasLasFilas = [];   // para recalcular estados al final
+    const BATCH = 200;
+
+    for (let fi = 0; fi < total; fi++) {
+        const file   = archivosCSVPendientes[fi];
+        const tel    = detectarTelefonia(file.name);
+        const chip   = document.getElementById(`file-status-${fi}`);
+
+        if (chip) { chip.textContent = '⏳'; chip.className = 'file-item-status file-status-running'; }
+        setProgressConsumo(
+            5 + Math.round((fi / total) * 75),
+            `Procesando ${fi + 1}/${total}: ${file.name}…`
+        );
+
         try {
-            setProgressConsumo(10, 'Parseando CSV...');
-            const filas = parsearCSVConsumo(e.target.result, telefoniaActual);
+            // Leer texto del archivo
+            const texto = await new Promise((res, rej) => {
+                const r = new FileReader();
+                r.onload = e => res(e.target.result);
+                r.onerror = () => rej(new Error('Error al leer el archivo'));
+                r.readAsText(file, 'UTF-8');
+            });
 
-            if (filas.length === 0) throw new Error('No se encontraron filas válidas en el archivo.');
-            setProgressConsumo(15, `${filas.length} registros detectados...`);
-
-            if (modo === 'replace') {
-                setProgressConsumo(20, 'Eliminando consumos anteriores...');
-                const { error } = await window.clienteSupabase
-                    .from('consumo_sim')
-                    .delete()
-                    .gte('id', 1);
-                if (error) throw new Error('Error al limpiar tabla: ' + error.message);
-            }
-
-            const BATCH  = 200;
-            const inicio = modo === 'replace' ? 25 : 15;
-            const rango  = modo === 'replace' ? 55 : 65; // sube hasta ~80%
+            const filas = parsearCSVConsumo(texto, tel);
+            if (!filas.length) throw new Error('Sin filas válidas');
 
             for (let i = 0; i < filas.length; i += BATCH) {
                 const lote = filas.slice(i, i + BATCH);
-                const { error } = await window.clienteSupabase
-                    .from('consumo_sim')
-                    .insert(lote);
-                if (error) throw new Error(`Error en lote ${Math.floor(i / BATCH) + 1}: ${error.message}`);
+                const { error } = await window.clienteSupabase.from('consumo_sim').insert(lote);
+                if (error) throw new Error(`Lote ${Math.floor(i / BATCH) + 1}: ${error.message}`);
 
-                const pct = inicio + Math.round(((i + lote.length) / filas.length) * rango);
-                setProgressConsumo(pct, `Subiendo... ${i + lote.length} / ${filas.length} registros`);
+                const basePct  = 5 + Math.round((fi / total) * 75);
+                const filePct  = Math.round(((i + lote.length) / filas.length) * (75 / total));
+                setProgressConsumo(
+                    Math.min(basePct + filePct, 78),
+                    `${fi + 1}/${total} · subiendo ${i + lote.length}/${filas.length} filas…`
+                );
             }
 
-            setProgressConsumo(82, 'Calculando estados de líneas...');
-            await recalcularEstadosPostImport(filas);
-
-            setProgressConsumo(100, `✅ ${filas.length} registros importados. Estados actualizados.`, '#22c55e');
-
-            // Recargar ambas pestañas para reflejar cambios
-            setTimeout(async () => {
-                cerrarImportConsumo();
-                // Refrescar vista materializada en la BD
-                await window.clienteSupabase.rpc('refresh_consumo_consolidado').catch(() => {});
-                await cargarDatos();      // actualiza mapas + tab dispositivos
-                cargarConsumos();         // recarga tab consumo
-            }, 1800);
+            todasLasFilas.push(...filas);
+            if (chip) { chip.textContent = '✅'; chip.className = 'file-item-status file-status-done'; }
 
         } catch (err) {
-            setProgressConsumo(100, '❌ ' + err.message, '#ef4444');
-            console.error(err);
+            if (chip) { chip.textContent = '❌'; chip.className = 'file-item-status file-status-error'; }
+            console.error(`❌ ${file.name}:`, err);
+            // Continúa con los demás archivos
         }
-    };
-    reader.readAsText(file, 'UTF-8');
+    }
+
+    if (!todasLasFilas.length) {
+        setProgressConsumo(100, '❌ No se importó ningún registro válido.', '#ef4444');
+        return;
+    }
+
+    setProgressConsumo(82, 'Calculando estados de líneas…');
+
+    // Recalcular por telefonía para no mezclar grupos
+    const porTel = {};
+    todasLasFilas.forEach(r => {
+        const t = r.telefonia || 'Desconocida';
+        if (!porTel[t]) porTel[t] = [];
+        porTel[t].push(r);
+    });
+    for (const filasT of Object.values(porTel)) {
+        await recalcularEstadosPostImport(filasT);
+    }
+
+    setProgressConsumo(
+        100,
+        `✅ ${todasLasFilas.length} registros de ${total} archivo(s). Estados actualizados.`,
+        '#22c55e'
+    );
+
+    // Limpiar filtros activos y actualizar vistas con todos los datos recién importados
+    ['filtroTelefonia','filtroEstadoConsumo','filtroRCConsumo',
+     'filtroNumConsumo','filtroFechaDesde','filtroFechaHasta','filtroObservacion',
+     'filtroRCBuscar','filtroRCRegional']
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+
+    _consumosTimestamp = 0; // invalidar caché post-import
+    cargarEstadosSIM()
+        .then(() => cargarConsumos(true))
+        .then(() => window.clienteSupabase.rpc('refresh_consumo_consolidado').catch(() => {}))
+        .then(() => cargarDatos())
+        .catch(e => console.error('❌ post-import refresh:', e));
+
+    // Cerrar modal después de mostrar el éxito
+    setTimeout(cerrarImportConsumo, 2000);
 }
