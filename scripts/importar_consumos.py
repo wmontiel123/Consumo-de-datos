@@ -6,6 +6,8 @@ Replica la lógica del import de la app (app.js → parsearCSVConsumo /
 ejecutarImportConsumo / recalcularEstadosPostImport):
   - CSV sin encabezado: numero, imei, estado_operador, consumo_mb, fecha, [observacion]
   - Telefonía detectada por nombre de archivo o carpeta (personal/claro/tigo/vox/m2m)
+  - Consumos negativos (reinicio del ciclo de facturación, reportes M2M) se
+    recalculan o estiman; ver corregir_negativos().
   - Después del insert recalcula estados (consumo_sim, sim_estados) y refresca
     consumo_consolidado. El estado de dispositivos_ande lo sincroniza la app sola
     al abrirse (o con el botón "Actualizar estados").
@@ -24,6 +26,7 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from statistics import median
 
 import requests
 
@@ -255,6 +258,138 @@ def recalcular_estados(filas, telefonia, grupo_m2m):
         print(f'   ⚠️  {telefonia}: no se pudo registrar sim_estados ({e})')
 
 
+# ── Consumos negativos (reinicio del ciclo de facturación) ───────
+# Algunos reportes (M2M de Tigo) informan la diferencia del contador acumulado del
+# ciclo. Cuando el contador se reinicia, la diferencia sale negativa:
+#     valor = (consumo del día desde el reinicio) − (acumulado del ciclo hasta ayer)
+# Si tenemos todos los días desde el reinicio anterior se recalcula exacto:
+#     consumo real = valor + suma de lo guardado desde el reinicio anterior
+# Si no, se estima con la mediana de esa línea en los ±DIAS_VENTANA días.
+# Otro caso es el salto del contador: un negativo pegado a un pico positivo del día
+# anterior o siguiente. Ahí la suma de los dos días es correcta y se reparte entre ambos.
+
+MARCA_REINICIO = 'reinicio de ciclo'
+MARCA_SALTO = 'salto de contador'
+DIAS_VENTANA = 7
+
+
+def _fecha(s):
+    return datetime.strptime(s, '%Y-%m-%d').date()
+
+
+def historial_lineas(telefonia, campo, valores):
+    filas = []
+    valores = list(valores)
+    for i in range(0, len(valores), 50):
+        filas += obtener_todos('consumo_sim', {
+            'select': 'id,numero,imei,consumo_mb,fecha_consumo,observacion',
+            'telefonia': f'eq.{telefonia}',
+            campo: lista_in(valores[i:i + 50]),
+            'order': 'id.asc',
+        })
+    return filas
+
+
+def corregir_negativos(telefonias, ejecutar):
+    """Corrige en la BD los consumo_mb < 0. Devuelve {(tel, clave, fecha): mb_nuevo}."""
+    cambios = {}
+    for tel in telefonias:
+        negativos = obtener_todos('consumo_sim', {
+            'select': 'id,numero,imei', 'telefonia': f'eq.{tel}',
+            'consumo_mb': 'lt.0', 'order': 'id.asc',
+        })
+        if not negativos:
+            continue
+
+        # Historial completo de las líneas afectadas
+        nums = {n['numero'] for n in negativos if n['numero'] and not es_m2m(n['numero'])}
+        imeis = {n['imei'] for n in negativos if n['imei'] and (not n['numero'] or es_m2m(n['numero']))}
+        filas = (historial_lineas(tel, 'numero', nums) if nums else []) + \
+                (historial_lineas(tel, 'imei', imeis) if imeis else [])
+        historial = {}
+        for f in filas:
+            historial.setdefault(clave_linea(f['numero'], f['imei']), {})[f['id']] = f
+
+        exactos = estimados = sin_dato = saltos = 0
+        for cl, filas_linea in historial.items():
+            orden = sorted(filas_linea.values(), key=lambda f: (f['fecha_consumo'], f['id']))
+            for idx, f in enumerate(orden):
+                original = f['consumo_mb']
+                if original is None or original >= 0:
+                    continue
+                hoy = _fecha(f['fecha_consumo'])
+
+                # Salto del contador: el negativo viene pegado a un pico positivo (día anterior
+                # o siguiente) que lo compensa. La suma de los dos días es correcta → se reparte.
+                normales = [float(o['consumo_mb']) for o in orden
+                            if o['consumo_mb'] is not None and o['consumo_mb'] >= 0]
+                tipico = median(normales) if normales else 0
+                pareja = None
+                for j in (idx - 1, idx + 1):
+                    if 0 <= j < len(orden):
+                        v = orden[j]['consumo_mb']
+                        if v is not None and v > 2.5 * tipico and original + v >= 0 \
+                                and MARCA_SALTO not in (orden[j]['observacion'] or ''):
+                            if pareja is None or v > orden[pareja]['consumo_mb']:
+                                pareja = j
+                if pareja is not None:
+                    o = orden[pareja]
+                    total = original + float(o['consumo_mb'])
+                    a, b = sorted((f, o), key=lambda x: x['fecha_consumo'])
+                    for fila, mb in ((a, int(total // 2)), (b, round(total - int(total // 2)))):
+                        obs = f'corregido ({MARCA_SALTO}, original {fila["consumo_mb"]:g})'
+                        fila['consumo_mb'], fila['observacion'] = mb, obs
+                        cambios[(tel, cl, fila['fecha_consumo'])] = mb
+                        if ejecutar:
+                            _check(sesion.patch(f'{REST}/consumo_sim', params={'id': f'eq.{fila["id"]}'},
+                                                json={'consumo_mb': mb, 'observacion': obs},
+                                                headers={'Prefer': 'return=minimal'}), 'UPDATE consumo_sim')
+                    saltos += 1
+                    continue
+
+                # Exacto: hay un reinicio anterior ya corregido → sumar desde ahí
+                nuevo, tipo = None, None
+                ult = next((j for j in range(idx - 1, -1, -1)
+                            if MARCA_REINICIO in (orden[j]['observacion'] or '')), None)
+                if ult is not None:
+                    acumulado = sum(float(o['consumo_mb'] or 0) for o in orden[ult:idx])
+                    if original + acumulado >= 0:
+                        nuevo, tipo = original + acumulado, 'recalculado'
+
+                # Estimado: mediana de la línea alrededor de esa fecha
+                if nuevo is None:
+                    vecinos = [float(o['consumo_mb']) for o in orden
+                               if o is not f and o['consumo_mb'] is not None and o['consumo_mb'] >= 0
+                               and MARCA_REINICIO not in (o['observacion'] or '')
+                               and abs((_fecha(o['fecha_consumo']) - hoy).days) <= DIAS_VENTANA]
+                    if vecinos:
+                        nuevo, tipo = median(vecinos), 'estimado'
+
+                if nuevo is not None:
+                    nuevo = round(nuevo)
+                    obs = f'{tipo} ({MARCA_REINICIO}, original {original:g})'
+                    if tipo == 'recalculado':
+                        exactos += 1
+                    else:
+                        estimados += 1
+                else:
+                    obs = f'sin dato ({MARCA_REINICIO}, original {original:g})'
+                    sin_dato += 1
+
+                f['consumo_mb'], f['observacion'] = nuevo, obs   # lo usan las filas siguientes
+                cambios[(tel, cl, f['fecha_consumo'])] = nuevo
+                if ejecutar:
+                    _check(sesion.patch(f'{REST}/consumo_sim', params={'id': f'eq.{f["id"]}'},
+                                        json={'consumo_mb': nuevo, 'observacion': obs},
+                                        headers={'Prefer': 'return=minimal'}), 'UPDATE consumo_sim')
+
+        accion = 'corregidos' if ejecutar else 'a corregir'
+        print(f'   {tel}: {exactos + estimados + sin_dato + saltos} negativos {accion} → '
+              f'{saltos} saltos de contador (par de días repartido), '
+              f'{exactos} reinicios recalculados exactos, {estimados} reinicios estimados, {sin_dato} sin dato')
+    return cambios
+
+
 # ── Principal ────────────────────────────────────────────────────
 
 def main():
@@ -330,6 +465,12 @@ def main():
     print(f'\nTotal a insertar: {total_nuevas}')
 
     if not args.ejecutar:
+        negativos = sum(1 for filas in por_tel.values() for f in filas
+                        if f['consumo_mb'] is not None and f['consumo_mb'] < 0)
+        if negativos:
+            print(f'\n⚠️  {negativos} filas con consumo negativo en los archivos (reinicio de ciclo).')
+        print('\n🔧 Negativos que ya están en la BD:')
+        corregir_negativos(sorted(por_tel), ejecutar=False)
         print('\nℹ️  Simulación: no se escribió nada. Ejecutá con --ejecutar para insertar.')
         return
 
@@ -338,6 +479,15 @@ def main():
         if nuevas:
             print(f'⬆️  Insertando {len(nuevas)} filas de {tel}…')
             insertar('consumo_sim', nuevas)
+
+    # Corregir consumos negativos (reinicio de ciclo) y reflejarlo en las filas leídas
+    print('\n🔧 Corrigiendo consumos negativos…')
+    cambios = corregir_negativos(sorted(por_tel), ejecutar=True)
+    for tel, filas in por_tel.items():
+        for f in filas:
+            cl = (tel, clave_linea(f['numero'], f['imei']), f['fecha_consumo'])
+            if cl in cambios:
+                f['consumo_mb'] = cambios[cl]
 
     if args.sin_recalcular:
         print('\n✅ Listo (sin recalcular estados).')

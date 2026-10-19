@@ -291,7 +291,7 @@ const COLORES = ['#35398C', '#DA527D', '#B44C80', '#904783', '#644087'];
 
 // Consumo SIM
 let todosLosConsumos     = [];
-let consumosFiltrados    = [];   // datos para gráficos / consolidado (hasta 50 k filas)
+let consumosFiltrados    = [];   // consumo sumado por línea (consumo_por_linea) para gráficos / consolidado
 let totalConsumoServidor = 0;    // total real en BD (para paginación)
 let paginaConsumo        = 1;
 let _consumosTimestamp   = 0;    // timestamp del último fetch completo (para caché)
@@ -312,7 +312,7 @@ let totalLineasBD     = 0;
 let consolidadoActual = [];
 
 // Trae TODOS los registros paginando de a 1000 con hasta 5 páginas en paralelo
-async function fetchTodos(tabla, columnas, orden, ascendente = true) {
+async function fetchTodos(tabla, columnas, orden, ascendente = true, desempate = null) {
     const LOTE        = 1000;
     const CONCURRENCIA = 5;
 
@@ -331,10 +331,12 @@ async function fetchTodos(tabla, columnas, orden, ascendente = true) {
         const paginas  = await Promise.all(
             Array.from({ length: tamBatch }, (_, j) => {
                 const p = batch + j;
-                return window.clienteSupabase
+                let q = window.clienteSupabase
                     .from(tabla).select(columnas)
-                    .order(orden, { ascending: ascendente })
-                    .range(p * LOTE, (p + 1) * LOTE - 1);
+                    .order(orden, { ascending: ascendente });
+                // Columna única de desempate: sin ella las páginas pueden repetir/saltear filas
+                if (desempate) q = q.order(desempate, { ascending: ascendente });
+                return q.range(p * LOTE, (p + 1) * LOTE - 1);
             })
         );
         paginas.forEach((r, j) => {
@@ -486,9 +488,10 @@ async function cargarDatos() {
 
         // 3 fetches en paralelo: dispositivos + consumo + estados SIM
         const [data, consumoData] = await Promise.all([
-            fetchTodos('dispositivos_ande', '*', 'regional', true),
-            fetchTodos('consumo_sim', 'numero,imei,observacion,estado_operador,consumo_mb,estado,fecha_consumo,telefonia', 'fecha_consumo', false)
-                .catch(e => { console.warn('⚠️ No se pudo cargar consumo_sim:', e.message); return []; }),
+            fetchTodos('dispositivos_ande', '*', 'regional', true, 'id'),
+            // Solo la fila más reciente de cada número / IMEI (vista consumo_ultimo)
+            fetchTodos('consumo_ultimo', 'numero,imei,observacion,estado_operador,consumo_mb,estado,fecha_consumo,telefonia', 'fecha_consumo', false, 'id')
+                .catch(e => { console.warn('⚠️ No se pudo cargar consumo_ultimo:', e.message); return []; }),
             cargarEstadosSIM()   // no depende de los otros — va en paralelo
         ]);
 
@@ -501,7 +504,7 @@ async function cargarDatos() {
             if (num  && !mapaNumAConsumo.has(num))   mapaNumAConsumo.set(num, c);
             if (imei && !mapaImeiAConsumo.has(imei)) mapaImeiAConsumo.set(imei, c);
         });
-        console.log(`✅ ${consumoData.length} registros en consumo_sim`);
+        console.log(`✅ ${consumoData.length} registros en consumo_ultimo`);
 
         // Construir mapas de dispositivos para cruzar RC en consumo
         construirMapasDevice(data);
@@ -1486,8 +1489,6 @@ async function consultarConsumos(soloTabla = true) {
     const f = resolverFiltros();
     if (f === null) return { data: [], count: 0 };
 
-    const COLS_CONSOLIDADO = 'consumo_mb,fecha_consumo,telefonia,numero,imei,estado,observacion,estado_operador';
-
     if (soloTabla) {
         // Página actual de la tabla (una sola request paginada)
         const from  = (paginaConsumo - 1) * ITEMS_POR_PAGINA;
@@ -1500,7 +1501,29 @@ async function consultarConsumos(soloTabla = true) {
         return { data: data || [], count: count || 0 };
     }
 
-    // Consolidado: paginar en paralelo para traer TODAS las filas
+    // Consolidado: consumo sumado por línea (una fila por número/IMEI, no por día)
+    const { data, error } = await window.clienteSupabase.rpc('consumo_por_linea', {
+        p_telefonia: f.telefonia,
+        p_estados:   f.estados,
+        p_desde:     f.desde,
+        p_hasta:     f.hasta,
+        p_numeros:   f.numeros,
+        p_imeis:     f.imeis,
+        p_num_like:  f.num_like,
+        p_obs_like:  f.obs_like,
+    });
+    if (error) throw error;
+    return { data: data || [], count: (data || []).length };
+}
+
+// Todas las filas diarias con los filtros activos (solo para exportar a Excel)
+async function consultarConsumosCompletos() {
+    const f = resolverFiltros();
+    if (f === null) return { data: [], count: 0 };
+
+    const COLS_CONSOLIDADO = 'consumo_mb,fecha_consumo,telefonia,numero,imei,estado,observacion,estado_operador';
+
+    // Paginar en paralelo para traer TODAS las filas
     // (igual que fetchTodos — evita el cap de 1000 de PostgREST)
     const LOTE = 1000, CONC = 5;
 
@@ -1522,7 +1545,7 @@ async function consultarConsumos(soloTabla = true) {
                 const p = b + j;
                 let q = window.clienteSupabase.from('consumo_sim').select(COLS_CONSOLIDADO);
                 q     = _aplicarFiltrosConsumoQuery(q, f);
-                return q.order('fecha_consumo', { ascending: true })
+                return q.order('fecha_consumo', { ascending: true }).order('id', { ascending: true })
                         .range(p * LOTE, (p + 1) * LOTE - 1);
             })
         );
@@ -2010,6 +2033,59 @@ function crearGraficosConsumo(resumen, datos) {
 
 // ── GRÁFICOS VISTA POR EQUIPO ─────────────────────────────────────
 
+// Trae el consumo diario solo de las líneas del top 5 y completa el gráfico histórico
+async function completarHistoricoTop5(chart, top5rc, rcDe) {
+    const f = resolverFiltros();
+    if (!f || !top5rc.length) return;
+
+    const nums = new Set(), imeis = new Set();
+    top5rc.forEach(([, info]) => info.lineas.forEach(c => {
+        const n = String(c.numero || '').trim();
+        const i = normalizarImei(c.imei);
+        if (n && n.toLowerCase() !== 'm2m') nums.add(n);
+        if (i) imeis.add(i);
+    }));
+    const filtro = { ...f, numeros: [...nums], imeis: [...imeis] };
+
+    const LOTE = 1000;
+    const filas = [];
+    for (let desde = 0; ; desde += LOTE) {
+        let q = window.clienteSupabase.from('consumo_sim').select('numero,imei,consumo_mb,fecha_consumo');
+        q = _aplicarFiltrosConsumoQuery(q, filtro).order('id').range(desde, desde + LOTE - 1);
+        const { data, error } = await q;
+        if (error) throw error;
+        filas.push(...(data || []));
+        if (!data || data.length < LOTE) break;
+    }
+    if (chartEquipoHistorico !== chart) return;   // se redibujó mientras esperábamos
+
+    const top5 = new Set(top5rc.map(([rc]) => rc));
+    const porRC = new Map(top5rc.map(([rc]) => [rc, {}]));
+    const fechasSet = new Set();
+    filas.forEach(c => {
+        const { rc } = rcDe(c);
+        if (!top5.has(rc) || !c.fecha_consumo) return;
+        const byFecha = porRC.get(rc);
+        fechasSet.add(c.fecha_consumo);
+        byFecha[c.fecha_consumo] = (byFecha[c.fecha_consumo] || 0) + (parseFloat(c.consumo_mb) || 0);
+    });
+    const fechas = [...fechasSet].sort();
+
+    chart.data.labels   = fechas.map(fe => formatearFecha(fe));
+    chart.data.datasets = top5rc.map(([rc], idx) => {
+        const color = COLORES[idx % COLORES.length];
+        return {
+            label: rc,
+            data: fechas.map(fe => porRC.get(rc)[fe] || 0),
+            borderColor: color, backgroundColor: color + '14',
+            borderWidth: 2.5, fill: false, tension: 0.4,
+            pointBackgroundColor: color, pointBorderColor: '#fff',
+            pointBorderWidth: 2, pointRadius: 4, pointHoverRadius: 6,
+        };
+    });
+    chart.update();
+}
+
 function crearGraficosEquipo(datos) {
     // Destruir instancias anteriores
     if (chartEquipoHistorico) { chartEquipoHistorico.destroy(); chartEquipoHistorico = null; }
@@ -2029,25 +2105,20 @@ function crearGraficosEquipo(datos) {
     };
 
     // ── Agrupar por RC ───────────────────────────────────────────
-    const porRC    = new Map();  // rc → { totalMB, byFecha: {} }
-    const fechasSet = new Set();
+    // datos viene sumado por línea (consumo_por_linea), así que acá solo hay totales
+    const porRC    = new Map();  // rc → { totalMB, lineas }
+    const rcDe = c => {
+        const dev = mapaNumADevice.get(String(c.numero || '').trim()) || mapaImeiADevice.get(normalizarImei(c.imei)) || null;
+        return { rc: dev ? (dev.codigo || '-') : '-', dev };
+    };
 
     datos.forEach(c => {
-        const num  = String(c.numero || '').trim();
-        const imei = normalizarImei(c.imei);
-        const dev  = mapaNumADevice.get(num) || mapaImeiADevice.get(imei) || null;
-        const rc   = dev ? (dev.codigo || '-') : '-';
-        if (!porRC.has(rc)) porRC.set(rc, { totalMB: 0, byFecha: {}, regional: dev?.regional || '-' });
+        const { rc, dev } = rcDe(c);
+        if (!porRC.has(rc)) porRC.set(rc, { totalMB: 0, lineas: [], regional: dev?.regional || '-' });
         const entry = porRC.get(rc);
-        const mb = parseFloat(c.consumo_mb) || 0;
-        entry.totalMB += mb;
-        if (c.fecha_consumo) {
-            fechasSet.add(c.fecha_consumo);
-            entry.byFecha[c.fecha_consumo] = (entry.byFecha[c.fecha_consumo] || 0) + mb;
-        }
+        entry.totalMB += parseFloat(c.consumo_mb) || 0;
+        entry.lineas.push(c);
     });
-
-    const fechas = [...fechasSet].sort();
 
     // Top 5 RCs por totalMB
     const top5rc = [...porRC.entries()]
@@ -2056,22 +2127,11 @@ function crearGraficosEquipo(datos) {
         .slice(0, 5);
 
     // ── 1. Histórico top 5 equipos ───────────────────────────────
-    const datasetsH = top5rc.map(([rc, info], idx) => {
-        const color = COLORES[idx % COLORES.length];
-        return {
-            label: rc,
-            data: fechas.map(f => info.byFecha[f] || 0),
-            borderColor: color, backgroundColor: color + '14',
-            borderWidth: 2.5, fill: false, tension: 0.4,
-            pointBackgroundColor: color, pointBorderColor: '#fff',
-            pointBorderWidth: 2, pointRadius: 4, pointHoverRadius: 6,
-        };
-    });
-
+    // Se crea vacío y se completa con el detalle diario solo de esas líneas
     const ctxH = document.getElementById('chartEquipoHistorico').getContext('2d');
     chartEquipoHistorico = new Chart(ctxH, {
         type: 'line',
-        data: { labels: fechas.map(f => formatearFecha(f)), datasets: datasetsH },
+        data: { labels: [], datasets: [] },
         options: {
             responsive: true, maintainAspectRatio: false,
             plugins: {
@@ -2086,6 +2146,8 @@ function crearGraficosEquipo(datos) {
             onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; }
         }
     });
+    completarHistoricoTop5(chartEquipoHistorico, top5rc, rcDe)
+        .catch(e => console.warn('⚠️ histórico top 5:', e.message));
 
     // ── 2. Top 5 equipos — barras 3D ─────────────────────────────
     const labelsTop5  = top5rc.map(([rc]) => rc);
@@ -2930,7 +2992,7 @@ function irPaginaEquipos(num) {
 
 // ── EXPORTAR ──────────────────────────────────────────────────────
 
-function exportarConsumo() {
+async function exportarConsumo() {
     const wb = XLSX.utils.book_new();
 
     if (vistaConsumo === 'equipos') {
@@ -2946,7 +3008,15 @@ function exportarConsumo() {
         }));
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Por Equipo');
     } else {
-        const rows = consumosFiltrados.map(c => {
+        // consumosFiltrados está sumado por línea: para el detalle diario se trae todo acá
+        let detalle;
+        try {
+            detalle = (await consultarConsumosCompletos()).data;
+        } catch (e) {
+            alert('❌ Error al exportar: ' + e.message);
+            return;
+        }
+        const rows = detalle.map(c => {
             const est = estadoConsDisplay(c);
             const cfg = esViewer() ? ESTADO_CONFIG_VIEWER[estadoSimple(est)] : ESTADO_CONFIG_DISP[est];
             const row = {
@@ -4022,7 +4092,7 @@ async function actualizarEstados() {
         // 1. Recalcular y guardar en BD (respeta desactivados manuales)
         await sincronizarEstadosDispositivos(false);
         // 2. Recargar desde BD para mostrar exactamente lo que quedó guardado
-        const freshData = await fetchTodos('dispositivos_ande', '*', 'regional', true);
+        const freshData = await fetchTodos('dispositivos_ande', '*', 'regional', true, 'id');
         todosLosDatos = freshData;
         construirMapasDevice(freshData);
         // 3. Re-aplicar filtros y renderizar desde datos frescos
