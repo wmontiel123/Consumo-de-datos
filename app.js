@@ -1494,7 +1494,9 @@ async function consultarConsumos(soloTabla = true) {
         const from  = (paginaConsumo - 1) * ITEMS_POR_PAGINA;
         let query   = window.clienteSupabase.from('consumo_sim').select('*', { count: 'exact' });
         query       = _aplicarFiltrosConsumoQuery(query, f);
-        query       = query.order(dbColLineas(), { ascending: sortLineas.dir === 'asc' })
+        // Sin dato (null) siempre al final; id como desempate para que las páginas no se repitan
+        query       = query.order(dbColLineas(), { ascending: sortLineas.dir === 'asc', nullsFirst: false })
+                           .order('id', { ascending: true })
                            .range(from, from + ITEMS_POR_PAGINA - 1);
         const { data, error, count } = await query;
         if (error) throw error;
@@ -2902,7 +2904,8 @@ async function mostrarConsolidadoDB() {
     let query = window.clienteSupabase
         .from('consumo_consolidado')
         .select('*', { count: 'exact' })
-        .order(dbCol, { ascending: sortEquipos.dir === 'asc' });
+        .order(dbCol, { ascending: sortEquipos.dir === 'asc', nullsFirst: false })
+        .order('rc', { ascending: true });
 
     if (rc)       query = query.ilike('rc', `%${rc}%`);
     if (regional) query = query.eq('regional', regional);
