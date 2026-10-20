@@ -526,7 +526,6 @@ async function cargarDatos() {
 
         // Mostrar tabla inmediatamente sin esperar la sincronización de estados
         mostrarDatos(todosLosDatos);
-        cargarHistorialSIMLista();
 
         // Sincronizar estado de RCs en background (escribe a BD, no bloquea la UI)
         sincronizarEstadosDispositivos()
@@ -586,17 +585,16 @@ function mostrarDatos(datos) {
     actualizarEstadisticas(datos);
     crearGraficos(datos);
     actualizarMapa(datos);
-    renderHistorialSIMLista(datos);
 }
 
-// ── Historial de cambios de SIM (pestaña Dispositivos) ────────────
+// ── Historial de cambios de SIM (pestaña Historial SIM) ───────────
 let historialSimLista = null;      // filas de historial_sim (null = sin cargar)
-const HISTORIAL_SIM_MAX = 50;      // filas visibles
+const HISTORIAL_SIM_MAX = 100;     // filas visibles
 
 async function cargarHistorialSIMLista() {
     const { data, error } = await window.clienteSupabase
         .from('historial_sim')
-        .select('rc_codigo,sim_slot,numero_ant,imei_ant,numero_nuevo,imei_nuevo,usuario,fecha_cambio')
+        .select('*')
         .order('fecha_cambio', { ascending: false })
         .limit(1000);
     if (error) {
@@ -605,36 +603,50 @@ async function cargarHistorialSIMLista() {
     } else {
         historialSimLista = data || [];
     }
-    renderHistorialSIMLista(datosFiltrados);
+    renderHistorialSIMLista();
 }
 
-// Muestra los cambios de los RC que están en la lista filtrada
-function renderHistorialSIMLista(datos) {
+function escHtml(v) {
+    return String(v ?? '').trim().replace(/[&<>"']/g, ch =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+
+// Fecha y hora local de un timestamp (fecha_cambio)
+function formatearFechaHora(ts) {
+    if (!ts) return '-';
+    const d = new Date(ts);
+    if (isNaN(d)) return '-';
+    return d.toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' +
+           d.toLocaleTimeString('es-PY', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+function renderHistorialSIMLista() {
     const tbody  = document.getElementById('historialSimBody');
     const infoEl = document.getElementById('historialSimInfo');
     if (!tbody || historialSimLista === null) return;
 
-    const esc = v => String(v ?? '').trim().replace(/[&<>"']/g, ch =>
-        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-    const filtrado = datos && datos.length !== todosLosDatos.length;
-    const codigos  = new Set((datos || []).map(d => d.codigo));
-    const filas    = filtrado ? historialSimLista.filter(h => codigos.has(h.rc_codigo)) : historialSimLista;
+    const q = (document.getElementById('historialSimBuscar')?.value || '').trim().toLowerCase();
+    const filas = !q ? historialSimLista : historialSimLista.filter(h =>
+        [h.rc_codigo, h.numero_ant, h.numero_nuevo, h.imei_ant, h.imei_nuevo, h.usuario, h.observacion]
+            .some(v => String(v || '').toLowerCase().includes(q)));
 
     if (!filas.length) {
-        tbody.innerHTML = `<tr><td colspan="6" class="panel-empty">${filtrado ? 'Sin cambios de SIM para los RC filtrados' : 'Sin cambios registrados'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="panel-empty">${q ? 'Sin cambios que coincidan con la búsqueda' : 'Sin cambios registrados'}</td></tr>`;
         infoEl.textContent = '';
         return;
     }
 
-    const cambio = (ant, nuevo) => `${esc(ant) || '-'} → <strong>${esc(nuevo) || '-'}</strong>`;
+    const cambio = (ant, nuevo) => `${escHtml(ant) || '-'} → <strong>${escHtml(nuevo) || '-'}</strong>`;
     tbody.innerHTML = filas.slice(0, HISTORIAL_SIM_MAX).map(h => `
         <tr>
-            <td>${formatearFecha(h.fecha_cambio?.substring(0, 10))}</td>
-            <td><span class="link-num" onclick="abrirPanelRC(this.textContent)">${esc(h.rc_codigo)}</span></td>
+            <td>${h.fecha_campo ? formatearFecha(h.fecha_campo) : '-'}</td>
+            <td style="white-space:nowrap">${formatearFechaHora(h.fecha_cambio)}</td>
+            <td><span class="link-num" onclick="abrirPanelRC(this.textContent)">${escHtml(h.rc_codigo)}</span></td>
             <td>${h.sim_slot === 'sim1' ? 'SIM 1' : 'SIM 2'}</td>
             <td style="color:#666">${cambio(h.numero_ant, h.numero_nuevo)}</td>
             <td style="color:#666">${cambio(h.imei_ant, h.imei_nuevo)}</td>
-            <td>${esc(h.usuario) || '-'}</td>
+            <td>${escHtml(h.usuario) || '-'}</td>
+            <td style="color:#666">${escHtml(h.observacion) || '-'}</td>
         </tr>`).join('');
     infoEl.textContent = filas.length > HISTORIAL_SIM_MAX
         ? `Mostrando los ${HISTORIAL_SIM_MAX} cambios más recientes de ${filas.length}`
@@ -1450,23 +1462,22 @@ function badgeTelefonia(tel) {
 // ── TAB SWITCHING ─────────────────────────────────────────────────
 
 function cambiarTab(tab) {
-    const tabDisp = document.getElementById('tab-dispositivos');
-    const tabCons = document.getElementById('tab-consumo');
-    const btnDisp = document.getElementById('tabBtnDispositivos');
-    const btnCons = document.getElementById('tabBtnConsumo');
+    const tabs = {
+        consumo:      ['tab-consumo',      'tabBtnConsumo'],
+        dispositivos: ['tab-dispositivos', 'tabBtnDispositivos'],
+        historial:    ['tab-historial',    'tabBtnHistorial'],
+    };
+    Object.entries(tabs).forEach(([nombre, [div, btn]]) => {
+        document.getElementById(div).style.display = nombre === tab ? 'block' : 'none';
+        document.getElementById(btn).classList.toggle('tab-activo', nombre === tab);
+    });
 
     if (tab === 'dispositivos') {
-        tabDisp.style.display = 'block';
-        tabCons.style.display = 'none';
-        btnDisp.classList.add('tab-activo');
-        btnCons.classList.remove('tab-activo');
         // Leaflet necesita recalcular tamaño al hacerse visible
         if (mapaLeaflet) setTimeout(() => mapaLeaflet.invalidateSize(), 80);
+    } else if (tab === 'historial') {
+        cargarHistorialSIMLista();
     } else {
-        tabDisp.style.display = 'none';
-        tabCons.style.display = 'block';
-        btnDisp.classList.remove('tab-activo');
-        btnCons.classList.add('tab-activo');
         cargarConsumos();  // usa caché si datos frescos (< 3 min)
     }
 }
@@ -3769,18 +3780,18 @@ function renderPanelSimCard(num, imei, totalMB, slot, estado) {
 // ── Tabla historial SIM ────────────────────────────────────────────
 function renderHistorialSIM(historial) {
     if (!historial.length) return '<div class="panel-empty">Sin cambios registrados</div>';
-    const filas = historial.map(h => `
-        <tr>
-            <td>${formatearFecha(h.fecha_cambio?.substring(0, 10))}</td>
-            <td>${h.sim_slot === 'sim1' ? 'SIM 1' : 'SIM 2'}</td>
-            <td style="font-size:11px;color:#666">${h.numero_ant || '-'} → <strong>${h.numero_nuevo || '-'}</strong></td>
-            <td>${h.usuario || '-'}</td>
-        </tr>`).join('');
-    return `
-        <table class="panel-historial">
-            <thead><tr><th>Fecha</th><th>Slot</th><th>Anterior → Nuevo</th><th>Usuario</th></tr></thead>
-            <tbody>${filas}</tbody>
-        </table>`;
+    const cambio = (ant, nuevo) => `${escHtml(ant) || '-'} → <strong>${escHtml(nuevo) || '-'}</strong>`;
+    return historial.map(h => `
+        <div class="panel-hist-item">
+            <div class="panel-hist-cab">
+                <span class="panel-hist-slot">${h.sim_slot === 'sim1' ? 'SIM Principal' : 'SIM Respaldo'}</span>
+                <span>Cambio en campo: <strong>${h.fecha_campo ? formatearFecha(h.fecha_campo) : '-'}</strong></span>
+            </div>
+            <div class="panel-hist-fila"><span>Número</span>${cambio(h.numero_ant, h.numero_nuevo)}</div>
+            <div class="panel-hist-fila"><span>ICCID</span>${cambio(h.imei_ant, h.imei_nuevo)}</div>
+            ${h.observacion ? `<div class="panel-hist-fila"><span>Obs.</span>${escHtml(h.observacion)}</div>` : ''}
+            <div class="panel-hist-pie">Registrado ${formatearFechaHora(h.fecha_cambio)} por <strong>${escHtml(h.usuario) || '-'}</strong></div>
+        </div>`).join('');
 }
 
 // ── Mini gráfico del panel RC ──────────────────────────────────────
@@ -3901,6 +3912,7 @@ function abrirCambiarSIM(codigo, slot) {
     document.getElementById('simNuevoNumero').value = '';
     document.getElementById('simNuevoImei').value   = '';
     document.getElementById('simObservacion').value = '';
+    document.getElementById('simFechaCampo').value  = new Date().toLocaleDateString('en-CA');  // hoy, YYYY-MM-DD
     document.getElementById('simNuevoNumero').placeholder = numAct  || 'Nuevo número';
     document.getElementById('simNuevoImei').placeholder   = imeiAct || 'Nuevo ICCID';
 
@@ -3928,6 +3940,8 @@ async function ejecutarCambioSIM() {
     const numNuevo  = document.getElementById('simNuevoNumero').value.trim() || null;
     const imeiNuevo = document.getElementById('simNuevoImei').value.trim()   || null;
     const obs       = document.getElementById('simObservacion').value.trim() || null;
+    const fechaCampo = document.getElementById('simFechaCampo').value || null;
+    const usuario    = usuarioSesion();
 
     if (!numNuevo && !imeiNuevo) { alert('Ingresá al menos el nuevo número o ICCID.'); return; }
 
@@ -3948,6 +3962,7 @@ async function ejecutarCambioSIM() {
                 imei_actual: device ? (slot === 'sim1' ? device.sim1_imei : device.sim2_imei) : null,
                 num_nuevo:   numNuevo,
                 imei_nuevo:  imeiNuevo,
+                fecha_campo: fechaCampo,
                 observacion: obs,
             });
             st.style.color = '#16a34a'; st.style.background = '#f0fdf4';
@@ -3972,7 +3987,8 @@ async function ejecutarCambioSIM() {
             imei_ant:     device ? (slot === 'sim1' ? device.sim1_imei : device.sim2_imei) : null,
             numero_nuevo: numNuevo,
             imei_nuevo:   imeiNuevo,
-            usuario:      rolActual,
+            fecha_campo:  fechaCampo,
+            usuario:      usuario,
             observacion:  obs,
         });
         if (hErr) throw hErr;
@@ -4014,13 +4030,21 @@ async function ejecutarCambioSIM() {
 
 // ── Solicitudes (perfil viewer → genera solicitud en BD) ───────────
 
+// Nombre del usuario logueado (sessionStorage), para registrar quién hizo cada acción
+function usuarioSesion() {
+    try {
+        return JSON.parse(sessionStorage.getItem('session') || '{}').usuario || rolActual || 'desconocido';
+    } catch (_) {
+        return rolActual || 'desconocido';
+    }
+}
+
 // Escribe una fila en la tabla solicitudes con el usuario actual
 async function enviarSolicitud(tipo, datos) {
-    const s = JSON.parse(sessionStorage.getItem('session') || '{}');
     const { error } = await window.clienteSupabase.from('solicitudes').insert({
         tipo,
         datos,
-        usuario: s.usuario || 'desconocido',
+        usuario: usuarioSesion(),
     });
     if (error) throw error;
 }

@@ -103,6 +103,43 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                 Dispositivos
             </button>
+            <button class="tab-btn" onclick="cambiarTab('historial')" id="tabBtnHistorial">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Historial SIM
+            </button>
+        </div>
+
+        <!-- Tab: Historial de cambios de SIM -->
+        <div id="tab-historial" style="display:none">
+            <div class="table-container">
+                <div class="table-header-row">
+                    <h2>Historial de cambios de SIM</h2>
+                </div>
+                <div class="historial-sim-buscar">
+                    <input type="text" id="historialSimBuscar" placeholder="Buscar por RC, número, ICCID o usuario…"
+                           oninput="renderHistorialSIMLista()">
+                </div>
+                <div id="historialSimInfo" class="paginacion-info"></div>
+                <div class="historial-sim-lista">
+                    <table class="panel-historial">
+                        <thead>
+                            <tr>
+                                <th>Fecha en campo</th>
+                                <th>Registrado</th>
+                                <th>Código</th>
+                                <th>Slot</th>
+                                <th>Número anterior → nuevo</th>
+                                <th>ICCID anterior → nuevo</th>
+                                <th>Usuario</th>
+                                <th>Observación</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historialSimBody">
+                            <tr><td colspan="8" class="panel-empty">Cargando…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <!-- Tab: Dispositivos -->
@@ -189,29 +226,6 @@
                 </tbody>
             </table>
             <div id="paginacion" class="paginacion"></div>
-
-            <!-- Historial de cambios de SIM (respeta los filtros de la tabla) -->
-            <div class="historial-sim-lista">
-                <div class="table-header-row">
-                    <h2>Historial de cambios de SIM</h2>
-                </div>
-                <div id="historialSimInfo" class="paginacion-info"></div>
-                <table class="panel-historial">
-                    <thead>
-                        <tr>
-                            <th>Fecha</th>
-                            <th>Código</th>
-                            <th>Slot</th>
-                            <th>Número anterior → nuevo</th>
-                            <th>ICCID anterior → nuevo</th>
-                            <th>Usuario</th>
-                        </tr>
-                    </thead>
-                    <tbody id="historialSimBody">
-                        <tr><td colspan="6" class="panel-empty">Cargando…</td></tr>
-                    </tbody>
-                </table>
-            </div>
         </div>
 
         <!-- Estadísticas -->
@@ -686,6 +700,10 @@
                 <div class="filter-group">
                     <label>Nuevo ICCID</label>
                     <input type="text" id="simNuevoImei" placeholder="ICCID de la nueva SIM">
+                </div>
+                <div class="filter-group">
+                    <label>Fecha del cambio en campo</label>
+                    <input type="date" id="simFechaCampo">
                 </div>
                 <div class="filter-group">
                     <label>Observación</label>
