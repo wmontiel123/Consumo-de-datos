@@ -58,7 +58,7 @@ const SIM_EST_LABEL = {
     activo:      'Activo',
     inactivo:    'Inactivo',
     nulo:        'Nulo',
-    no_asignado: 'No asignado',
+    no_asignado: 'Desactivado',
     sin_consumo: 'Sin Consumo',
 };
 
@@ -526,6 +526,7 @@ async function cargarDatos() {
 
         // Mostrar tabla inmediatamente sin esperar la sincronización de estados
         mostrarDatos(todosLosDatos);
+        cargarHistorialSIMLista();
 
         // Sincronizar estado de RCs en background (escribe a BD, no bloquea la UI)
         sincronizarEstadosDispositivos()
@@ -585,6 +586,59 @@ function mostrarDatos(datos) {
     actualizarEstadisticas(datos);
     crearGraficos(datos);
     actualizarMapa(datos);
+    renderHistorialSIMLista(datos);
+}
+
+// ── Historial de cambios de SIM (pestaña Dispositivos) ────────────
+let historialSimLista = null;      // filas de historial_sim (null = sin cargar)
+const HISTORIAL_SIM_MAX = 50;      // filas visibles
+
+async function cargarHistorialSIMLista() {
+    const { data, error } = await window.clienteSupabase
+        .from('historial_sim')
+        .select('rc_codigo,sim_slot,numero_ant,imei_ant,numero_nuevo,imei_nuevo,usuario,fecha_cambio')
+        .order('fecha_cambio', { ascending: false })
+        .limit(1000);
+    if (error) {
+        console.warn('⚠️ No se pudo cargar historial_sim:', error.message);
+        historialSimLista = [];
+    } else {
+        historialSimLista = data || [];
+    }
+    renderHistorialSIMLista(datosFiltrados);
+}
+
+// Muestra los cambios de los RC que están en la lista filtrada
+function renderHistorialSIMLista(datos) {
+    const tbody  = document.getElementById('historialSimBody');
+    const infoEl = document.getElementById('historialSimInfo');
+    if (!tbody || historialSimLista === null) return;
+
+    const esc = v => String(v ?? '').trim().replace(/[&<>"']/g, ch =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    const filtrado = datos && datos.length !== todosLosDatos.length;
+    const codigos  = new Set((datos || []).map(d => d.codigo));
+    const filas    = filtrado ? historialSimLista.filter(h => codigos.has(h.rc_codigo)) : historialSimLista;
+
+    if (!filas.length) {
+        tbody.innerHTML = `<tr><td colspan="6" class="panel-empty">${filtrado ? 'Sin cambios de SIM para los RC filtrados' : 'Sin cambios registrados'}</td></tr>`;
+        infoEl.textContent = '';
+        return;
+    }
+
+    const cambio = (ant, nuevo) => `${esc(ant) || '-'} → <strong>${esc(nuevo) || '-'}</strong>`;
+    tbody.innerHTML = filas.slice(0, HISTORIAL_SIM_MAX).map(h => `
+        <tr>
+            <td>${formatearFecha(h.fecha_cambio?.substring(0, 10))}</td>
+            <td><span class="link-num" onclick="abrirPanelRC(this.textContent)">${esc(h.rc_codigo)}</span></td>
+            <td>${h.sim_slot === 'sim1' ? 'SIM 1' : 'SIM 2'}</td>
+            <td style="color:#666">${cambio(h.numero_ant, h.numero_nuevo)}</td>
+            <td style="color:#666">${cambio(h.imei_ant, h.imei_nuevo)}</td>
+            <td>${esc(h.usuario) || '-'}</td>
+        </tr>`).join('');
+    infoEl.textContent = filas.length > HISTORIAL_SIM_MAX
+        ? `Mostrando los ${HISTORIAL_SIM_MAX} cambios más recientes de ${filas.length}`
+        : `${filas.length} cambio(s)`;
 }
 
 // Helpers para el badge de estado
@@ -3026,7 +3080,7 @@ async function exportarConsumo() {
                 'Estado':    (cfg?.label || est).replace('● ', ''),
                 'RC':        encontrarRC(c),
                 'Número':    c.numero    || '',
-                'IMEI':      normalizarImei(c.imei) || '',
+                'ICCID':     normalizarImei(c.imei) || '',
                 'Telefonía': c.telefonia || '',
                 'MB':        parseFloat(c.consumo_mb) || 0,
                 'Fecha':     c.fecha_consumo || '',
@@ -3708,7 +3762,7 @@ function renderPanelSimCard(num, imei, totalMB, slot, estado) {
                 <span class="panel-sim-mb">${formatearNumero(totalMB)} MB</span>
             </div>
             ${numDisplay}
-            ${imei ? `<div class="panel-sim-imei">IMEI: ${imei}</div>` : ''}
+            ${imei ? `<div class="panel-sim-imei">ICCID: ${imei}</div>` : ''}
         </div>`;
 }
 
@@ -3848,7 +3902,7 @@ function abrirCambiarSIM(codigo, slot) {
     document.getElementById('simNuevoImei').value   = '';
     document.getElementById('simObservacion').value = '';
     document.getElementById('simNuevoNumero').placeholder = numAct  || 'Nuevo número';
-    document.getElementById('simNuevoImei').placeholder   = imeiAct || 'Nuevo IMEI';
+    document.getElementById('simNuevoImei').placeholder   = imeiAct || 'Nuevo ICCID';
 
     const st = document.getElementById('simCambioStatus');
     st.style.display = 'none';
@@ -3875,7 +3929,7 @@ async function ejecutarCambioSIM() {
     const imeiNuevo = document.getElementById('simNuevoImei').value.trim()   || null;
     const obs       = document.getElementById('simObservacion').value.trim() || null;
 
-    if (!numNuevo && !imeiNuevo) { alert('Ingresá al menos el nuevo número o IMEI.'); return; }
+    if (!numNuevo && !imeiNuevo) { alert('Ingresá al menos el nuevo número o ICCID.'); return; }
 
     const st = document.getElementById('simCambioStatus');
     st.style.display = 'block';
@@ -3939,6 +3993,7 @@ async function ejecutarCambioSIM() {
         const idx = todosLosDatos.findIndex(d => d.codigo === codigo);
         if (idx >= 0) Object.assign(todosLosDatos[idx], upd);
         construirMapasDevice(todosLosDatos);
+        cargarHistorialSIMLista();
 
         st.style.color      = '#16a34a';
         st.style.background = '#f0fdf4';

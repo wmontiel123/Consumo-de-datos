@@ -179,9 +179,9 @@
                         <th>Código</th>
                         <th>Ubicación</th>
                         <th>SIM 1 - Num</th>
-                        <th>SIM 1 - IMEI</th>
+                        <th>SIM 1 - ICCID</th>
                         <th>SIM 2 - Num</th>
-                        <th>SIM 2 - IMEI</th>
+                        <th>SIM 2 - ICCID</th>
                         <th>Fecha Activación</th>
                     </tr>
                 </thead>
@@ -189,6 +189,29 @@
                 </tbody>
             </table>
             <div id="paginacion" class="paginacion"></div>
+
+            <!-- Historial de cambios de SIM (respeta los filtros de la tabla) -->
+            <div class="historial-sim-lista">
+                <div class="table-header-row">
+                    <h2>Historial de cambios de SIM</h2>
+                </div>
+                <div id="historialSimInfo" class="paginacion-info"></div>
+                <table class="panel-historial">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Código</th>
+                            <th>Slot</th>
+                            <th>Número anterior → nuevo</th>
+                            <th>ICCID anterior → nuevo</th>
+                            <th>Usuario</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historialSimBody">
+                        <tr><td colspan="6" class="panel-empty">Cargando…</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <!-- Estadísticas -->
@@ -287,7 +310,7 @@
                         <input type="text" id="filtroRCConsumo" placeholder="Ej: RC_55591">
                     </div>
                     <div class="filter-group">
-                        <label>Nº / IMEI:</label>
+                        <label>Nº / ICCID:</label>
                         <input type="text" id="filtroNumConsumo" placeholder="Ej: 976989482">
                     </div>
                     <div class="filter-group">
@@ -315,7 +338,7 @@
                     <div class="filter-group" style="flex:2;min-width:240px">
                         <label>🔍 Buscar línea:</label>
                         <input type="text" id="filtroLineasBuscar"
-                               placeholder="Número, IMEI, RC, Observación…"
+                               placeholder="Número, ICCID, RC, Observación…"
                                autocomplete="off"
                                oninput="debounceFiltrosLineas()">
                     </div>
@@ -405,7 +428,7 @@
                         <tr>
                             <th class="sortable" data-sort="estado"    onclick="setSortLineas('estado')">Estado</th>
                             <th class="sortable" data-sort="numero"    onclick="setSortLineas('numero')">Número</th>
-                            <th class="sortable" data-sort="imei"      onclick="setSortLineas('imei')">IMEI</th>
+                            <th class="sortable" data-sort="imei"      onclick="setSortLineas('imei')">ICCID</th>
                             <th class="sortable" data-sort="rc"        onclick="setSortLineas('rc')">RC</th>
                             <th class="sortable" data-sort="telefonia" onclick="setSortLineas('telefonia')">Telefonía</th>
                             <th class="sortable" data-sort="mb"        onclick="setSortLineas('mb')">MB</th>
@@ -442,7 +465,7 @@
                         <tr>
                             <th>Estado</th>
                             <th>Número</th>
-                            <th>IMEI</th>
+                            <th>ICCID</th>
                             <th>Telefonía</th>
                             <th>RC</th>
                             <th style="text-align:right">MB Mes</th>
@@ -661,8 +684,8 @@
                     <input type="text" id="simNuevoNumero" placeholder="Ej: 994316194">
                 </div>
                 <div class="filter-group">
-                    <label>Nuevo IMEI</label>
-                    <input type="text" id="simNuevoImei" placeholder="IMEI de la nueva SIM">
+                    <label>Nuevo ICCID</label>
+                    <input type="text" id="simNuevoImei" placeholder="ICCID de la nueva SIM">
                 </div>
                 <div class="filter-group">
                     <label>Observación</label>

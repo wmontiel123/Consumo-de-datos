@@ -196,7 +196,7 @@
             <tr><td><strong>Telefonia</strong></td><td>Filtra por operadora: Personal, Claro, Tigo o Vox.</td></tr>
             <tr><td><strong>Estado</strong></td><td>Filtra por estado de la linea: <em>Todos / Activado / Desactivado</em>.</td></tr>
             <tr><td><strong>RC</strong></td><td>Busca por codigo de equipo (ej. <code>RC_55591</code>).</td></tr>
-            <tr><td><strong>N&deg; / IMEI</strong></td><td>Busca por numero de telefono o numero IMEI de la SIM.</td></tr>
+            <tr><td><strong>N&deg; / ICCID</strong></td><td>Busca por numero de telefono o numero ICCID de la SIM.</td></tr>
             <tr><td><strong>Desde / Hasta</strong></td><td>Acota el periodo de fechas a consultar.</td></tr>
         </table>
         <p>Hace clic en <span class="btn-sim btn-azul">Buscar</span> para aplicar los filtros, o en <span class="btn-sim btn-gris">Limpiar</span> para reiniciarlos.</p>
@@ -205,7 +205,7 @@
             <tr><th>Columna</th><th>Significado</th></tr>
             <tr><td><strong>Estado</strong></td><td><span class="badge badge-verde">&#9679; Activado</span> o <span class="badge badge-rojo">&#9679; Desactivado</span></td></tr>
             <tr><td><strong>Numero</strong></td><td>Numero de la SIM. Hace clic para filtrar el historial de esa linea.</td></tr>
-            <tr><td><strong>IMEI</strong></td><td>Identificador unico del modulo SIM.</td></tr>
+            <tr><td><strong>ICCID</strong></td><td>Identificador unico del modulo SIM.</td></tr>
             <tr><td><strong>RC</strong></td><td>Codigo del equipo al que pertenece la SIM. Hace clic para abrir el panel de detalle.</td></tr>
             <tr><td><strong>Telefonia</strong></td><td>Operadora de la SIM.</td></tr>
             <tr><td><strong>MB</strong></td><td>Megabytes consumidos en esa fecha.</td></tr>
@@ -230,7 +230,7 @@
         <h3 class="sub" style="font-size:14px;margin-top:18px">Filtros disponibles</h3>
         <table>
             <tr><th>Filtro</th><th>Descripcion</th></tr>
-            <tr><td><strong>Buscar linea</strong></td><td>Busqueda libre por Numero, IMEI, codigo RC. Los resultados se actualizan automaticamente mientras escribis.</td></tr>
+            <tr><td><strong>Buscar linea</strong></td><td>Busqueda libre por Numero, ICCID, codigo RC. Los resultados se actualizan automaticamente mientras escribis.</td></tr>
             <tr><td><strong>Telefonia</strong></td><td>Filtra por operadora.</td></tr>
             <tr><td><strong>Estado</strong></td><td>Filtra por Activado o Desactivado.</td></tr>
         </table>
@@ -239,7 +239,7 @@
             <tr><th>Columna</th><th>Significado</th></tr>
             <tr><td><strong>Estado</strong></td><td>Estado actual de la linea.</td></tr>
             <tr><td><strong>Numero</strong></td><td>Numero de la SIM. Clic para ver su historial en la vista Consumo.</td></tr>
-            <tr><td><strong>IMEI</strong></td><td>Identificador del modulo SIM.</td></tr>
+            <tr><td><strong>ICCID</strong></td><td>Identificador del modulo SIM.</td></tr>
             <tr><td><strong>Telefonia</strong></td><td>Operadora.</td></tr>
             <tr><td><strong>RC</strong></td><td>Equipo al que pertenece. Clic para ver el panel de detalle.</td></tr>
             <tr><td><strong>MB Mes</strong></td><td>Consumo del mes en curso.</td></tr>
@@ -301,9 +301,9 @@
             <tr><td><strong>Codigo</strong></td><td>Codigo unico del equipo (RC_XXXXX). Clic para abrir panel de detalle.</td></tr>
             <tr><td><strong>Ubicacion</strong></td><td>Descripcion textual de donde esta instalado.</td></tr>
             <tr><td><strong>SIM 1 - Num</strong></td><td>Numero de la SIM principal.</td></tr>
-            <tr><td><strong>SIM 1 - IMEI</strong></td><td>IMEI del modulo SIM principal.</td></tr>
+            <tr><td><strong>SIM 1 - ICCID</strong></td><td>ICCID del modulo SIM principal.</td></tr>
             <tr><td><strong>SIM 2 - Num</strong></td><td>Numero de la SIM de respaldo (si aplica).</td></tr>
-            <tr><td><strong>SIM 2 - IMEI</strong></td><td>IMEI del modulo SIM de respaldo.</td></tr>
+            <tr><td><strong>SIM 2 - ICCID</strong></td><td>ICCID del modulo SIM de respaldo.</td></tr>
             <tr><td><strong>Fecha Activacion</strong></td><td>Fecha en que el equipo fue dado de alta.</td></tr>
         </table>
         <h3 class="sub" style="margin-top:20px">Estadisticas rapidas</h3>
@@ -325,7 +325,7 @@
         <p>El panel muestra toda la informacion de ese equipo:</p>
         <div class="col2">
             <div class="card"><div class="card-title">&#128205; Datos del equipo</div>Codigo RC, regional, ubicacion, fecha de activacion y estado.</div>
-            <div class="card"><div class="card-title">&#128246; Estado de las SIMs</div>Estado individual de cada slot SIM: Activo, Sin Consumo, No Asignado, etc.</div>
+            <div class="card"><div class="card-title">&#128246; Estado de las SIMs</div>Estado individual de cada slot SIM: Activo, Sin Consumo, Desactivado, etc.</div>
             <div class="card"><div class="card-title">&#128202; Grafico de consumo</div>Historial mensual de MB consumidos por SIM en los ultimos meses.</div>
             <div class="card"><div class="card-title">&#128336; Historial de cambios</div>Registro de los cambios de SIM realizados en ese equipo.</div>
         </div>
@@ -367,14 +367,14 @@
                     <div class="btn-panel-demo btn-panel-demo-azul">&#128260; Solicitar Cambio SIM 2</div>
                 </div>
                 <div style="flex:1;min-width:180px;font-size:14px">
-                    Disponible en el <strong>Panel RC</strong>. Abre un formulario para indicar el nuevo numero y/o IMEI de la SIM. Si el equipo solo tiene una SIM, solo aparece el boton de SIM 1.
+                    Disponible en el <strong>Panel RC</strong>. Abre un formulario para indicar el nuevo numero y/o ICCID de la SIM. Si el equipo solo tiene una SIM, solo aparece el boton de SIM 1.
                 </div>
             </div>
         </div>
         <ol class="steps">
             <li>En el panel RC, presiona <strong>Solicitar Cambio SIM 1</strong> (o SIM 2).</li>
             <li>Se abre el formulario <em>Solicitar Cambio SIM Principal</em>.</li>
-            <li>Completa el nuevo <strong>Numero</strong> y/o <strong>IMEI</strong>. Al menos uno es obligatorio.</li>
+            <li>Completa el nuevo <strong>Numero</strong> y/o <strong>ICCID</strong>. Al menos uno es obligatorio.</li>
             <li>Podes agregar una observacion con el motivo del cambio.</li>
             <li>Presiona <strong>Enviar Solicitud</strong>. El formulario se cierra automaticamente al confirmar.</li>
         </ol>
@@ -386,8 +386,8 @@
                     <div style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;color:#9ca3af;background:#fff">Ej: 994316194</div>
                 </div>
                 <div style="margin-bottom:10px">
-                    <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Nuevo IMEI</div>
-                    <div style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;color:#9ca3af;background:#fff">IMEI de la nueva SIM</div>
+                    <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Nuevo ICCID</div>
+                    <div style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;color:#9ca3af;background:#fff">ICCID de la nueva SIM</div>
                 </div>
                 <div style="margin-bottom:14px">
                     <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Observacion</div>

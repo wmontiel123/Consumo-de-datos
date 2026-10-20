@@ -1744,3 +1744,11 @@ tbody tr:nth-child(odd) {
     transition: color 0.15s;
 }
 .file-item-remove:hover { color: #dc2626; background: none; transform: none; box-shadow: none; }
+/* Historial de cambios de SIM (pestaña Dispositivos) */
+.historial-sim-lista {
+    margin: 28px 0 16px;
+    overflow-x: auto;
+}
+.historial-sim-lista .panel-historial { font-size: 13px; }
+.historial-sim-lista .panel-historial th { font-size: 11px; }
+.historial-sim-lista .panel-empty { text-align: center; padding: 20px; color: #888; }
