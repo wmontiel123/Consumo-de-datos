@@ -7,7 +7,8 @@ ejecutarImportConsumo / recalcularEstadosPostImport):
   - CSV sin encabezado: numero, imei, estado_operador, consumo_mb, fecha, [observacion]
   - Telefonía detectada por nombre de archivo o carpeta (personal/claro/tigo/vox/m2m)
   - Consumos negativos (reinicio del ciclo de facturación, reportes M2M) se
-    recalculan o estiman; ver corregir_negativos().
+    guardan tal cual; con --corregir-negativos se recalculan o estiman
+    (ver corregir_negativos()).
   - Después del insert recalcula estados (consumo_sim, sim_estados) y refresca
     consumo_consolidado. El estado de dispositivos_ande lo sincroniza la app sola
     al abrirse (o con el botón "Actualizar estados").
@@ -401,6 +402,9 @@ def main():
                     help='Telefonía a asignar a los archivos M2M (por defecto: Tigo)')
     ap.add_argument('--sin-recalcular', action='store_true',
                     help='No recalcular estados de las líneas después del insert')
+    ap.add_argument('--corregir-negativos', action='store_true',
+                    help='Recalcular/estimar los consumos negativos (reinicio de ciclo, saltos de '
+                         'contador). Por defecto se guardan tal cual vienen en el archivo.')
     args = ap.parse_args()
 
     carpeta = Path(args.carpeta)
@@ -468,9 +472,11 @@ def main():
         negativos = sum(1 for filas in por_tel.values() for f in filas
                         if f['consumo_mb'] is not None and f['consumo_mb'] < 0)
         if negativos:
-            print(f'\n⚠️  {negativos} filas con consumo negativo en los archivos (reinicio de ciclo).')
-        print('\n🔧 Negativos que ya están en la BD:')
-        corregir_negativos(sorted(por_tel), ejecutar=False)
+            print(f'\n⚠️  {negativos} filas con consumo negativo en los archivos '
+                  f'(se guardan tal cual{"" if args.corregir_negativos else "; usá --corregir-negativos para corregirlos"}).')
+        if args.corregir_negativos:
+            print('\n🔧 Negativos que ya están en la BD:')
+            corregir_negativos(sorted(por_tel), ejecutar=False)
         print('\nℹ️  Simulación: no se escribió nada. Ejecutá con --ejecutar para insertar.')
         return
 
@@ -480,14 +486,15 @@ def main():
             print(f'⬆️  Insertando {len(nuevas)} filas de {tel}…')
             insertar('consumo_sim', nuevas)
 
-    # Corregir consumos negativos (reinicio de ciclo) y reflejarlo en las filas leídas
-    print('\n🔧 Corrigiendo consumos negativos…')
-    cambios = corregir_negativos(sorted(por_tel), ejecutar=True)
-    for tel, filas in por_tel.items():
-        for f in filas:
-            cl = (tel, clave_linea(f['numero'], f['imei']), f['fecha_consumo'])
-            if cl in cambios:
-                f['consumo_mb'] = cambios[cl]
+    # Corregir consumos negativos (solo si se pidió) y reflejarlo en las filas leídas
+    if args.corregir_negativos:
+        print('\n🔧 Corrigiendo consumos negativos…')
+        cambios = corregir_negativos(sorted(por_tel), ejecutar=True)
+        for tel, filas in por_tel.items():
+            for f in filas:
+                cl = (tel, clave_linea(f['numero'], f['imei']), f['fecha_consumo'])
+                if cl in cambios:
+                    f['consumo_mb'] = cambios[cl]
 
     if args.sin_recalcular:
         print('\n✅ Listo (sin recalcular estados).')
