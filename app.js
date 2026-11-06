@@ -3988,6 +3988,15 @@ async function ejecutarCambioSIM() {
     st.textContent   = '⏳ Guardando cambio...';
 
     try {
+        // 0. Ver qué pasa con las líneas del inventario (antes de escribir nada)
+        if (!inventarioLineas.length) await cargarLineas();
+        const plan = planCambioLineas(codigo, slot, numNuevo, imeiNuevo);
+        if (plan.error) {
+            st.style.color = '#ef4444'; st.style.background = '#fff5f5';
+            st.textContent = '❌ ' + plan.error;
+            return;
+        }
+
         // 1. Registrar en historial_sim
         const { error: hErr } = await window.clienteSupabase.from('historial_sim').insert({
             rc_codigo:    codigo,
@@ -4014,7 +4023,10 @@ async function ejecutarCambioSIM() {
         const { error: uErr } = await window.clienteSupabase.from('dispositivos_ande').update(upd).eq('codigo', codigo);
         if (uErr) throw uErr;
 
-        // 3. Actualizar datos locales
+        // 3. Inventario de líneas: la anterior queda disponible, la nueva asignada
+        await aplicarCambioLineas(plan, codigo, slot);
+
+        // 4. Actualizar datos locales
         const idx = todosLosDatos.findIndex(d => d.codigo === codigo);
         if (idx >= 0) Object.assign(todosLosDatos[idx], upd);
         construirMapasDevice(todosLosDatos);
@@ -4035,6 +4047,63 @@ async function ejecutarCambioSIM() {
         st.textContent      = '❌ ' + e.message;
         console.error(e);
     }
+}
+
+// Decide qué líneas del inventario cambian con un cambio de SIM (no escribe nada).
+// Devuelve { error } si no se puede seguir, o { liberar, asignar } (líneas o null).
+function planCambioLineas(codigo, slot, numNuevo, imeiNuevo) {
+    const device  = todosLosDatos.find(d => d.codigo === codigo);
+    const numAnt  = device ? (slot === 'sim1' ? device.sim1_num  : device.sim2_num)  : null;
+    const imeiAnt = device ? (slot === 'sim1' ? device.sim1_imei : device.sim2_imei) : null;
+
+    const asignar = (numNuevo || imeiNuevo) ? buscarLineaInventario(numNuevo, imeiNuevo) : null;
+    if (asignar && asignar.estado === 'desactivada')
+        return { error: `La línea ${refLinea(asignar)} está desactivada en el inventario. Activala en la pestaña Altas antes de usarla.` };
+
+    let liberar = (numAnt || imeiAnt) ? buscarLineaInventario(numAnt, imeiAnt) : null;
+    // Si la "anterior" y la "nueva" son la misma línea (p. ej. solo se corrigió el número), no se libera
+    if (liberar && asignar && liberar.id === asignar.id) liberar = null;
+    // Solo se liberan líneas asignadas (una desactivada sigue desactivada; una disponible ya lo está)
+    if (liberar && liberar.estado !== 'asignada') liberar = null;
+    // No liberar una línea que el inventario tiene en otro RC/slot
+    if (liberar && liberar.rc_codigo && (liberar.rc_codigo !== codigo || (liberar.sim_slot && liberar.sim_slot !== slot))) liberar = null;
+    // Ya asignada a este mismo RC y slot: nada que hacer
+    const asignarFinal = asignar && !(asignar.estado === 'asignada' && asignar.rc_codigo === codigo && asignar.sim_slot === slot)
+        ? asignar : null;
+
+    return { liberar, asignar: asignarFinal };
+}
+
+// Referencia legible de una línea para historial_estados (número, o ICCID si es M2M)
+function refLinea(l) {
+    return (esM2MTexto(l.numero) ? null : l.numero) || l.iccid;
+}
+
+// Aplica el plan de planCambioLineas en la tabla lineas y lo registra en historial_estados.
+// Si falla, solo avisa en consola: el cambio de SIM del RC ya quedó guardado.
+async function aplicarCambioLineas(plan, codigo, slot) {
+    if (!plan || (!plan.liberar && !plan.asignar)) return;
+    const motivo = `Cambio de SIM en ${codigo}`;
+
+    if (plan.liberar) {
+        const l = plan.liberar;
+        const { error } = await window.clienteSupabase.from('lineas')
+            .update({ estado: 'disponible', rc_codigo: null, sim_slot: null })
+            .eq('id', l.id);
+        if (error) console.warn('⚠️ No se pudo liberar la línea anterior:', error.message);
+        else await registrarEstado('linea', refLinea(l), l.estado, 'disponible', motivo);
+    }
+
+    if (plan.asignar) {
+        const l = plan.asignar;
+        const { error } = await window.clienteSupabase.from('lineas')
+            .update({ estado: 'asignada', rc_codigo: codigo, sim_slot: slot })
+            .eq('id', l.id);
+        if (error) console.warn('⚠️ No se pudo asignar la línea nueva:', error.message);
+        else await registrarEstado('linea', refLinea(l), l.estado, 'asignada', motivo);
+    }
+
+    await cargarLineas();
 }
 
 // ── Solicitudes (perfil viewer → genera solicitud en BD) ───────────
@@ -4747,43 +4816,63 @@ async function guardarAltaRC() {
     }
 }
 
-async function guardarAltaLinea() {
-    if (esViewer()) return;
-    const val = id => document.getElementById(id).value.trim();
-    const numero = val('altaLineaNumero') || null;
-    const iccid  = val('altaLineaIccid')  || null;
-    if (!numero && !iccid) return mostrarEstadoAlta('altaLineaStatus', false, 'Cargá el número o el ICCID.');
-    if (esM2MTexto(numero) && !iccid) return mostrarEstadoAlta('altaLineaStatus', false, 'Las líneas M2M necesitan el ICCID.');
-    if (buscarLineaInventario(numero, iccid))
-        return mostrarEstadoAlta('altaLineaStatus', false, 'Esa línea ya está en el inventario.');
+// Agrega una línea al inventario (valida duplicados y si ya está en un RC).
+// Devuelve la fila creada; lanza Error con un mensaje para el usuario si no se puede.
+async function crearLineaInventario({ numero, iccid, telefonia, observacion = null }) {
+    numero = esM2MTexto(numero) ? 'M2M' : (String(numero || '').trim() || null);
+    iccid  = limpiarIccid(iccid) || null;
+    if (!numero && !iccid) throw new Error('Cargá el número o el ICCID.');
+    if (numero === 'M2M' && !iccid) throw new Error('Las líneas M2M necesitan el ICCID.');
+    if (!telefonia) throw new Error('Elegí la telefonía.');
+    const existente = buscarLineaInventario(numero, iccid);
+    if (existente) throw new Error(`Ya está en el inventario (${ESTADO_HIST_LABEL[existente.estado] || existente.estado}${existente.rc_codigo ? ', ' + existente.rc_codigo : ''}).`);
 
     // Si ya está puesta en un RC, entra como asignada
     const rc  = rcQueUsa(numero, iccid);
     const dev = rc ? todosLosDatos.find(d => d.codigo === rc) : null;
     const slot = !dev ? null
-        : (String(dev.sim1_num || '').trim() === numero || normalizarImei(dev.sim1_imei) === normalizarImei(iccid)) ? 'sim1' : 'sim2';
+        : (String(dev.sim1_num || '').trim() === numero || (iccid && normalizarImei(dev.sim1_imei) === iccid)) ? 'sim1' : 'sim2';
 
+    const { data, error } = await window.clienteSupabase.from('lineas').insert({
+        numero,
+        iccid,
+        telefonia,
+        estado:      rc ? 'asignada' : 'disponible',
+        rc_codigo:   rc,
+        sim_slot:    slot,
+        observacion,
+        creado_por:  usuarioSesion(),
+    }).select();
+    if (error) {
+        if (error.code === '23505') throw new Error('Ese número o ICCID ya está en el inventario.');
+        throw error;
+    }
+    const fila = data?.[0];
+    if (fila) {
+        inventarioLineas.unshift(fila);
+        renderInventarioLineas();
+    }
+    await registrarEstado('linea', (numero === 'M2M' ? null : numero) || iccid, null, 'alta',
+                          rc ? `Ya estaba en ${rc}` : observacion);
+    return fila;
+}
+
+async function guardarAltaLinea() {
+    if (esViewer()) return;
+    const val = id => document.getElementById(id).value.trim();
     mostrarEstadoAlta('altaLineaStatus', true, '⏳ Guardando…');
     try {
-        const { error } = await window.clienteSupabase.from('lineas').insert({
-            numero:      esM2MTexto(numero) ? 'M2M' : numero,
-            iccid,
+        const fila = await crearLineaInventario({
+            numero:      val('altaLineaNumero'),
+            iccid:       val('altaLineaIccid'),
             telefonia:   document.getElementById('altaLineaTelefonia').value,
-            estado:      rc ? 'asignada' : 'disponible',
-            rc_codigo:   rc,
-            sim_slot:    slot,
             observacion: val('altaLineaObs') || null,
-            creado_por:  usuarioSesion(),
         });
-        if (error) {
-            if (error.code === '23505') throw new Error('Ese número o ICCID ya está en el inventario.');
-            throw error;
-        }
-        await registrarEstado('linea', (esM2MTexto(numero) ? null : numero) || iccid, null, 'alta',
-                              rc ? `Ya estaba en ${rc}` : val('altaLineaObs') || null);
         limpiarAltaLinea();
-        mostrarEstadoAlta('altaLineaStatus', true, rc ? `✅ Línea agregada (ya estaba en ${rc}).` : '✅ Línea agregada como disponible.');
-        await cargarLineas();
+        mostrarEstadoAlta('altaLineaStatus', true, fila?.rc_codigo
+            ? `✅ Línea agregada (ya estaba en ${fila.rc_codigo}).`
+            : '✅ Línea agregada como disponible.');
+        document.getElementById('altaLineaNumero').focus();
     } catch (e) {
         mostrarEstadoAlta('altaLineaStatus', false, '❌ ' + e.message);
         console.error(e);
@@ -4804,3 +4893,222 @@ async function cambiarEstadoLinea(id, activar) {
     await registrarEstado('linea', ref, linea.estado, nuevo, motivo.trim() || null);
     await cargarLineas();
 }
+
+
+// ══════════════════════════════════════════════════════════════════
+// ── LECTOR DE CÓDIGO DE BARRAS (ICCID) ────────────────────────────
+// ══════════════════════════════════════════════════════════════════
+// Los lectores funcionan como un teclado: escriben el código y mandan Enter.
+// Los campos de ICCID limpian lo leído, avisan si parece mal leído y con
+// Enter pasan al campo siguiente (en vez de enviar el formulario).
+
+// Prefijo del ICCID → telefonía (según los ICCID que ya hay en la base)
+const PREFIJOS_TELEFONIA = [
+    ['8959502', 'Claro'],
+    ['8959505', 'Personal'],
+    ['8959504', 'Tigo'],
+    ['8959512', 'Tigo'],
+];
+
+// Quita espacios, guiones, la F final de relleno y cualquier caracter que no sea dígito
+function limpiarIccid(v) {
+    return String(v || '').toUpperCase().replace(/[\s-]/g, '').replace(/F+$/, '').replace(/\D/g, '');
+}
+
+function telefoniaDeIccid(iccid) {
+    return PREFIJOS_TELEFONIA.find(([p]) => iccid.startsWith(p))?.[1] || null;
+}
+
+// Dígito verificador (Luhn). Claro y Personal lo traen siempre; los reportes M2M de Tigo no.
+function luhnValido(digitos) {
+    let suma = 0;
+    [...digitos].reverse().forEach((ch, k) => {
+        let n = +ch;
+        if (k % 2) { n *= 2; if (n > 9) n -= 9; }
+        suma += n;
+    });
+    return suma % 10 === 0;
+}
+
+// { error } si la lectura no sirve, { aviso } si conviene revisarla, {} si está bien
+function revisarIccid(iccid) {
+    if (!iccid) return { error: 'No se leyó ningún número.' };
+    if (iccid.length < 18 || iccid.length > 20)
+        return { error: `Tiene ${iccid.length} dígitos (un ICCID tiene entre 18 y 20). Volvé a escanear.` };
+    const tel = telefoniaDeIccid(iccid);
+    if ((tel === 'Claro' || tel === 'Personal') && !luhnValido(iccid))
+        return { error: 'El dígito verificador no coincide: probablemente se leyó mal. Volvé a escanear.' };
+    if (!tel) return { aviso: 'No se reconoce la telefonía por el prefijo.' };
+    return {};
+}
+
+// Avisito debajo del campo
+function avisoCampoIccid(input, texto, tipo) {
+    let el = input.parentElement.querySelector('.iccid-aviso');
+    if (!el) {
+        el = document.createElement('div');
+        el.className = 'iccid-aviso';
+        input.insertAdjacentElement('afterend', el);
+    }
+    el.textContent = texto || '';
+    el.dataset.tipo = tipo || '';
+}
+
+// Prepara un campo de ICCID para el lector. alEnter(input) se llama al recibir Enter.
+function prepararCampoIccid(id, alEnter) {
+    const input = document.getElementById(id);
+    if (!input || input.dataset.lector) return;
+    input.dataset.lector = '1';
+    input.classList.add('campo-iccid');
+    input.setAttribute('inputmode', 'numeric');
+    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('spellcheck', 'false');
+
+    const normalizar = () => {
+        if (!input.value.trim()) { avisoCampoIccid(input, ''); return; }
+        input.value = limpiarIccid(input.value);
+        const r = revisarIccid(input.value);
+        avisoCampoIccid(input, r.error || r.aviso || `✔ ${input.value.length} dígitos${telefoniaDeIccid(input.value) ? ' · ' + telefoniaDeIccid(input.value) : ''}`,
+                        r.error ? 'error' : r.aviso ? 'aviso' : 'ok');
+        return r;
+    };
+    input.addEventListener('change', normalizar);
+    input.addEventListener('keydown', e => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const r = normalizar();
+        if (r?.error) { sonidoLector(false); input.select(); return; }
+        if (alEnter) alEnter(input);
+    });
+}
+
+// Con Enter en un campo, pasar al siguiente (para los números escritos a mano)
+function enterPasaA(idCampo, idSiguiente) {
+    document.getElementById(idCampo)?.addEventListener('keydown', e => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        document.getElementById(idSiguiente)?.focus();
+    });
+}
+
+const irA = id => () => document.getElementById(id)?.focus();
+
+// Pitido corto para confirmar o avisar sin tener que mirar la pantalla
+let _audioLector = null;
+function sonidoLector(ok) {
+    try {
+        _audioLector = _audioLector || new (window.AudioContext || window.webkitAudioContext)();
+        const osc = _audioLector.createOscillator(), gan = _audioLector.createGain();
+        osc.frequency.value = ok ? 1200 : 220;
+        gan.gain.value = 0.08;
+        osc.connect(gan).connect(_audioLector.destination);
+        osc.start();
+        osc.stop(_audioLector.currentTime + (ok ? 0.08 : 0.35));
+    } catch (_) { /* sin audio */ }
+}
+
+function iniciarLectorIccid() {
+    // Alta de RC
+    enterPasaA('altaRcSim1Num', 'altaRcSim1Iccid');
+    enterPasaA('altaRcSim2Num', 'altaRcSim2Iccid');
+    prepararCampoIccid('altaRcSim1Iccid', irA('altaRcSim2Num'));
+    prepararCampoIccid('altaRcSim2Iccid', irA('altaRcMotivo'));
+
+    // Nueva línea: el prefijo elige la telefonía; Enter en el ICCID agrega la línea
+    enterPasaA('altaLineaNumero', 'altaLineaIccid');
+    prepararCampoIccid('altaLineaIccid', input => {
+        const tel = telefoniaDeIccid(input.value);
+        if (tel) document.getElementById('altaLineaTelefonia').value = tel;
+        guardarAltaLinea();
+    });
+    document.getElementById('altaLineaIccid')?.addEventListener('change', e => {
+        const tel = telefoniaDeIccid(limpiarIccid(e.target.value));
+        if (tel) document.getElementById('altaLineaTelefonia').value = tel;
+    });
+
+    // Cambio de SIM
+    enterPasaA('simNuevoNumero', 'simNuevoImei');
+    prepararCampoIccid('simNuevoImei', irA('simFechaCampo'));
+
+    // Carga rápida: cada Enter del lector procesa la lectura (también las erróneas, para listarlas)
+    const campoEscaneo = document.getElementById('escaneoIccid');
+    if (campoEscaneo) {
+        ['inputmode', 'autocomplete', 'spellcheck'].forEach((a, k) =>
+            campoEscaneo.setAttribute(a, ['numeric', 'off', 'false'][k]));
+        campoEscaneo.addEventListener('keydown', e => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            if (e.target.value.trim()) procesarEscaneo(e.target.value);
+        });
+    }
+    document.getElementById('escaneoNumero')?.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { cancelarEscaneoPendiente(); return; }
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        if (_escaneoPendiente) guardarEscaneo(_escaneoPendiente, e.target.value.trim());
+    });
+}
+
+// ── Carga rápida: cada lectura se agrega al inventario ────────────
+let _escaneoPendiente = null;          // ICCID esperando el número (modo "numero")
+const _escaneoTotales = { ok: 0, mal: 0 };
+
+function procesarEscaneo(valor) {
+    const iccid = limpiarIccid(valor);
+    const input = document.getElementById('escaneoIccid');
+    input.value = '';
+    avisoCampoIccid(input, '');
+
+    const r = revisarIccid(iccid);
+    const telefonia = document.getElementById('escaneoTelefonia').value || telefoniaDeIccid(iccid);
+    if (r.error)    return resultadoEscaneo(iccid, false, r.error);
+    if (!telefonia) return resultadoEscaneo(iccid, false, 'No se reconoce la telefonía: elegila arriba y volvé a escanear.');
+    if (buscarLineaInventario(null, iccid) || inventarioLineas.some(l => normalizarImei(l.iccid) === iccid))
+        return resultadoEscaneo(iccid, false, 'Ya está en el inventario.');
+
+    if (document.getElementById('escaneoModo').value === 'numero') {
+        _escaneoPendiente = iccid;
+        const grupo = document.getElementById('escaneoNumeroGroup');
+        grupo.style.display = '';
+        grupo.querySelector('label').textContent = `Número de la línea ${iccid}`;
+        const num = document.getElementById('escaneoNumero');
+        num.value = '';
+        num.focus();
+        return;
+    }
+    guardarEscaneo(iccid, document.getElementById('escaneoModo').value === 'm2m' ? 'M2M' : null);
+}
+
+async function guardarEscaneo(iccid, numero) {
+    const telefonia = document.getElementById('escaneoTelefonia').value || telefoniaDeIccid(iccid);
+    cancelarEscaneoPendiente();
+    try {
+        const fila = await crearLineaInventario({ numero, iccid, telefonia });
+        resultadoEscaneo(iccid, true, [numero, telefonia, fila?.rc_codigo ? `ya en ${fila.rc_codigo}` : 'disponible'].filter(Boolean).join(' · '));
+    } catch (e) {
+        resultadoEscaneo(iccid, false, e.message);
+    }
+}
+
+function cancelarEscaneoPendiente() {
+    _escaneoPendiente = null;
+    document.getElementById('escaneoNumeroGroup').style.display = 'none';
+    document.getElementById('escaneoIccid').focus();
+}
+
+function resultadoEscaneo(iccid, ok, texto) {
+    sonidoLector(ok);
+    _escaneoTotales[ok ? 'ok' : 'mal']++;
+    const lista = document.getElementById('escaneoLista');
+    const li = document.createElement('li');
+    li.className = ok ? 'escaneo-ok' : 'escaneo-mal';
+    li.innerHTML = `<span>${ok ? '✅' : '⚠️'} <strong>${escHtml(iccid) || '(vacío)'}</strong></span><span>${escHtml(texto)}</span>`;
+    lista.prepend(li);
+    while (lista.children.length > 30) lista.lastChild.remove();
+    document.getElementById('escaneoResumen').textContent =
+        `${_escaneoTotales.ok} agregada(s) · ${_escaneoTotales.mal} con problema`;
+    document.getElementById('escaneoIccid').focus();
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciarLectorIccid);
+else iniciarLectorIccid();

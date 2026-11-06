@@ -222,6 +222,43 @@
             </div>
 
             <div class="filters">
+                <h2>Carga rápida con lector</h2>
+                <p class="escaneo-ayuda">Hacé clic en el campo y escaneá las SIM una tras otra: cada lectura se agrega sola al inventario.</p>
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label>Telefonía</label>
+                        <select id="escaneoTelefonia">
+                            <option value="">Detectar por ICCID</option>
+                            <option value="Personal">Personal</option>
+                            <option value="Claro">Claro</option>
+                            <option value="Tigo">Tigo</option>
+                            <option value="Vox">Vox</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Después de cada ICCID</label>
+                        <select id="escaneoModo" onchange="document.getElementById('escaneoIccid').focus()">
+                            <option value="solo">Guardar enseguida (sin número)</option>
+                            <option value="numero">Pedir el número antes de guardar</option>
+                            <option value="m2m">Guardar como M2M</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="filter-row escaneo-campos">
+                    <div class="filter-group">
+                        <label>ICCID</label>
+                        <input type="text" id="escaneoIccid" class="campo-iccid campo-escaneo" placeholder="Escaneá el código de barras de la SIM">
+                    </div>
+                    <div class="filter-group" id="escaneoNumeroGroup" style="display:none">
+                        <label>Número de la línea</label>
+                        <input type="text" id="escaneoNumero" class="campo-escaneo" inputmode="numeric" autocomplete="off" placeholder="Escribí el número y Enter">
+                    </div>
+                </div>
+                <div id="escaneoResumen" class="escaneo-resumen"></div>
+                <ul id="escaneoLista" class="escaneo-lista"></ul>
+            </div>
+
+            <div class="filters">
                 <h2>Nueva línea</h2>
                 <div class="filter-row">
                     <div class="filter-group">

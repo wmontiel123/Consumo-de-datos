@@ -1807,3 +1807,22 @@ tbody tr:nth-child(odd) {
 .btn-linea-desactivar:hover { background: #fecaca; }
 .btn-linea-activar { background: #dcfce7; color: #15803d; }
 .btn-linea-activar:hover { background: #bbf7d0; }
+
+/* Lector de código de barras (ICCID) */
+.campo-iccid { font-family: 'Consolas', 'Courier New', monospace; letter-spacing: .5px; }
+.iccid-aviso { font-size: 12px; margin-top: 4px; min-height: 0; }
+.iccid-aviso[data-tipo="ok"]    { color: #15803d; }
+.iccid-aviso[data-tipo="aviso"] { color: #b45309; }
+.iccid-aviso[data-tipo="error"] { color: #dc2626; }
+.escaneo-ayuda { margin: 0 0 14px; color: #666; font-size: 14px; }
+.campo-escaneo { font-size: 20px !important; padding: 14px !important; }
+.campo-escaneo:focus { border-color: #16a34a !important; box-shadow: 0 0 0 4px rgba(22, 163, 74, .15) !important; }
+.escaneo-resumen { margin-top: 12px; font-weight: 600; color: #35398C; }
+.escaneo-lista { list-style: none; margin: 8px 0 0; padding: 0; max-height: 280px; overflow-y: auto; }
+.escaneo-lista li {
+    display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    padding: 8px 10px; border-radius: 8px; margin-bottom: 4px; font-size: 13px;
+}
+.escaneo-lista li strong { font-family: 'Consolas', 'Courier New', monospace; }
+.escaneo-ok  { background: #f0fdf4; color: #166534; }
+.escaneo-mal { background: #fff7ed; color: #9a3412; }
