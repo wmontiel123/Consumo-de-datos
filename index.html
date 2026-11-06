@@ -107,6 +107,187 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 Historial SIM
             </button>
+            <button class="tab-btn" onclick="cambiarTab('activaciones')" id="tabBtnActivaciones">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+                Activaciones
+            </button>
+            <button class="tab-btn" onclick="cambiarTab('altas')" id="tabBtnAltas">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                Altas
+            </button>
+        </div>
+
+        <!-- Tab: Activaciones (historial de altas, activaciones y desactivaciones) -->
+        <div id="tab-activaciones" style="display:none">
+            <div class="table-container">
+                <div class="table-header-row">
+                    <h2>Historial de activaciones y desactivaciones</h2>
+                </div>
+                <div class="historial-sim-buscar historial-filtros">
+                    <input type="text" id="activacionesBuscar" placeholder="Buscar por RC, número, ICCID, usuario o motivo…"
+                           oninput="renderActivaciones()">
+                    <select id="activacionesTipo" onchange="renderActivaciones()">
+                        <option value="">RC y líneas</option>
+                        <option value="rc">Solo RC</option>
+                        <option value="linea">Solo líneas</option>
+                    </select>
+                </div>
+                <div id="activacionesInfo" class="paginacion-info"></div>
+                <div class="historial-sim-lista">
+                    <table class="panel-historial">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Tipo</th>
+                                <th>RC / Línea</th>
+                                <th>Estado anterior → nuevo</th>
+                                <th>Usuario</th>
+                                <th>Motivo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="activacionesBody">
+                            <tr><td colspan="6" class="panel-empty">Cargando…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Altas (solo admin) -->
+        <div id="tab-altas" style="display:none">
+            <datalist id="dlRegionales"></datalist>
+            <datalist id="dlLineasDisponibles"></datalist>
+
+            <div class="filters">
+                <h2>Nuevo RC</h2>
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label>Código *</label>
+                        <input type="text" id="altaRcCodigo" placeholder="Ej: RC_55600">
+                    </div>
+                    <div class="filter-group">
+                        <label>Regional *</label>
+                        <input type="text" id="altaRcRegional" list="dlRegionales" placeholder="Elegí o escribí">
+                    </div>
+                    <div class="filter-group">
+                        <label>Tipo</label>
+                        <select id="altaRcTipo">
+                            <option value="">Activado</option>
+                            <option value="Legado">Legado</option>
+                            <option value="Satelital">Satelital</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Fecha de activación</label>
+                        <input type="date" id="altaRcFecha">
+                    </div>
+                </div>
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label>Ubicación (lat, long)</label>
+                        <input type="text" id="altaRcUbicacion" placeholder="Ej: -25.2637, -57.5759">
+                    </div>
+                </div>
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label>SIM 1 – Número</label>
+                        <input type="text" id="altaRcSim1Num" list="dlLineasDisponibles" placeholder="Número o M2M"
+                               onchange="completarIccidDesdeInventario('sim1')">
+                    </div>
+                    <div class="filter-group">
+                        <label>SIM 1 – ICCID</label>
+                        <input type="text" id="altaRcSim1Iccid" placeholder="ICCID">
+                    </div>
+                    <div class="filter-group">
+                        <label>SIM 2 – Número</label>
+                        <input type="text" id="altaRcSim2Num" list="dlLineasDisponibles" placeholder="Número o M2M (opcional)"
+                               onchange="completarIccidDesdeInventario('sim2')">
+                    </div>
+                    <div class="filter-group">
+                        <label>SIM 2 – ICCID</label>
+                        <input type="text" id="altaRcSim2Iccid" placeholder="ICCID (opcional)">
+                    </div>
+                </div>
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label>Motivo / observación</label>
+                        <input type="text" id="altaRcMotivo" placeholder="Opcional">
+                    </div>
+                </div>
+                <div id="altaRcStatus" class="alta-status"></div>
+                <div class="filter-buttons">
+                    <button onclick="guardarAltaRC()">Dar de alta el RC</button>
+                    <button class="btn-secondary" onclick="limpiarAltaRC()">Limpiar</button>
+                </div>
+            </div>
+
+            <div class="filters">
+                <h2>Nueva línea</h2>
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label>Número</label>
+                        <input type="text" id="altaLineaNumero" placeholder="Ej: 994316194 o M2M">
+                    </div>
+                    <div class="filter-group">
+                        <label>ICCID</label>
+                        <input type="text" id="altaLineaIccid" placeholder="ICCID de la SIM">
+                    </div>
+                    <div class="filter-group">
+                        <label>Telefonía *</label>
+                        <select id="altaLineaTelefonia">
+                            <option value="Personal">Personal</option>
+                            <option value="Claro">Claro</option>
+                            <option value="Tigo">Tigo</option>
+                            <option value="Vox">Vox</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Observación</label>
+                        <input type="text" id="altaLineaObs" placeholder="Opcional">
+                    </div>
+                </div>
+                <div id="altaLineaStatus" class="alta-status"></div>
+                <div class="filter-buttons">
+                    <button onclick="guardarAltaLinea()">Agregar al inventario</button>
+                    <button class="btn-secondary" onclick="limpiarAltaLinea()">Limpiar</button>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <div class="table-header-row">
+                    <h2>Inventario de líneas</h2>
+                </div>
+                <div class="historial-sim-buscar historial-filtros">
+                    <input type="text" id="lineasBuscar" placeholder="Buscar por número, ICCID o RC…"
+                           oninput="renderInventarioLineas()">
+                    <select id="lineasEstado" onchange="renderInventarioLineas()">
+                        <option value="">Todos los estados</option>
+                        <option value="disponible">Disponible</option>
+                        <option value="asignada">Asignada</option>
+                        <option value="desactivada">Desactivada</option>
+                    </select>
+                </div>
+                <div id="lineasInfo" class="paginacion-info"></div>
+                <div class="historial-sim-lista">
+                    <table class="panel-historial">
+                        <thead>
+                            <tr>
+                                <th>Número</th>
+                                <th>ICCID</th>
+                                <th>Telefonía</th>
+                                <th>Estado</th>
+                                <th>RC</th>
+                                <th>Cargada</th>
+                                <th>Por</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="lineasBody">
+                            <tr><td colspan="8" class="panel-empty">Cargando…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <!-- Tab: Historial de cambios de SIM -->

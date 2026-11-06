@@ -231,6 +231,9 @@ function aplicarRol() {
     // Ocultar botón "Actualizar Estados" (escribe en BD)
     document.getElementById('btnActualizarEstados').style.display  = 'none';
 
+    // Altas de RC y líneas: solo admin
+    document.getElementById('tabBtnAltas').style.display = 'none';
+
     // Actualizar labels de las tarjetas de estadísticas
     document.querySelector('.stat-activos h3').textContent      = 'Activados';
     document.querySelector('.stat-desactivados h3').textContent = 'Desactivados';
@@ -1466,6 +1469,8 @@ function cambiarTab(tab) {
         consumo:      ['tab-consumo',      'tabBtnConsumo'],
         dispositivos: ['tab-dispositivos', 'tabBtnDispositivos'],
         historial:    ['tab-historial',    'tabBtnHistorial'],
+        activaciones: ['tab-activaciones', 'tabBtnActivaciones'],
+        altas:        ['tab-altas',        'tabBtnAltas'],
     };
     Object.entries(tabs).forEach(([nombre, [div, btn]]) => {
         document.getElementById(div).style.display = nombre === tab ? 'block' : 'none';
@@ -1477,6 +1482,10 @@ function cambiarTab(tab) {
         if (mapaLeaflet) setTimeout(() => mapaLeaflet.invalidateSize(), 80);
     } else if (tab === 'historial') {
         cargarHistorialSIMLista();
+    } else if (tab === 'activaciones') {
+        cargarActivaciones();
+    } else if (tab === 'altas') {
+        prepararAltas();
     } else {
         cargarConsumos();  // usa caché si datos frescos (< 3 min)
     }
@@ -4108,7 +4117,11 @@ async function ejecutarSolicitudSaldo() {
 // ── Marcar estado del RC (activo / desactivado) ────────────────────
 async function marcarEstadoRC(codigo, estado) {
     const label = estado === 'activo' ? 'Activado' : 'Desactivado';
-    if (!confirm(`¿Marcar ${codigo} como ${label}?`)) return;
+    const motivo = prompt(`¿Marcar ${codigo} como ${label}?
+
+Motivo (opcional):`, '');
+    if (motivo === null) return;   // canceló
+    const estadoAnterior = todosLosDatos.find(d => d.codigo === codigo)?.estado ?? null;
     try {
         let estadoFinal = estado;
         let sim1_estado = undefined;
@@ -4153,6 +4166,8 @@ async function marcarEstadoRC(codigo, estado) {
 
         const idx = todosLosDatos.findIndex(d => d.codigo === codigo);
         if (idx >= 0) Object.assign(todosLosDatos[idx], filaActualizada[0]);
+
+        await registrarEstado('rc', codigo, estadoAnterior, estadoFinal, motivo.trim() || null);
 
         alert(`✅ ${codigo} marcado como ${label}.`);
         cerrarPanel();
@@ -4449,4 +4464,343 @@ async function ejecutarImportConsumo() {
 
     // Cerrar modal después de mostrar el éxito
     setTimeout(cerrarImportConsumo, 2000);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ── HISTORIAL DE ACTIVACIONES (pestaña Activaciones) ──────────────
+// ══════════════════════════════════════════════════════════════════
+
+let activacionesLista = null;      // filas de historial_estados (null = sin cargar)
+const ACTIVACIONES_MAX = 200;      // filas visibles
+
+const ESTADO_HIST_LABEL = {
+    alta:               'Alta',
+    activo:             'Activado',
+    sin_consumo:        'Activado (sin consumo)',
+    desactivado:        'Desactivado',
+    desactivado_manual: 'Desactivado',
+    disponible:         'Disponible',
+    asignada:           'Asignada',
+    desactivada:        'Desactivada',
+};
+
+// Registra una alta / activación / desactivación con el usuario logueado.
+// No corta la acción principal si falla: solo avisa en consola.
+async function registrarEstado(tipo, referencia, anterior, nuevo, motivo = null) {
+    const { error } = await window.clienteSupabase.from('historial_estados').insert({
+        tipo,
+        referencia,
+        estado_anterior: anterior,
+        estado_nuevo:    nuevo,
+        motivo,
+        usuario:         usuarioSesion(),
+    });
+    if (error) console.warn('⚠️ No se pudo registrar en historial_estados:', error.message);
+    else activacionesLista = null;   // forzar recarga la próxima vez
+}
+
+async function cargarActivaciones() {
+    const { data, error } = await window.clienteSupabase
+        .from('historial_estados')
+        .select('*')
+        .order('fecha', { ascending: false })
+        .limit(2000);
+    if (error) {
+        console.warn('⚠️ No se pudo cargar historial_estados:', error.message);
+        activacionesLista = [];
+    } else {
+        activacionesLista = data || [];
+    }
+    renderActivaciones();
+}
+
+function renderActivaciones() {
+    const tbody  = document.getElementById('activacionesBody');
+    const infoEl = document.getElementById('activacionesInfo');
+    if (!tbody || activacionesLista === null) return;
+
+    const q    = (document.getElementById('activacionesBuscar')?.value || '').trim().toLowerCase();
+    const tipo = document.getElementById('activacionesTipo')?.value || '';
+    const filas = activacionesLista.filter(h =>
+        (!tipo || h.tipo === tipo) &&
+        (!q || [h.referencia, h.usuario, h.motivo].some(v => String(v || '').toLowerCase().includes(q))));
+
+    if (!filas.length) {
+        tbody.innerHTML = `<tr><td colspan="6" class="panel-empty">${q || tipo ? 'Sin registros que coincidan' : 'Sin registros todavía'}</td></tr>`;
+        infoEl.textContent = '';
+        return;
+    }
+
+    const est = e => escHtml(ESTADO_HIST_LABEL[e] || e) || '-';
+    tbody.innerHTML = filas.slice(0, ACTIVACIONES_MAX).map(h => `
+        <tr>
+            <td style="white-space:nowrap">${formatearFechaHora(h.fecha)}</td>
+            <td>${h.tipo === 'rc' ? 'RC' : 'Línea'}</td>
+            <td>${h.tipo === 'rc'
+                    ? `<span class="link-num" onclick="abrirPanelRC(this.textContent)">${escHtml(h.referencia)}</span>`
+                    : escHtml(h.referencia)}</td>
+            <td>${h.estado_anterior ? est(h.estado_anterior) + ' → ' : ''}<strong>${est(h.estado_nuevo)}</strong></td>
+            <td>${escHtml(h.usuario) || '-'}</td>
+            <td style="color:#666">${escHtml(h.motivo) || '-'}</td>
+        </tr>`).join('');
+    infoEl.textContent = filas.length > ACTIVACIONES_MAX
+        ? `Mostrando los ${ACTIVACIONES_MAX} registros más recientes de ${filas.length}`
+        : `${filas.length} registro(s)`;
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// ── ALTAS DE RC Y LÍNEAS (pestaña Altas, solo admin) ──────────────
+// ══════════════════════════════════════════════════════════════════
+
+let inventarioLineas = [];
+
+const LINEA_ESTADO_CLS = {
+    disponible:  'badge-sin-consumo',
+    asignada:    'badge-activo',
+    desactivada: 'badge-desactivado',
+};
+
+const esM2MTexto = v => String(v || '').trim().toLowerCase() === 'm2m';
+
+async function prepararAltas() {
+    if (esViewer()) return;
+    const regionales = [...new Set(todosLosDatos.map(d => d.regional).filter(Boolean))].sort();
+    document.getElementById('dlRegionales').innerHTML =
+        regionales.map(r => `<option value="${escHtml(r)}">`).join('');
+    await cargarLineas();
+}
+
+async function cargarLineas() {
+    const { data, error } = await window.clienteSupabase
+        .from('lineas')
+        .select('*')
+        .order('creado_en', { ascending: false })
+        .limit(5000);
+    if (error) {
+        console.warn('⚠️ No se pudo cargar lineas:', error.message);
+        inventarioLineas = [];
+        document.getElementById('lineasBody').innerHTML =
+            `<tr><td colspan="8" class="panel-empty">❌ ${escHtml(error.message)}</td></tr>`;
+        return;
+    }
+    inventarioLineas = data || [];
+
+    // Sugerencias para los campos de SIM del alta de RC: solo líneas disponibles
+    document.getElementById('dlLineasDisponibles').innerHTML = inventarioLineas
+        .filter(l => l.estado === 'disponible')
+        .map(l => `<option value="${escHtml(l.numero || l.iccid)}">${escHtml([l.iccid, l.telefonia].filter(Boolean).join(' · '))}</option>`)
+        .join('');
+    renderInventarioLineas();
+}
+
+function renderInventarioLineas() {
+    const tbody  = document.getElementById('lineasBody');
+    const infoEl = document.getElementById('lineasInfo');
+    const q      = (document.getElementById('lineasBuscar')?.value || '').trim().toLowerCase();
+    const estado = document.getElementById('lineasEstado')?.value || '';
+    const filas  = inventarioLineas.filter(l =>
+        (!estado || l.estado === estado) &&
+        (!q || [l.numero, l.iccid, l.rc_codigo].some(v => String(v || '').toLowerCase().includes(q))));
+
+    if (!filas.length) {
+        tbody.innerHTML = `<tr><td colspan="8" class="panel-empty">${inventarioLineas.length ? 'Sin líneas que coincidan' : 'Todavía no hay líneas cargadas'}</td></tr>`;
+        infoEl.textContent = '';
+        return;
+    }
+
+    tbody.innerHTML = filas.slice(0, 300).map(l => `
+        <tr>
+            <td>${escHtml(l.numero) || '-'}</td>
+            <td>${escHtml(l.iccid) || '-'}</td>
+            <td>${escHtml(l.telefonia) || '-'}</td>
+            <td><span class="badge-estado ${LINEA_ESTADO_CLS[l.estado] || ''}">${escHtml(ESTADO_HIST_LABEL[l.estado] || l.estado)}</span></td>
+            <td>${l.rc_codigo
+                    ? `<span class="link-num" onclick="abrirPanelRC(this.textContent)">${escHtml(l.rc_codigo)}</span>${l.sim_slot ? ` (${l.sim_slot === 'sim1' ? 'SIM 1' : 'SIM 2'})` : ''}`
+                    : '-'}</td>
+            <td style="white-space:nowrap">${formatearFechaHora(l.creado_en)}</td>
+            <td>${escHtml(l.creado_por) || '-'}</td>
+            <td>${l.estado === 'desactivada'
+                    ? `<button class="btn-linea btn-linea-activar" onclick="cambiarEstadoLinea(${l.id}, true)">Activar</button>`
+                    : `<button class="btn-linea btn-linea-desactivar" onclick="cambiarEstadoLinea(${l.id}, false)">Desactivar</button>`}</td>
+        </tr>`).join('');
+    infoEl.textContent = filas.length > 300 ? `Mostrando 300 de ${filas.length} líneas` : `${filas.length} línea(s)`;
+}
+
+// Busca una línea del inventario por número (si no es M2M) o por ICCID
+function buscarLineaInventario(numero, iccid) {
+    const n = String(numero || '').trim();
+    const i = normalizarImei(iccid);
+    return inventarioLineas.find(l =>
+        (n && !esM2MTexto(n) && String(l.numero || '').trim() === n) ||
+        (i && normalizarImei(l.iccid) === i)) || null;
+}
+
+// RC (distinto de "excepto") que ya usa ese número o ICCID en alguna SIM
+function rcQueUsa(numero, iccid, excepto = null) {
+    const n = String(numero || '').trim();
+    const i = normalizarImei(iccid);
+    const dev = todosLosDatos.find(d => d.codigo !== excepto && (
+        (n && !esM2MTexto(n) && [d.sim1_num, d.sim2_num].some(x => String(x || '').trim() === n)) ||
+        (i && [d.sim1_imei, d.sim2_imei].some(x => normalizarImei(x) === i))));
+    return dev ? dev.codigo : null;
+}
+
+// Al elegir un número del inventario, completa su ICCID
+function completarIccidDesdeInventario(slot) {
+    const num   = document.getElementById(slot === 'sim1' ? 'altaRcSim1Num' : 'altaRcSim2Num').value;
+    const campo = document.getElementById(slot === 'sim1' ? 'altaRcSim1Iccid' : 'altaRcSim2Iccid');
+    const linea = buscarLineaInventario(num, null) || inventarioLineas.find(l => l.iccid === num.trim());
+    if (!linea) return;
+    if (!campo.value.trim() && linea.iccid) campo.value = linea.iccid;
+    if (linea.numero && esM2MTexto(linea.numero)) {
+        document.getElementById(slot === 'sim1' ? 'altaRcSim1Num' : 'altaRcSim2Num').value = 'M2M';
+    }
+}
+
+function mostrarEstadoAlta(id, ok, texto) {
+    const el = document.getElementById(id);
+    el.className   = 'alta-status ' + (ok ? 'alta-ok' : 'alta-error');
+    el.textContent = texto;
+}
+
+function limpiarAltaRC() {
+    ['altaRcCodigo', 'altaRcRegional', 'altaRcFecha', 'altaRcUbicacion', 'altaRcSim1Num', 'altaRcSim1Iccid',
+     'altaRcSim2Num', 'altaRcSim2Iccid', 'altaRcMotivo'].forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('altaRcTipo').value = '';
+    document.getElementById('altaRcStatus').className = 'alta-status';
+}
+
+function limpiarAltaLinea() {
+    ['altaLineaNumero', 'altaLineaIccid', 'altaLineaObs'].forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('altaLineaStatus').className = 'alta-status';
+}
+
+async function guardarAltaRC() {
+    if (esViewer()) return;
+    const val = id => document.getElementById(id).value.trim();
+    const codigo   = val('altaRcCodigo');
+    const regional = val('altaRcRegional');
+    const sims = [
+        { slot: 'sim1', numero: val('altaRcSim1Num') || null, iccid: val('altaRcSim1Iccid') || null },
+        { slot: 'sim2', numero: val('altaRcSim2Num') || null, iccid: val('altaRcSim2Iccid') || null },
+    ];
+    const motivo = val('altaRcMotivo') || null;
+
+    // Validaciones
+    if (!codigo || !regional) return mostrarEstadoAlta('altaRcStatus', false, 'Completá el código y la regional.');
+    if (todosLosDatos.some(d => String(d.codigo || '').toLowerCase() === codigo.toLowerCase()))
+        return mostrarEstadoAlta('altaRcStatus', false, `Ya existe un RC con el código ${codigo}.`);
+    if (!sims[0].numero && !sims[0].iccid)
+        return mostrarEstadoAlta('altaRcStatus', false, 'Cargá al menos el número o el ICCID de la SIM 1.');
+    for (const s of sims) {
+        const usado = rcQueUsa(s.numero, s.iccid);
+        if (usado) return mostrarEstadoAlta('altaRcStatus', false,
+            `${s.slot === 'sim1' ? 'SIM 1' : 'SIM 2'}: ese número/ICCID ya está en ${usado}.`);
+        const linea = buscarLineaInventario(s.numero, s.iccid);
+        if (linea && linea.estado === 'desactivada') return mostrarEstadoAlta('altaRcStatus', false,
+            `${s.slot === 'sim1' ? 'SIM 1' : 'SIM 2'}: esa línea está desactivada en el inventario.`);
+    }
+
+    mostrarEstadoAlta('altaRcStatus', true, '⏳ Guardando…');
+    try {
+        const tipo = val('altaRcTipo');
+        const { data, error } = await window.clienteSupabase.from('dispositivos_ande').insert({
+            codigo,
+            regional,
+            ubicacion:        val('altaRcUbicacion') || null,
+            tipo:             tipo || null,
+            fecha_activacion: val('altaRcFecha') || null,
+            sim1_num:         sims[0].numero,
+            sim1_imei:        sims[0].iccid,
+            sim2_num:         sims[1].numero,
+            sim2_imei:        sims[1].iccid,
+            estado:           'activo',
+        }).select();
+        if (error) throw error;
+
+        await registrarEstado('rc', codigo, null, 'alta', motivo);
+
+        // Marcar como asignadas las líneas del inventario que se usaron
+        for (const s of sims) {
+            const linea = buscarLineaInventario(s.numero, s.iccid);
+            if (!linea) continue;
+            const { error: lErr } = await window.clienteSupabase.from('lineas')
+                .update({ estado: 'asignada', rc_codigo: codigo, sim_slot: s.slot })
+                .eq('id', linea.id);
+            if (lErr) console.warn('⚠️ No se pudo asignar la línea:', lErr.message);
+            else await registrarEstado('linea', linea.numero || linea.iccid, linea.estado, 'asignada', `Asignada a ${codigo}`);
+        }
+
+        if (data?.[0]) {
+            todosLosDatos.push(data[0]);
+            construirMapasDevice(todosLosDatos);
+            poblarFiltroRegional([data[0]]);
+            aplicarFiltros();
+        }
+        limpiarAltaRC();
+        mostrarEstadoAlta('altaRcStatus', true, `✅ ${codigo} dado de alta.`);
+        await cargarLineas();
+    } catch (e) {
+        mostrarEstadoAlta('altaRcStatus', false, '❌ ' + e.message);
+        console.error(e);
+    }
+}
+
+async function guardarAltaLinea() {
+    if (esViewer()) return;
+    const val = id => document.getElementById(id).value.trim();
+    const numero = val('altaLineaNumero') || null;
+    const iccid  = val('altaLineaIccid')  || null;
+    if (!numero && !iccid) return mostrarEstadoAlta('altaLineaStatus', false, 'Cargá el número o el ICCID.');
+    if (esM2MTexto(numero) && !iccid) return mostrarEstadoAlta('altaLineaStatus', false, 'Las líneas M2M necesitan el ICCID.');
+    if (buscarLineaInventario(numero, iccid))
+        return mostrarEstadoAlta('altaLineaStatus', false, 'Esa línea ya está en el inventario.');
+
+    // Si ya está puesta en un RC, entra como asignada
+    const rc  = rcQueUsa(numero, iccid);
+    const dev = rc ? todosLosDatos.find(d => d.codigo === rc) : null;
+    const slot = !dev ? null
+        : (String(dev.sim1_num || '').trim() === numero || normalizarImei(dev.sim1_imei) === normalizarImei(iccid)) ? 'sim1' : 'sim2';
+
+    mostrarEstadoAlta('altaLineaStatus', true, '⏳ Guardando…');
+    try {
+        const { error } = await window.clienteSupabase.from('lineas').insert({
+            numero:      esM2MTexto(numero) ? 'M2M' : numero,
+            iccid,
+            telefonia:   document.getElementById('altaLineaTelefonia').value,
+            estado:      rc ? 'asignada' : 'disponible',
+            rc_codigo:   rc,
+            sim_slot:    slot,
+            observacion: val('altaLineaObs') || null,
+            creado_por:  usuarioSesion(),
+        });
+        if (error) {
+            if (error.code === '23505') throw new Error('Ese número o ICCID ya está en el inventario.');
+            throw error;
+        }
+        await registrarEstado('linea', (esM2MTexto(numero) ? null : numero) || iccid, null, 'alta',
+                              rc ? `Ya estaba en ${rc}` : val('altaLineaObs') || null);
+        limpiarAltaLinea();
+        mostrarEstadoAlta('altaLineaStatus', true, rc ? `✅ Línea agregada (ya estaba en ${rc}).` : '✅ Línea agregada como disponible.');
+        await cargarLineas();
+    } catch (e) {
+        mostrarEstadoAlta('altaLineaStatus', false, '❌ ' + e.message);
+        console.error(e);
+    }
+}
+
+async function cambiarEstadoLinea(id, activar) {
+    if (esViewer()) return;
+    const linea = inventarioLineas.find(l => l.id === id);
+    if (!linea) return;
+    const ref    = (esM2MTexto(linea.numero) ? null : linea.numero) || linea.iccid;
+    const nuevo  = activar ? (linea.rc_codigo ? 'asignada' : 'disponible') : 'desactivada';
+    const motivo = prompt(`¿${activar ? 'Activar' : 'Desactivar'} la línea ${ref}?\n\nMotivo (opcional):`, '');
+    if (motivo === null) return;
+
+    const { error } = await window.clienteSupabase.from('lineas').update({ estado: nuevo }).eq('id', id);
+    if (error) { alert('❌ Error: ' + error.message); return; }
+    await registrarEstado('linea', ref, linea.estado, nuevo, motivo.trim() || null);
+    await cargarLineas();
 }

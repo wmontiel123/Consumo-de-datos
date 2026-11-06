@@ -1783,3 +1783,27 @@ tbody tr:nth-child(odd) {
 .panel-hist-fila { display: flex; gap: 8px; margin: 2px 0; word-break: break-all; }
 .panel-hist-fila span { color: #999; min-width: 52px; flex-shrink: 0; }
 .panel-hist-pie { margin-top: 6px; color: #888; font-size: 11px; }
+
+/* Pestañas Activaciones y Altas */
+.historial-filtros { display: flex; gap: 10px; flex-wrap: wrap; }
+.historial-filtros select {
+    padding: 10px 14px;
+    border: 1px solid #dfe3ee;
+    border-radius: 10px;
+    font-size: 14px;
+    background: #fff;
+}
+.alta-status { display: none; margin-top: 12px; padding: 10px 12px; border-radius: 8px; font-size: 14px; }
+.alta-status.alta-ok    { display: block; background: #f0fdf4; color: #15803d; }
+.alta-status.alta-error { display: block; background: #fff5f5; color: #dc2626; }
+.btn-linea {
+    flex: none;
+    padding: 4px 10px;
+    font-size: 12px;
+    border-radius: 6px;
+}
+.btn-linea:hover { transform: none; box-shadow: none; }
+.btn-linea-desactivar { background: #fee2e2; color: #b91c1c; }
+.btn-linea-desactivar:hover { background: #fecaca; }
+.btn-linea-activar { background: #dcfce7; color: #15803d; }
+.btn-linea-activar:hover { background: #bbf7d0; }
