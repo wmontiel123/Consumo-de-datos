@@ -2514,15 +2514,25 @@ function _aplicarFiltrosLineasQuery(q, f) {
 }
 
 // Consulta los totales de MB para el label de la pestaña Líneas
+// (Supabase no tiene habilitados los agregados .sum(): se traen las dos columnas y se suman acá;
+//  la vista es pre-calculada, así que son pocas filas y rápido)
 async function consultarTotalesLineasBD() {
     const f = filtrosLineas();
-    let q = window.clienteSupabase
-        .from('vista_lineas_estado')
-        .select('mes:consumo_mes_mb.sum(),total:consumo_total_mb.sum()');
-    q = _aplicarFiltrosLineasQuery(q, f);
-    const { data, error } = await q;
-    if (error) { console.warn('⚠️ totales líneas:', error.message); return null; }
-    return data?.[0] ?? null;
+    let mes = 0, total = 0;
+    for (let desde = 0; ; desde += 1000) {
+        let q = window.clienteSupabase
+            .from('vista_lineas_estado')
+            .select('consumo_mes_mb,consumo_total_mb');
+        q = _aplicarFiltrosLineasQuery(q, f).range(desde, desde + 999);
+        const { data, error } = await q;
+        if (error) { console.warn('⚠️ totales líneas:', error.message); return null; }
+        (data || []).forEach(r => {
+            mes   += parseFloat(r.consumo_mes_mb)   || 0;
+            total += parseFloat(r.consumo_total_mb) || 0;
+        });
+        if (!data || data.length < 1000) break;
+    }
+    return { mes, total };
 }
 
 function actualizarTotalesLineas(totales) {
@@ -4547,6 +4557,8 @@ async function ejecutarImportConsumo() {
     cargarEstadosSIM()
         .then(() => cargarConsumos(true))
         .then(() => window.clienteSupabase.rpc('refresh_consumo_consolidado').catch(() => {}))
+        // Vista Líneas (vistas materializadas lineas_estado_mv / lineas_mes_mv)
+        .then(() => window.clienteSupabase.rpc('refresh_lineas_estado').catch(() => {}))
         .then(() => cargarDatos())
         .catch(e => console.error('❌ post-import refresh:', e));
 

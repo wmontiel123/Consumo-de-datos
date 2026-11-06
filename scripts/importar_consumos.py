@@ -540,6 +540,11 @@ def main():
     r = sesion.post(f'{REST}/rpc/refresh_consumo_consolidado', json={})
     print('   consumo_consolidado refrescado' if r.status_code < 300
           else f'   ⚠️  No se pudo refrescar consumo_consolidado: {r.text[:200]}')
+    # Vista Líneas de la app (vista_lineas_estado lee de vistas materializadas)
+    r = sesion.post(f'{REST}/rpc/refresh_lineas_estado', json={})
+    print('   vista de líneas refrescada' if r.status_code < 300
+          else f'   ⚠️  No se pudo refrescar la vista de líneas: {r.text[:200]}\n'
+               '      Ejecutá en el SQL Editor de Supabase:  select refresh_lineas_estado();')
 
     print(f'\n✅ Listo: {total_nuevas} registros insertados.')
 
