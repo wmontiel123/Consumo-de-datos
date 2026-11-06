@@ -72,7 +72,7 @@ function calcularSimEstadoDetallado(num, imei) {
     if ((!n || m2m) && !i) return 'nulo';
     const cNum  = (!m2m && n) ? mapaNumAConsumo.get(n)  : null;
     const cImei = i            ? mapaImeiAConsumo.get(i) : null;
-    if (!cNum && !cImei) return 'no_asignado';
+    if (!cNum && !cImei) return activaSinReporte(n, i) ? 'activo' : 'no_asignado';
     const eN = cNum  ? estadoConsDisplay(cNum)  : null;
     const eI = cImei ? estadoConsDisplay(cImei) : null;
     if (eN === 'desactivado' || eI === 'desactivado') return 'inactivo';
@@ -301,6 +301,9 @@ let _consumosTimestamp   = 0;    // timestamp del último fetch completo (para c
 const CONSUMOS_TTL_MS    = 3 * 60 * 1000; // 3 minutos
 let mapaNumAConsumo       = new Map();
 let mapaImeiAConsumo      = new Map();
+// Líneas asignadas en el inventario cuya telefonía no envía reportes de consumo (ej. VOX):
+// sin registros se muestran como activas en vez de "Desactivado". Claves 'n:<numero>' / 'i:<iccid>'.
+let lineasActivasSinReporte = new Set();
 let mapaNumADevice        = new Map();
 let mapaImeiADevice       = new Map();
 let mapaNumAEstadoActual  = new Map(); // numero → estado actual (tabla sim_estados)
@@ -368,6 +371,27 @@ function parsearFechaTexto(texto) {
             return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     }
     return null;
+}
+
+// true si el slot es una línea asignada de una telefonía sin reportes (ver lineasActivasSinReporte)
+function activaSinReporte(num, imei) {
+    const n = String(num || '').trim();
+    const i = normalizarImei(imei);
+    return (!!n && n.toLowerCase() !== 'm2m' && lineasActivasSinReporte.has('n:' + n))
+        || (!!i && lineasActivasSinReporte.has('i:' + i));
+}
+
+// Arma lineasActivasSinReporte con las líneas asignadas cuya telefonía no aparece en consumo
+function armarLineasActivasSinReporte(lineas, consumoData) {
+    const conReporte = new Set(consumoData.map(c => String(c.telefonia || '').trim().toLowerCase()).filter(Boolean));
+    lineasActivasSinReporte = new Set();
+    (lineas || []).forEach(l => {
+        if (conReporte.has(String(l.telefonia || '').trim().toLowerCase())) return;
+        const n = String(l.numero || '').trim();
+        const i = normalizarImei(l.iccid);
+        if (n && n.toLowerCase() !== 'm2m') lineasActivasSinReporte.add('n:' + n);
+        if (i) lineasActivasSinReporte.add('i:' + i);
+    });
 }
 
 // Normaliza IMEI: convierte notación científica a string entero
@@ -490,13 +514,16 @@ async function cargarDatos() {
         loading.style.display = 'block';
 
         // 3 fetches en paralelo: dispositivos + consumo + estados SIM
-        const [data, consumoData] = await Promise.all([
+        const [data, consumoData, , lineasAsignadas] = await Promise.all([
             fetchTodos('dispositivos_ande', '*', 'regional', true, 'id'),
             // Solo la fila más reciente de cada número / IMEI (vista consumo_ultimo)
             fetchTodos('consumo_ultimo', 'numero,imei,observacion,estado_operador,consumo_mb,estado,fecha_consumo,telefonia', 'fecha_consumo', false, 'id')
                 .catch(e => { console.warn('⚠️ No se pudo cargar consumo_ultimo:', e.message); return []; }),
-            cargarEstadosSIM()   // no depende de los otros — va en paralelo
+            cargarEstadosSIM(),  // no depende de los otros — va en paralelo
+            window.clienteSupabase.from('lineas').select('numero,iccid,telefonia').eq('estado', 'asignada').limit(5000)
+                .then(r => r.error ? [] : (r.data || []), () => [])
         ]);
+        armarLineasActivasSinReporte(lineasAsignadas, consumoData);
 
         // Construir mapas de consumo (datos vienen DESC → primer aparición = más reciente)
         mapaNumAConsumo  = new Map();
@@ -687,7 +714,7 @@ function simEstado(num, imei) {
     if (m2m && !i) return null;  // M2M sin IMEI
     const cNum  = (!m2m && n) ? mapaNumAConsumo.get(n)  : null;
     const cImei = i            ? mapaImeiAConsumo.get(i) : null;
-    if (!cNum && !cImei) return 'no_asignado';  // configurado pero sin registros
+    if (!cNum && !cImei) return activaSinReporte(n, i) ? 'activo' : 'no_asignado';  // configurado pero sin registros
     const eN = cNum  ? estadoConsDisplay(cNum)  : null;
     const eI = cImei ? estadoConsDisplay(cImei) : null;
     if (eN === 'desactivado' || eI === 'desactivado') return 'desactivado';
@@ -3534,7 +3561,7 @@ async function abrirPanelRC(codigo) {
                 ? consumoData.filter(c => normalizarImei(c.imei) === i)
                 : [];
 
-            if (!rowsN.length && !rowsI.length) return 'no_asignado';
+            if (!rowsN.length && !rowsI.length) return activaSinReporte(n, i) ? 'activo' : 'no_asignado';
 
             const rN = latestRow(rowsN);
             const rI = latestRow(rowsI);
@@ -4392,7 +4419,7 @@ async function recalcularEstadosPostImport(filas) {
         if ((!n || m2m) && !i) return 'nulo';
         const eN = (!m2m && n && estadoNum.has(n))  ? estadoNum.get(n)  : null;
         const eI = (i && estadoImei.has(i))          ? estadoImei.get(i) : null;
-        if (!eN && !eI) return 'no_asignado';
+        if (!eN && !eI) return activaSinReporte(n, i) ? 'activo' : 'no_asignado';
         if (eN === 'desactivado' || eI === 'desactivado') return 'inactivo';
         if (eN === 'activo'      || eI === 'activo')      return 'activo';
         return 'sin_consumo';
