@@ -711,19 +711,20 @@
                 <div id="paginacion-lineas-bd" class="paginacion"></div>
             </div>
 
-            <!-- Gráficos — vista Líneas (inventario único) -->
+            <!-- Gráficos — vista Líneas: histórico de la línea seleccionada en la tabla -->
             <div id="chartsLineasBD" class="charts no-print" style="display:none">
-                <div class="chart-container">
-                    <h3>Estado de Líneas</h3>
-                    <div class="chart-wrap"><canvas id="chartLineasEstado"></canvas></div>
+                <div class="chart-container chart-ancho">
+                    <h3>Histórico de Consumo · MB por día <span id="lineaHistTitulo" class="linea-hist-titulo"></span></h3>
+                    <div class="chart-wrap"><canvas id="chartLineaHistDiario"></canvas></div>
+                    <div id="lineaHistVacio" class="linea-hist-vacio" style="display:none"></div>
                 </div>
                 <div class="chart-container">
-                    <h3>Líneas por Telefonía</h3>
-                    <div class="chart-wrap"><canvas id="chartLineasTelefonia"></canvas></div>
+                    <h3>Consumo por Mes</h3>
+                    <div class="chart-wrap"><canvas id="chartLineaHistMensual"></canvas></div>
                 </div>
                 <div class="chart-container">
-                    <h3>Top 10 · Consumo Total</h3>
-                    <div class="chart-wrap"><canvas id="chartLineasTop10"></canvas></div>
+                    <h3>Resumen de la Línea</h3>
+                    <div id="lineaHistResumen" class="linea-hist-resumen"></div>
                 </div>
             </div>
 

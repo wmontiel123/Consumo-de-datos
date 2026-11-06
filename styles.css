@@ -1826,3 +1826,25 @@ tbody tr:nth-child(odd) {
 .escaneo-lista li strong { font-family: 'Consolas', 'Courier New', monospace; }
 .escaneo-ok  { background: #f0fdf4; color: #166534; }
 .escaneo-mal { background: #fff7ed; color: #9a3412; }
+
+/* ── Vista Líneas: histórico de la línea seleccionada ── */
+#tablaLineasBD tr.fila-linea { cursor: pointer; }
+#tablaLineasBD tr.fila-linea:hover td { background: #f5f6fc; }
+#tablaLineasBD tr.fila-seleccionada td { background: #eceefa; }
+#tablaLineasBD tr.fila-seleccionada td:first-child { box-shadow: inset 4px 0 0 #35398C; }
+.charts .chart-ancho { grid-column: 1 / -1; }
+.linea-hist-titulo { color: #8A35AB; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.linea-hist-vacio {
+    margin-top: -150px; position: relative; text-align: center;
+    color: #94a3b8; font-size: 13px; padding-bottom: 120px;
+}
+.linea-hist-resumen { display: flex; flex-direction: column; gap: 2px; }
+.linea-hist-resumen .lh-item {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    padding: 9px 2px; border-bottom: 1px solid #eef0f7; font-size: 13px;
+}
+.linea-hist-resumen .lh-item:last-child { border-bottom: none; }
+.linea-hist-resumen .lh-item span { color: #64748b; }
+.linea-hist-resumen .lh-item strong { color: #1A1A2E; text-align: right; }
+.linea-hist-resumen .lh-item small { color: #94a3b8; font-weight: 400; }
+.linea-hist-resumen .panel-loading, .linea-hist-resumen .panel-empty { padding: 40px 10px; }

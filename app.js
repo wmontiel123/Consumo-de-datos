@@ -117,9 +117,9 @@ function cerrarSesion() {
     if (chartConsumoHistorico){ chartConsumoHistorico.destroy();chartConsumoHistorico = null; }
     if (chartConsumoLineas)    { chartConsumoLineas.destroy();    chartConsumoLineas    = null; }
     if (chartConsumoTelefonia) { chartConsumoTelefonia.destroy(); chartConsumoTelefonia = null; }
-    if (chartLineasEstado)     { chartLineasEstado.destroy();     chartLineasEstado     = null; }
-    if (chartLineasTelefonia)  { chartLineasTelefonia.destroy();  chartLineasTelefonia  = null; }
-    if (chartLineasTop10)      { chartLineasTop10.destroy();      chartLineasTop10      = null; }
+    if (chartLineaHistDiario)  { chartLineaHistDiario.destroy();  chartLineaHistDiario  = null; }
+    if (chartLineaHistMensual) { chartLineaHistMensual.destroy(); chartLineaHistMensual = null; }
+    lineaHistSel = null;
     if (chartEquipoHistorico) { chartEquipoHistorico.destroy(); chartEquipoHistorico = null; }
     if (chartEquipoTop5)      { chartEquipoTop5.destroy();      chartEquipoTop5 = null; }
     if (chartEquipoRegional)  { chartEquipoRegional.destroy();  chartEquipoRegional = null; }
@@ -280,7 +280,9 @@ let paginaActual   = 1;
 const ITEMS_POR_PAGINA = 10;
 let chartBarras, chartLineas, chartTorta;
 let chartConsumoHistorico, chartConsumoLineas, chartConsumoTelefonia;
-let chartLineasEstado = null, chartLineasTelefonia = null, chartLineasTop10 = null;
+let chartLineaHistDiario = null, chartLineaHistMensual = null;
+let lineaHistSel = null;   // clave de la línea elegida en la vista Líneas (número, o ICCID si es M2M)
+let _lineaHistToken = 0;   // descarta respuestas viejas si se cambia de línea rápido
 let chartEquipoHistorico = null;
 let chartEquipoTop5      = null;   // pseudo-instancia (HTML nativo)
 let chartEquipoRegional  = null;
@@ -2541,19 +2543,6 @@ function filtrosLineas() {
     };
 }
 
-// Llama a lineas_charts RPC → devuelve { por_estado, por_telefonia, top10 }
-async function consultarLineasCharts() {
-    const f = filtrosLineas();
-    const { data, error } = await window.clienteSupabase.rpc('lineas_charts', {
-        p_telefonia: f.telefonia || null,
-        p_buscar:    f.buscar    || null,
-        p_rc_like:   null,
-        p_estado:    f.estado    || null,
-    });
-    if (error) { console.error('❌ lineas_charts RPC:', error); throw error; }
-    return data || {};
-}
-
 async function consultarLineasBD() {
     const f = filtrosLineas();
     let q = window.clienteSupabase
@@ -2574,15 +2563,13 @@ async function cargarLineasBD() {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:#35398C">⏳ Cargando...</td></tr>';
     infoEl.innerHTML = '';
     try {
-        const [{ data, count }, chartsData, totales] = await Promise.all([
+        const [{ data, count }, totales] = await Promise.all([
             consultarLineasBD(),
-            consultarLineasCharts().catch(e => { console.error('❌ lineas_charts:', e); return {}; }),
             consultarTotalesLineasBD().catch(() => null),
         ]);
         if (!_sesionActiva) return;
         totalLineasBD = count;
-        mostrarLineasBD(data, count);
-        crearGraficosLineasBD(chartsData, count);
+        mostrarLineasBD(data, count);   // también elige la línea de los gráficos
         actualizarTotalesLineas(totales);
     } catch (e) {
         tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#ef4444">❌ ${e.message}</td></tr>`;
@@ -2590,148 +2577,137 @@ async function cargarLineasBD() {
     }
 }
 
-function crearGraficosLineasBD(cd, totalCount) {
-    if (chartLineasEstado)    { chartLineasEstado.destroy();    chartLineasEstado    = null; }
-    if (chartLineasTelefonia) { chartLineasTelefonia.destroy(); chartLineasTelefonia = null; }
-    if (chartLineasTop10)     { chartLineasTop10.destroy();     chartLineasTop10     = null; }
+// ── Histórico de la línea seleccionada (gráficos de la vista Líneas) ──
 
-    const porEstado   = cd?.por_estado   || [];
-    const porTelefon  = cd?.por_telefonia || [];
-    const top10       = cd?.top10         || [];
+// Clave de la línea: el número, o el ICCID si es M2M / no tiene número
+function claveLineaHist(row) {
+    const n = String(row.numero || '').trim();
+    return (n && n.toLowerCase() !== 'm2m') ? n : normalizarImei(row.imei);
+}
 
-    // ── 1. Estado de Líneas (donut) ──────────────────────────────
-    const estadoMap = {};
-    porEstado.forEach(r => { estadoMap[r.estado] = Number(r.total || 0); });
-    const totalLineas  = Object.values(estadoMap).reduce((a,b)=>a+b, 0);
-    const estKeys      = Object.keys(estadoMap);
-    const EST_COLORES  = { activo: '#16a34a', desactivado: '#dc2626' };
-    const EST_LABELS   = { activo: 'Activado', desactivado: 'Desactivado' };
+function marcarFilaLineaHist() {
+    document.querySelectorAll('#tablaLineasBDBody tr.fila-linea').forEach(tr =>
+        tr.classList.toggle('fila-seleccionada', tr.dataset.clave === lineaHistSel));
+}
 
-    // totalCount viene de cargarLineasBD → coincide exactamente con el label de la tabla
-    const centerTotal = totalCount != null ? totalCount : totalLineas;
+async function seleccionarLineaHist(row) {
+    const clave = claveLineaHist(row);
+    if (!clave) return;
+    lineaHistSel = clave;
+    marcarFilaLineaHist();
 
-    if (estKeys.length) {
-        const centerPlugin = {
-            id: 'clCenter',
-            afterDraw(chart) {
-                const { ctx, chartArea } = chart;
-                if (!chartArea) return;
-                const cx = chartArea.left + chartArea.width  / 2;
-                const cy = chartArea.top  + chartArea.height / 2;
-                ctx.save();
-                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.font      = `bold ${Math.min(22, chartArea.width * 0.13)}px Arial`;
-                ctx.fillStyle = '#1A1A2E';
-                ctx.fillText(formatearNumero(centerTotal), cx, cy - 9);
-                ctx.font      = `${Math.min(11, chartArea.width * 0.065)}px Arial`;
-                ctx.fillStyle = '#888';
-                ctx.fillText('líneas únicas', cx, cy + 11);
-                ctx.restore();
-            }
-        };
-        chartLineasEstado = new Chart(
-            document.getElementById('chartLineasEstado').getContext('2d'), {
-            type: 'doughnut',
-            plugins: [centerPlugin],
-            data: {
-                labels: estKeys.map(k => EST_LABELS[k] || k),
-                datasets: [{ data: estKeys.map(k => estadoMap[k]),
-                             backgroundColor: estKeys.map(k => EST_COLORES[k] || '#6b7280'),
-                             borderColor: '#fff', borderWidth: 3 }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false, cutout: '65%',
-                plugins: {
-                    legend: { position: 'bottom', labels: { padding: 15, font: { size: 12 } } },
-                    tooltip: { callbacks: { label(ctx) {
-                        const pct = ((ctx.parsed / totalLineas)*100).toFixed(1);
-                        return ctx.label + ': ' + formatearNumero(ctx.parsed) + ' (' + pct + '%)';
-                    }}}
-                },
-                onClick: makeDblClickHandler(el => {
-                    document.getElementById('filtroLineasEstado').value = estKeys[el.index] || '';
-                    aplicarFiltrosLineas();
-                }),
-                onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; }
-            }
-        });
+    const token = ++_lineaHistToken;
+    const n   = String(row.numero || '').trim();
+    const m2m = !n || n.toLowerCase() === 'm2m';
+    const etiqueta = m2m ? `M2M ${clave}` : clave;
+    document.getElementById('lineaHistTitulo').textContent =
+        `· ${etiqueta}${row.rc ? ' · ' + row.rc : ''}${row.telefonia ? ' · ' + row.telefonia : ''}`;
+    document.getElementById('lineaHistResumen').innerHTML = '<div class="panel-loading">⏳ Cargando...</div>';
+
+    let q = window.clienteSupabase.from('consumo_sim')
+        .select('fecha_consumo,consumo_mb')
+        .order('fecha_consumo', { ascending: true })
+        .limit(2000);
+    q = m2m ? q.eq('imei', clave) : q.eq('numero', clave);
+    const { data, error } = await q;
+    if (token !== _lineaHistToken) return;          // ya se eligió otra línea
+    if (error) {
+        console.error('❌ histórico línea:', error);
+        document.getElementById('lineaHistResumen').innerHTML =
+            `<div class="panel-empty">❌ ${escHtml(error.message)}</div>`;
+        return;
     }
+    crearGraficosLineaHist(data || []);
+}
 
-    // ── 2. Líneas por Telefonía (barras horizontales) ─────────────
-    const TEL_COLORS = { Personal: '#1d4ed8', Claro: '#dc2626' };
-    if (porTelefon.length) {
-        const tLabels = porTelefon.map(r => r.telefonia);
-        const tVals   = porTelefon.map(r => Number(r.total));
-        const tColors = tLabels.map(k => TEL_COLORS[k] || '#6b7280');
-        chartLineasTelefonia = new Chart(
-            document.getElementById('chartLineasTelefonia').getContext('2d'), {
-            type: 'bar',
-            data: {
-                labels: tLabels,
-                datasets: [{ label: 'Líneas', data: tVals,
-                             backgroundColor: tColors.map(c => c + 'cc'),
-                             borderColor: tColors, borderWidth: 2,
-                             borderRadius: 6 }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                indexAxis: 'y',
-                plugins: {
-                    legend: { display: false },
-                    tooltip: { callbacks: { label(ctx) { return ' ' + formatearNumero(ctx.parsed.x) + ' líneas'; } } }
-                },
-                scales: {
-                    x: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' },
-                         ticks: { callback: v => formatearNumero(v) } },
-                    y: { grid: { display: false } }
-                },
-                onClick: makeDblClickHandler(el => {
-                    document.getElementById('filtroLineasTelefonia').value = tLabels[el.index] || '';
-                    aplicarFiltrosLineas();
-                }),
-                onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; }
-            }
-        });
-    }
+function crearGraficosLineaHist(rows) {
+    if (chartLineaHistDiario)  { chartLineaHistDiario.destroy();  chartLineaHistDiario  = null; }
+    if (chartLineaHistMensual) { chartLineaHistMensual.destroy(); chartLineaHistMensual = null; }
 
-    // ── 3. Top 10 consumo total (barras horizontales) ─────────────
-    if (top10.length) {
-        const t10Labels = top10.map(r => r.linea || '-');
-        const t10Vals   = top10.map(r => parseFloat(r.consumo_total_mb) || 0);
-        const GRAD_BASE = ['#35398C','#DA527D','#B44C80','#904783','#644087',
-                           '#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6'];
-        chartLineasTop10 = new Chart(
-            document.getElementById('chartLineasTop10').getContext('2d'), {
-            type: 'bar',
-            data: {
-                labels: t10Labels,
-                datasets: [{ label: 'MB total', data: t10Vals,
-                             backgroundColor: t10Labels.map((_, i) => GRAD_BASE[i % GRAD_BASE.length] + 'cc'),
-                             borderColor:     t10Labels.map((_, i) => GRAD_BASE[i % GRAD_BASE.length]),
-                             borderWidth: 2, borderRadius: 6 }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                indexAxis: 'y',
-                plugins: {
-                    legend: { display: false },
-                    tooltip: { callbacks: { label(ctx) { return ' ' + formatearNumero(Math.round(ctx.parsed.x)) + ' MB'; } } }
-                },
-                scales: {
-                    x: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' },
-                         ticks: { callback: v => formatearNumero(v) + ' MB' } },
-                    y: { grid: { display: false },
-                         ticks: { font: { size: 11 },
-                                  callback(v) { const l = t10Labels[v]; return l && l.length > 14 ? l.slice(0,14)+'…' : l; } } }
-                },
-                onClick: makeDblClickHandler(el => {
-                    document.getElementById('filtroLineasBuscar').value = t10Labels[el.index] || '';
-                    aplicarFiltrosLineas();
-                }),
-                onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; }
-            }
-        });
+    // MB por día (si un día viene repetido se suma) y por mes
+    const porDia = {};
+    rows.forEach(r => {
+        const f = r.fecha_consumo?.substring(0, 10);
+        if (f) porDia[f] = (porDia[f] || 0) + (parseFloat(r.consumo_mb) || 0);
+    });
+    const dias = Object.keys(porDia).sort();
+    const porMes = {};
+    dias.forEach(f => { const m = f.substring(0, 7); porMes[m] = (porMes[m] || 0) + porDia[f]; });
+    const meses = Object.keys(porMes).sort();
+
+    const vacio = document.getElementById('lineaHistVacio');
+    const resumen = document.getElementById('lineaHistResumen');
+    if (!dias.length) {
+        vacio.textContent = 'Esta línea no tiene registros en los reportes de consumo.';
+        vacio.style.display = '';
+        resumen.innerHTML = '<div class="panel-empty">Sin registros de consumo</div>';
+        return;
     }
+    vacio.style.display = 'none';
+
+    const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    const nombreMes = m => `${MESES[parseInt(m.substring(5, 7), 10) - 1]} ${m.substring(0, 4)}`;
+    const mb = v => formatearNumero(Math.round(v * 100) / 100) + ' MB';
+
+    chartLineaHistDiario = new Chart(document.getElementById('chartLineaHistDiario').getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: dias.map(f => formatearFecha(f)),
+            datasets: [{
+                label: 'MB', data: dias.map(f => porDia[f]),
+                borderColor: '#35398C', backgroundColor: 'rgba(53,57,140,0.08)',
+                borderWidth: 2, fill: true, tension: 0.3,
+                pointRadius: dias.length > 60 ? 0 : 3, pointHoverRadius: 5,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: c => ' ' + mb(c.parsed.y) } }
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 14, font: { size: 10 } } },
+                y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { callback: v => formatearNumero(v) } }
+            }
+        }
+    });
+
+    chartLineaHistMensual = new Chart(document.getElementById('chartLineaHistMensual').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: meses.map(nombreMes),
+            datasets: [{
+                label: 'MB', data: meses.map(m => porMes[m]),
+                backgroundColor: 'rgba(138,53,171,0.75)', borderColor: '#8A35AB',
+                borderWidth: 2, borderRadius: 6,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: c => ' ' + mb(c.parsed.y) } }
+            },
+            scales: {
+                x: { grid: { display: false } },
+                y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { callback: v => formatearNumero(v) } }
+            }
+        }
+    });
+
+    const total = dias.reduce((s, f) => s + porDia[f], 0);
+    const pico  = dias.reduce((a, f) => porDia[f] > porDia[a] ? f : a, dias[0]);
+    const sinConsumo = dias.filter(f => porDia[f] === 0).length;
+    const item = (lbl, val) => `<div class="lh-item"><span>${lbl}</span><strong>${val}</strong></div>`;
+    resumen.innerHTML =
+        item('Total del período', mb(total)) +
+        item('Promedio por día', mb(total / dias.length)) +
+        item('Día de mayor consumo', `${mb(porDia[pico])} <small>(${formatearFecha(pico)})</small>`) +
+        item('Días con reporte', formatearNumero(dias.length)) +
+        item('Días en 0 MB', formatearNumero(sinConsumo)) +
+        item('Primer / último reporte', `${formatearFecha(dias[0])} – ${formatearFecha(dias[dias.length - 1])}`);
 }
 
 function mostrarLineasBD(filas, totalServidor) {
@@ -2748,6 +2724,9 @@ function mostrarLineasBD(filas, totalServidor) {
         tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px">No se encontraron líneas.</td></tr>';
         infoEl.innerHTML = '';
         pagEl.innerHTML  = '';
+        lineaHistSel = null;
+        document.getElementById('lineaHistTitulo').textContent = '';
+        crearGraficosLineaHist([]);
         return;
     }
 
@@ -2782,6 +2761,14 @@ function mostrarLineasBD(filas, totalServidor) {
 
         const tr = document.createElement('tr');
         if (est === 'desactivado') tr.classList.add('fila-inactiva');
+        // Clic en la fila (fuera de los links) → gráficos con el histórico de esta línea
+        tr.classList.add('fila-linea');
+        tr.dataset.clave = claveLineaHist(row);
+        tr.title = 'Ver histórico de consumo de esta línea ↓';
+        tr.addEventListener('click', e => {
+            if (e.target.closest('.link-num, .link-rc')) return;
+            seleccionarLineaHist(row);
+        });
 
         tr.innerHTML = `
             <td><span class="badge-estado ${cfgEst.cls}">${cfgEst.label}</span></td>
@@ -2796,6 +2783,11 @@ function mostrarLineasBD(filas, totalServidor) {
     });
 
     renderPaginacionLineasBD(totalPaginas);
+
+    // Gráficos: se mantiene la línea elegida si está en esta página; si no, la primera
+    const elegida = filas.find(r => claveLineaHist(r) === lineaHistSel)
+                 || filas.find(r => claveLineaHist(r));
+    if (elegida) seleccionarLineaHist(elegida);
 }
 
 function renderPaginacionLineasBD(totalPaginas) {
