@@ -151,6 +151,22 @@ def _check(resp, que):
 
 
 def obtener_todos(tabla, params):
+    if params.get('order') == 'id.asc':
+        # Paginado por id (id > último) en vez de OFFSET: no se vuelve lento con tablas grandes
+        params = dict(params)
+        cols = params.get('select', '*')
+        if cols != '*' and 'id' not in cols.split(','):
+            params['select'] = cols + ',id'
+        filas, ultimo = [], 0
+        while True:
+            r = _check(sesion.get(f'{REST}/{tabla}', params={**params, 'id': f'gt.{ultimo}', 'limit': PAGE}),
+                       f'GET {tabla}')
+            lote = r.json()
+            filas.extend(lote)
+            if len(lote) < PAGE:
+                return filas
+            ultimo = lote[-1]['id']
+
     filas, desde = [], 0
     while True:
         r = _check(sesion.get(f'{REST}/{tabla}', params=params,
@@ -175,8 +191,20 @@ def lista_in(valores):
 def actualizar_in(tabla, campo, valores, payload):
     valores = list(valores)
     for i in range(0, len(valores), CHUNK):
-        _check(sesion.patch(f'{REST}/{tabla}', params={campo: lista_in(valores[i:i + CHUNK])},
-                            json=payload, headers={'Prefer': 'return=minimal'}), f'UPDATE {tabla}')
+        _patch_in(tabla, campo, valores[i:i + CHUNK], payload)
+
+
+def _patch_in(tabla, campo, lote, payload):
+    # Si el UPDATE supera el statement_timeout (57014: muchas filas por línea, ej. M2M
+    # con meses de historia), se parte el lote a la mitad y se reintenta.
+    resp = sesion.patch(f'{REST}/{tabla}', params={campo: lista_in(lote)},
+                        json=payload, headers={'Prefer': 'return=minimal'})
+    if resp.status_code >= 300 and '57014' in resp.text and len(lote) > 1:
+        mitad = len(lote) // 2
+        _patch_in(tabla, campo, lote[:mitad], payload)
+        _patch_in(tabla, campo, lote[mitad:], payload)
+        return
+    _check(resp, f'UPDATE {tabla}')
 
 
 # ── Duplicados ───────────────────────────────────────────────────
@@ -210,7 +238,8 @@ def recalcular_estados(filas, telefonia, grupo_m2m):
             'backup': r['telefonia'] == 'Personal' and 'backup' in (r['observacion'] or '').lower(),
             'mb': float(r['consumo_mb'] or 0),
         }
-        if n and (n not in max_num or f > max_num[n]['fecha']):
+        # 'M2M' no es un número: usarlo de clave actualizaría todas las M2M a la vez
+        if n and not es_m2m(n) and (n not in max_num or f > max_num[n]['fecha']):
             max_num[n] = info
         if i and (i not in max_imei or f > max_imei[i]['fecha']):
             max_imei[i] = info
@@ -226,7 +255,7 @@ def recalcular_estados(filas, telefonia, grupo_m2m):
     for r in obtener_todos('consumo_sim', params):
         n = (r.get('numero') or '').strip()
         i = normalizar_imei(r.get('imei'))
-        if n and n not in estado_num:
+        if n and not es_m2m(n) and n not in estado_num:
             estado_num[n] = 'desactivado'
         if i and i not in estado_imei:
             estado_imei[i] = 'desactivado'
