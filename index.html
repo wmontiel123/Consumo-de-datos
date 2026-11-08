@@ -72,6 +72,36 @@
                     </div>
                 </div>
                 <button class="login-btn" id="loginBtn" onclick="intentarLogin()">Ingresar</button>
+                <p class="login-alt">¿No tenés usuario? <a href="#" onclick="mostrarSolicitudAcceso(true); return false;">Solicitar acceso</a></p>
+            </div>
+
+            <!-- Solicitud de acceso (se aprueba por mail desde soporte) -->
+            <div class="login-body" id="solicitudBody" style="display:none">
+                <div id="solicitudForm">
+                    <p class="solicitud-intro">Completá tus datos. La solicitud llega a soporte para su aprobación y, si se aprueba, te enviamos un correo para crear tu contraseña.</p>
+                    <div id="solicitudError" class="login-error" style="display:none"></div>
+                    <div class="login-group">
+                        <input type="text" id="solNombre" class="sol-input" placeholder="Nombre y apellido" maxlength="100" autocomplete="name">
+                    </div>
+                    <div class="login-group">
+                        <input type="email" id="solEmail" class="sol-input" placeholder="Correo electrónico" maxlength="254" autocomplete="email">
+                    </div>
+                    <div class="login-group">
+                        <input type="text" id="solUsuario" class="sol-input" placeholder="Usuario deseado (ej. jperez)" maxlength="30" autocomplete="off"
+                               oninput="this.value = this.value.toLowerCase().replace(/[^a-z0-9._-]/g, '')">
+                    </div>
+                    <div class="login-group">
+                        <textarea id="solMotivo" class="sol-input" rows="3" maxlength="500" placeholder="¿Para qué necesitás el acceso? (área, tarea)"></textarea>
+                    </div>
+                    <!-- Trampa para bots: oculto para las personas -->
+                    <input type="text" id="solWeb" class="sol-trampa" tabindex="-1" autocomplete="off" aria-hidden="true">
+                    <button class="login-btn" id="solBtn" onclick="enviarSolicitudAcceso()">Enviar solicitud</button>
+                </div>
+                <div id="solicitudOk" class="solicitud-ok" style="display:none">
+                    <strong>¡Solicitud enviada!</strong>
+                    <p>Soporte la va a revisar. Si se aprueba, vas a recibir un correo con un enlace para crear tu contraseña.</p>
+                </div>
+                <p class="login-alt"><a href="#" onclick="mostrarSolicitudAcceso(false); return false;">← Volver al inicio de sesión</a></p>
             </div>
 
         </div>

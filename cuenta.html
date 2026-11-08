@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Solo scripts propios y conexión a Supabase; sin referrer (el enlace es personal) -->
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src https://rnnsvvujedwcvcjyyajm.supabase.co; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+    <meta name="referrer" content="no-referrer">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Cuenta · Gestión de Equipos ANDE</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="login-overlay">
+        <div class="login-card cuenta-card">
+            <div class="login-header">
+                <div class="login-brand">
+                    <span class="brand-text"><span class="brand-i">I</span>NOVASI</span>
+                </div>
+                <h2 class="login-greeting" id="cuentaTitulo">Cuenta</h2>
+                <p class="login-subtitle" id="cuentaSubtitulo">Gestión de Equipos ANDE</p>
+            </div>
+            <div class="login-body" id="cuentaCuerpo">
+                <div class="cuenta-cargando">⏳ Verificando el enlace…</div>
+            </div>
+        </div>
+    </div>
+    <script src="cuenta.js"></script>
+</body>
+</html>

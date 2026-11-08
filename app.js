@@ -187,6 +187,64 @@ async function intentarLogin() {
     _activarSesion(usuario, rol);
 }
 
+// ── Solicitud de acceso (pantalla de login) ──────────────────────
+// La Edge Function "solicitud-usuario" guarda la solicitud y la manda por mail
+// a los aprobadores; el usuario se crea recién cuando se aprueba desde el mail.
+function mostrarSolicitudAcceso(mostrar) {
+    document.querySelector('#loginOverlay .login-body:not(#solicitudBody)').style.display = mostrar ? 'none' : '';
+    document.getElementById('solicitudBody').style.display = mostrar ? '' : 'none';
+    document.querySelector('#loginOverlay .login-greeting').textContent = mostrar ? 'Solicitar acceso' : '¡Bienvenido!';
+    document.querySelector('#loginOverlay .login-subtitle').textContent =
+        mostrar ? 'Pedí un usuario para la aplicación' : 'Ingresá tus credenciales para continuar';
+    if (mostrar) {
+        document.getElementById('solicitudForm').style.display = '';
+        document.getElementById('solicitudOk').style.display = 'none';
+        document.getElementById('solNombre').focus();
+    }
+}
+
+async function enviarSolicitudAcceso() {
+    const val = id => document.getElementById(id).value.trim();
+    const datos = {
+        accion: 'solicitar',
+        nombre: val('solNombre'),
+        email: val('solEmail').toLowerCase(),
+        usuario: val('solUsuario').toLowerCase(),
+        motivo: val('solMotivo'),
+        web: document.getElementById('solWeb').value,   // trampa para bots
+    };
+    const errorEl = document.getElementById('solicitudError');
+    const mostrarError = txt => { errorEl.textContent = txt; errorEl.style.display = 'flex'; };
+    errorEl.style.display = 'none';
+
+    // Mismas reglas que valida el servidor (acá solo para avisar antes)
+    if (datos.nombre.length < 3) return mostrarError('Ingresá tu nombre y apellido.');
+    if (!/^[^@\s<>]+@[^@\s<>]+\.[a-z]{2,}$/i.test(datos.email)) return mostrarError('Ingresá un correo válido.');
+    if (!/^[a-z0-9._-]{3,30}$/.test(datos.usuario))
+        return mostrarError('El usuario debe tener de 3 a 30 caracteres: letras minúsculas, números, punto o guion.');
+    if (datos.motivo.length < 10) return mostrarError('Contá brevemente para qué necesitás el acceso.');
+
+    const btn = document.getElementById('solBtn');
+    btn.disabled = true; btn.textContent = 'Enviando…';
+    try {
+        const { data, error } = await window.clienteSupabase.functions.invoke('solicitud-usuario', { body: datos });
+        if (error) {
+            // La función devuelve { error: 'mensaje' } con el detalle para el usuario
+            let msg = 'No se pudo enviar la solicitud. Probá de nuevo más tarde.';
+            try { msg = (await error.context.json()).error || msg; } catch (_) { /* sin cuerpo */ }
+            return mostrarError(msg);
+        }
+        if (!data?.ok) return mostrarError(data?.error || 'No se pudo enviar la solicitud.');
+        ['solNombre', 'solEmail', 'solUsuario', 'solMotivo'].forEach(id => { document.getElementById(id).value = ''; });
+        document.getElementById('solicitudForm').style.display = 'none';
+        document.getElementById('solicitudOk').style.display = '';
+    } catch (e) {
+        mostrarError('No se pudo conectar con el servidor. Revisá tu conexión.');
+    } finally {
+        btn.disabled = false; btn.textContent = 'Enviar solicitud';
+    }
+}
+
 // Activa la UI y guarda la sesión en sessionStorage (se borra al cerrar la pestaña)
 function _activarSesion(usuario, rol) {
     _sesionActiva = true;

@@ -1848,3 +1848,47 @@ tbody tr:nth-child(odd) {
 .linea-hist-resumen .lh-item strong { color: #1A1A2E; text-align: right; }
 .linea-hist-resumen .lh-item small { color: #94a3b8; font-weight: 400; }
 .linea-hist-resumen .panel-loading, .linea-hist-resumen .panel-empty { padding: 40px 10px; }
+
+/* ── Solicitud de acceso (login) y página cuenta.html ── */
+.login-alt { margin-top: 16px; text-align: center; font-size: 13px; color: #64748b; }
+.login-alt a { color: #8A35AB; font-weight: 600; text-decoration: none; }
+.login-alt a:hover { text-decoration: underline; }
+.solicitud-intro, .cuenta-intro { font-size: 13px; color: #475569; line-height: 1.5; margin: 0 0 16px; }
+.login-group .sol-input {
+    width: 100%; padding: 13px 14px; background: #f4f5fb; border: 2px solid transparent;
+    border-radius: 12px; font-size: 14px; color: #1A1A2E; outline: none; font-family: inherit;
+    resize: vertical; box-sizing: border-box;
+}
+.login-group .sol-input:focus { border-color: #8A35AB; background: #fff; box-shadow: 0 0 0 4px rgba(138,53,171,0.1); }
+.sol-trampa { position: absolute; left: -10000px; width: 1px; height: 1px; opacity: 0; }
+.solicitud-ok { background: #f0fdf4; border-left: 3px solid #16a34a; border-radius: 8px; padding: 14px 16px; color: #166534; font-size: 14px; }
+.solicitud-ok p { margin: 6px 0 0; font-size: 13px; }
+#loginOverlay { overflow-y: auto; }
+#loginOverlay .login-card { margin: 24px 16px; }
+
+.cuenta-card { max-width: 480px; }
+.cuenta-cargando { text-align: center; color: #35398C; padding: 20px 0; }
+.cuenta-detalle { width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 13px; }
+.cuenta-detalle th { text-align: left; color: #64748b; font-weight: 500; padding: 6px 12px 6px 0; vertical-align: top; width: 92px; }
+.cuenta-detalle td { padding: 6px 0; color: #1A1A2E; word-break: break-word; }
+.cuenta-opciones { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.cuenta-opcion { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border: 2px solid #e5e8f5; border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 600; }
+.cuenta-opcion small { font-weight: 400; color: #64748b; margin-left: 4px; }
+.cuenta-opcion:has(input:checked).op-viewer   { border-color: #16a34a; background: #f0fdf4; }
+.cuenta-opcion:has(input:checked).op-admin    { border-color: #35398C; background: #eef0fb; }
+.cuenta-opcion:has(input:checked).op-rechazar { border-color: #dc2626; background: #fef2f2; }
+.cuenta-msg { border-radius: 8px; padding: 14px 16px; font-size: 14px; line-height: 1.5; margin-bottom: 14px; }
+.cuenta-msg-ok    { background: #f0fdf4; border-left: 3px solid #16a34a; color: #166534; }
+.cuenta-msg-info  { background: #eff6ff; border-left: 3px solid #3b82f6; color: #1e3a8a; }
+.cuenta-msg-error { background: #fff0f3; border-left: 3px solid #DA527D; color: #9f1239; }
+.cuenta-alerta { color: #dc2626; font-weight: 600; }
+a.login-btn.cuenta-link { display: block; text-align: center; text-decoration: none; box-sizing: border-box; }
+.cuenta-ver { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #475569; margin: -4px 0 10px; cursor: pointer; }
+.cuenta-reglas { list-style: none; padding: 0; margin: 0 0 14px; font-size: 12.5px; color: #94a3b8; columns: 2; }
+.cuenta-reglas li { padding: 2px 0 2px 18px; position: relative; break-inside: avoid; }
+.cuenta-reglas li::before { content: '○'; position: absolute; left: 0; }
+.cuenta-reglas li.ok { color: #16a34a; }
+.cuenta-reglas li.ok::before { content: '✓'; }
+.login-btn:disabled { opacity: .55; cursor: not-allowed; transform: none; box-shadow: none; }
+@media (max-width: 480px) { .cuenta-reglas { columns: 1; } .login-body { padding: 24px 20px 28px; } }
+.cuenta-card .login-group input { padding: 14px 16px; }
