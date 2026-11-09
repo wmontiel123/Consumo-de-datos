@@ -102,7 +102,66 @@
         });
     }
 
-    // ── Activación ─────────────────────────────────────────────
+    // ── Aprobación de reseteo de contraseña ────────────────────
+    function vistaAprobacionReseteo(d) {
+        titulo.textContent = 'Reseteo de contraseña';
+        subtitulo.textContent = 'Revisá los datos y confirmá';
+        const fila = (k, v) => `<tr><th>${k}</th><td>${v}</td></tr>`;
+        const tabla = `<table class="cuenta-detalle">
+            ${fila('Usuario', `<b>${esc(d.usuario)}</b>${d.rol ? ` (${ROL[d.rol] || esc(d.rol)})` : ''}`)}
+            ${fila('Enviar enlace a', esc(d.email))}
+            ${fila('Solicitado', fecha(d.creado_en))}
+        </table>`;
+        if (!d.valido) {
+            const estado = d.estado === 'pendiente'
+                ? (d.vencido ? 'El enlace venció (24 horas). El usuario puede pedir el reseteo de nuevo.' : 'Este enlace ya no es válido.')
+                : `El pedido ya fue <b>${d.estado === 'rechazada' ? 'rechazado' : 'aprobado'}</b>` +
+                  (d.resuelto_por ? ` por ${esc(d.resuelto_por)}` : '') + (d.resuelto_en ? ` el ${fecha(d.resuelto_en)}` : '') + '.';
+            cuerpo.innerHTML = tabla + `<div class="cuenta-msg cuenta-msg-info">${estado}</div>`;
+            return;
+        }
+        const aviso = d.coincide
+            ? `<div class="cuenta-msg cuenta-msg-ok">El correo coincide con el registrado para este usuario.</div>`
+            : `<div class="cuenta-msg cuenta-msg-error"><b>Atención:</b> ${d.email_registrado
+                  ? `el correo no coincide con el registrado (${esc(d.email_registrado)}).`
+                  : 'este usuario no tiene correo registrado.'}
+               Confirmá con la persona por otro medio antes de aprobar.</div>`;
+        const opcion = (valor, texto, clase) =>
+            `<label class="cuenta-opcion ${clase}"><input type="radio" name="decision" value="${valor}"
+                ${decisionInicial === valor ? 'checked' : ''}> ${texto}</label>`;
+        cuerpo.innerHTML = tabla + aviso + `
+            <div class="cuenta-opciones">
+                ${opcion('aprobar', 'Aprobar reseteo <small>se envía el enlace al correo indicado</small>', 'op-viewer')}
+                ${opcion('rechazar', 'Rechazar', 'op-rechazar')}
+            </div>
+            <div id="cuentaError" class="login-error" style="display:none"></div>
+            <button class="login-btn" id="btnConfirmar">Confirmar</button>`;
+        document.getElementById('btnConfirmar').addEventListener('click', async () => {
+            const sel = document.querySelector('input[name="decision"]:checked');
+            const err = document.getElementById('cuentaError');
+            if (!sel) { err.textContent = 'Elegí una opción.'; err.style.display = 'flex'; return; }
+            if (sel.value === 'aprobar' && !d.coincide &&
+                !confirm(`El correo no coincide con el registrado. ¿Confirmaste que ${d.email} es de "${d.usuario}"?`)) return;
+            const btn = document.getElementById('btnConfirmar');
+            btn.disabled = true; btn.textContent = 'Procesando…';
+            try {
+                const r = await llamar({ accion: 'resolver_reseteo', token, decision: sel.value });
+                if (r.decision === 'rechazar') {
+                    mensaje('info', `Reseteo de <b>${esc(r.usuario)}</b> rechazado.`, false);
+                } else {
+                    mensaje('ok', `Reseteo de <b>${esc(r.usuario)}</b> aprobado.<br>` +
+                        (r.mail_solicitante
+                            ? `Se envió el enlace a ${esc(r.email)} (vence en 24 horas).`
+                            : '<span class="cuenta-alerta">No se pudo enviar el mail al usuario. Avisá a soporte.</span>'), false);
+                }
+            } catch (e) {
+                btn.disabled = false; btn.textContent = 'Confirmar';
+                err.textContent = e.message; err.style.display = 'flex';
+            }
+        });
+    }
+
+    // ── Activación / contraseña nueva ──────────────────────────
     const REGLAS = [
         ['largo', 'Al menos 12 caracteres', p => p.length >= 12 && p.length <= 128],
         ['letra', 'Una letra', p => /[A-Za-z]/.test(p)],
@@ -110,19 +169,25 @@
         ['simbolo', 'Un símbolo (ej. ! @ # . -)', p => /[^A-Za-z0-9]/.test(p)],
     ];
 
-    function vistaActivacion(d) {
-        titulo.textContent = 'Activá tu cuenta';
-        subtitulo.textContent = 'Creá tu contraseña';
+    // reseteo = true: contraseña nueva por reseteo; false: activación de cuenta nueva
+    function vistaActivacion(d, reseteo = false) {
+        titulo.textContent = reseteo ? 'Contraseña nueva' : 'Activá tu cuenta';
+        subtitulo.textContent = reseteo ? 'Restablecé tu contraseña' : 'Creá tu contraseña';
         if (!d.valido) {
             if (d.estado === 'activada') mensaje('info', 'Esta cuenta ya fue activada. Ingresá con tu usuario y contraseña.');
+            else if (d.estado === 'completada') mensaje('info', 'La contraseña ya se cambió con este enlace. Ingresá con la nueva.');
             else mensaje('error', d.vencido
-                ? 'El enlace de activación venció (48 horas). Escribí a soporte@inovasi.com.py para que te envíen uno nuevo.'
+                ? (reseteo
+                    ? 'El enlace venció (24 horas). Pedí el reseteo de nuevo desde el inicio de sesión.'
+                    : 'El enlace de activación venció (48 horas). Escribí a soporte@inovasi.com.py para que te envíen uno nuevo.')
                 : 'Este enlace ya no es válido.');
             return;
         }
         cuerpo.innerHTML = `
-            <p class="cuenta-intro">Hola <b>${esc(d.nombre)}</b>. Tu usuario es <b>${esc(d.usuario)}</b>
-               (${ROL[d.rol] || ''}). Creá una contraseña que no uses en otro sitio.</p>
+            <p class="cuenta-intro">${reseteo
+                ? `Usuario <b>${esc(d.usuario)}</b>. Creá una contraseña nueva, distinta de la anterior. Al guardarla se cierran tus sesiones abiertas.`
+                : `Hola <b>${esc(d.nombre)}</b>. Tu usuario es <b>${esc(d.usuario)}</b>
+               (${ROL[d.rol] || ''}). Creá una contraseña que no uses en otro sitio.`}</p>
             <div class="login-group"><div class="input-icon-wrap">
                 <input type="password" id="pwd1" placeholder="Contraseña nueva" autocomplete="new-password" maxlength="128">
             </div></div>
@@ -136,7 +201,7 @@
                 <li data-r="igual">Las dos coinciden</li>
             </ul>
             <div id="cuentaError" class="login-error" style="display:none"></div>
-            <button class="login-btn" id="btnActivar" disabled>Activar cuenta</button>`;
+            <button class="login-btn" id="btnActivar" disabled>${reseteo ? 'Guardar contraseña' : 'Activar cuenta'}</button>`;
 
         const p1 = document.getElementById('pwd1'), p2 = document.getElementById('pwd2');
         const btn = document.getElementById('btnActivar');
@@ -156,13 +221,16 @@
         });
         btn.addEventListener('click', async () => {
             const err = document.getElementById('cuentaError');
-            btn.disabled = true; btn.textContent = 'Activando…'; err.style.display = 'none';
+            const textoBtn = btn.textContent;
+            btn.disabled = true; btn.textContent = 'Guardando…'; err.style.display = 'none';
             try {
-                const r = await llamar({ accion: 'activar', token, password: p1.value });
+                const r = await llamar({ accion: reseteo ? 'resetear' : 'activar', token, password: p1.value });
                 p1.value = p2.value = '';
-                mensaje('ok', `¡Listo! La cuenta <b>${esc(r.usuario)}</b> está activa. Ya podés ingresar.`);
+                mensaje('ok', reseteo
+                    ? `¡Listo! Se cambió la contraseña de <b>${esc(r.usuario)}</b>. Ya podés ingresar con la nueva.`
+                    : `¡Listo! La cuenta <b>${esc(r.usuario)}</b> está activa. Ya podés ingresar.`);
             } catch (e) {
-                btn.textContent = 'Activar cuenta'; evaluar();
+                btn.textContent = textoBtn; evaluar();
                 err.textContent = e.message; err.style.display = 'flex';
             }
         });
@@ -179,6 +247,8 @@
             const d = await llamar({ accion: 'ver', token });
             if (d.tipo === 'aprobacion') vistaAprobacion(d);
             else if (d.tipo === 'activacion') vistaActivacion(d);
+            else if (d.tipo === 'aprobacion_reseteo') vistaAprobacionReseteo(d);
+            else if (d.tipo === 'reseteo') vistaActivacion(d, true);
             else mensaje('error', 'El enlace no es válido o ya no existe.');
         } catch (e) {
             mensaje('error', `No se pudo verificar el enlace: ${esc(e.message)}`);

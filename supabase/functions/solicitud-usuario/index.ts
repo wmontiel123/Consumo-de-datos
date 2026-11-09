@@ -7,6 +7,9 @@
 //   ver       : la página cuenta.html muestra qué hay detrás de un enlace
 //   resolver  : aprobar (viewer/admin) o rechazar → mail al solicitante
 //   activar   : el usuario aprobado crea su contraseña
+//   solicitar_reseteo : el login (tras una contraseña incorrecta) pide restablecerla
+//   resolver_reseteo  : un aprobador aprueba o rechaza → mail con el enlace al usuario
+//   resetear          : el usuario crea su contraseña nueva
 //
 // Secretos (Supabase → Edge Functions → Secrets):
 //   SMTP_USER       (obligatorio) cuenta de Zoho que envía, ej. soporte@inovasi.com.py
@@ -46,7 +49,8 @@ const MENSAJES: Record<string, [number, string]> = {
     DECISION_INVALIDA:         [400, 'Decisión no válida.'],
     PASSWORD_DEBIL:            [400, 'La contraseña no cumple la política: mínimo 12 caracteres, con letras, números y un símbolo.'],
     PASSWORD_CONTIENE_USUARIO: [400, 'La contraseña no puede contener el nombre de usuario.'],
-    USUARIO_NO_ENCONTRADO:     [404, 'No se encontró el usuario a activar. Contactá a soporte.'],
+    USUARIO_NO_ENCONTRADO:     [404, 'No se encontró el usuario. Contactá a soporte.'],
+    PASSWORD_REPETIDA:         [400, 'La contraseña nueva tiene que ser distinta de la anterior.'],
 };
 
 function cors(req: Request): Record<string, string> {
@@ -198,9 +202,118 @@ async function solicitar(req: Request, b: Record<string, unknown>): Promise<Resp
 
 async function ver(req: Request, b: Record<string, unknown>): Promise<Response> {
     if (!tokenValido(b.token)) return json(req, 200, { valido: false });
-    const { data, error } = await db.rpc('ver_token_cuenta', { p_token_hash: await sha256(b.token) });
+    const hash = await sha256(b.token);
+    const { data, error } = await db.rpc('ver_token_cuenta', { p_token_hash: hash });
     if (error) return errorDb(req, error);
-    return json(req, 200, data);
+    if ((data as Record<string, unknown>)?.tipo) return json(req, 200, data);
+    // No es de alta de usuario: ¿es de reseteo de contraseña?
+    const { data: r, error: e2 } = await db.rpc('ver_token_reseteo', { p_token_hash: hash });
+    if (e2) return errorDb(req, e2);
+    return json(req, 200, r);
+}
+
+// ── Reseteo de contraseña ────────────────────────────────────────
+// La respuesta al solicitante es siempre la misma: no revela si el usuario existe.
+const OK_RESETEO = { ok: true };
+
+async function solicitarReseteo(req: Request, b: Record<string, unknown>): Promise<Response> {
+    if (typeof b.web === 'string' && b.web.trim() !== '') return json(req, 200, OK_RESETEO);
+    const usuario = String(b.usuario ?? '').trim().toLowerCase();
+    const email   = String(b.email ?? '').trim().toLowerCase();
+    if (!/^[a-z0-9._-]{1,60}$/.test(usuario))
+        return json(req, 400, { error: 'Ingresá tu nombre de usuario.' });
+    if (email.length > 254 || !/^[^@\s<>]+@[^@\s<>]+\.[a-z]{2,}$/i.test(email))
+        return json(req, 400, { error: 'Ingresá un correo válido.' });
+
+    const ip = ipDe(req);
+    const { data, error } = await db.rpc('crear_solicitud_reseteo', {
+        p_usuario: usuario, p_email: email, p_ip: ip, p_user_agent: req.headers.get('user-agent') ?? '',
+    });
+    if (error) return errorDb(req, error);
+    const s = data as Record<string, unknown>;
+    if (!s?.avisar) return json(req, 200, OK_RESETEO);
+
+    const expira = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+    const coincide = s.coincide === true;
+    const aviso = coincide
+        ? `<p style="color:#16a34a">✔ El correo coincide con el registrado para este usuario.</p>`
+        : `<p style="color:#dc2626;font-weight:600">⚠ ${s.email_registrado
+              ? `El correo NO coincide con el registrado (${esc(s.email_registrado)}).`
+              : 'Este usuario no tiene correo registrado.'}
+           Confirmá con la persona por otro medio antes de aprobar: el enlace se enviará a ${esc(s.email)}.</p>`;
+    let enviados = 0;
+    for (const aprobador of APROBADORES) {
+        const token = nuevoToken();
+        const { error: e } = await db.from('tokens_reseteo').insert({
+            token_hash: await sha256(token), reseteo_id: s.id, tipo: 'aprobacion_reseteo',
+            destinatario: aprobador, expira_en: expira,
+        });
+        if (e) { console.error('tokens_reseteo:', e.message); continue; }
+        const url = (d: string) => `${APP_URL}/cuenta.html#t=${token}&d=${d}`;
+        const ok = await enviarMail([aprobador], `Reseteo de contraseña: ${usuario}`, marco('Reseteo de contraseña', `
+          <p>Se pidió restablecer la contraseña de un usuario de Gestión de Equipos ANDE:</p>
+          <table style="border-collapse:collapse;margin:8px 0 12px">
+            <tr><td style="padding:3px 12px 3px 0;color:#64748b">Usuario</td><td><b>${esc(s.usuario)}</b> (${esc(s.rol)})</td></tr>
+            <tr><td style="padding:3px 12px 3px 0;color:#64748b">Enviar enlace a</td><td>${esc(s.email)}</td></tr>
+            <tr><td style="padding:3px 12px 3px 0;color:#64748b">Desde IP</td><td>${esc(ip)}</td></tr>
+          </table>
+          ${aviso}
+          <p>${boton(url('aprobar'), 'Aprobar reseteo', '#16a34a')}
+             ${boton(url('rechazar'), 'Rechazar', '#dc2626')}</p>
+          <p style="color:#64748b;font-size:12px">Cada botón abre una página para confirmar. El enlace es personal,
+          de un solo uso y vence en 24 horas. Si no reconocés este pedido, rechazalo.</p>`));
+        if (ok) enviados++;
+    }
+    await db.from('auditoria_seguridad').insert({
+        evento: enviados ? 'mail_reseteo_enviado' : 'mail_reseteo_fallido',
+        usuario, ip, detalle: { reseteo: s.id, enviados },
+    });
+    return json(req, 200, OK_RESETEO);
+}
+
+async function resolverReseteo(req: Request, b: Record<string, unknown>): Promise<Response> {
+    if (!tokenValido(b.token)) return json(req, 410, { error: MENSAJES.TOKEN_INVALIDO[1] });
+    const decision = String(b.decision ?? '');
+    const enlace = nuevoToken();
+    const { data, error } = await db.rpc('resolver_reseteo', {
+        p_token_hash: await sha256(b.token), p_decision: decision,
+        p_hash_reseteo: await sha256(enlace), p_ip: ipDe(req),
+    });
+    if (error) return errorDb(req, error);
+    const r = data as Record<string, string>;
+    const aprobada = decision === 'aprobar';
+    let mailOk = true;
+    if (aprobada) {
+        mailOk = await enviarMail([r.email], 'Restablecé tu contraseña', marco('Restablecer contraseña', `
+          <p>Se aprobó tu pedido para restablecer la contraseña del usuario <b>${esc(r.usuario)}</b>.</p>
+          <p>Creá una contraseña nueva desde este enlace (un solo uso, vence en 24 horas):</p>
+          <p>${boton(`${APP_URL}/cuenta.html#t=${enlace}`, 'Crear contraseña nueva', '#35398C')}</p>
+          <p style="color:#64748b;font-size:12px">Si no lo pediste vos, no uses el enlace y avisá a soporte@inovasi.com.py.</p>`));
+    }
+    await enviarMail(APROBADORES, `Reseteo ${aprobada ? 'aprobado' : 'rechazado'}: ${r.usuario}`, marco('Reseteo resuelto', `
+      <p>El reseteo de contraseña de <b>${esc(r.usuario)}</b> fue <b>${aprobada ? 'aprobado' : 'rechazado'}</b>
+      por ${esc(r.resuelto_por)}.${aprobada ? ` Enlace enviado a ${esc(r.email)}.` : ''}</p>
+      ${aprobada && !mailOk ? '<p style="color:#dc2626">No se pudo enviar el enlace al usuario.</p>' : ''}`));
+    return json(req, 200, { ok: true, decision, usuario: r.usuario, email: r.email, mail_solicitante: mailOk });
+}
+
+async function resetear(req: Request, b: Record<string, unknown>): Promise<Response> {
+    if (!tokenValido(b.token)) return json(req, 410, { error: MENSAJES.TOKEN_INVALIDO[1] });
+    const password = String(b.password ?? '');
+    if (password.length < 12 || password.length > 128 || !/[A-Za-z]/.test(password)
+        || !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password))
+        return json(req, 400, { error: MENSAJES.PASSWORD_DEBIL[1] });
+    const { data, error } = await db.rpc('completar_reseteo', {
+        p_token_hash: await sha256(b.token), p_password: password, p_ip: ipDe(req),
+    });
+    if (error) return errorDb(req, error);
+    const r = data as Record<string, string>;
+    // Aviso de seguridad: si no fue el usuario, se entera
+    await enviarMail([r.email], 'Tu contraseña fue cambiada', marco('Contraseña cambiada', `
+      <p>La contraseña del usuario <b>${esc(r.usuario)}</b> se cambió el ${new Date().toLocaleString('es-PY', { timeZone: 'America/Asuncion' })}.
+      Se cerraron las sesiones abiertas.</p>
+      <p>Si no fuiste vos, escribí de inmediato a soporte@inovasi.com.py.</p>`));
+    return json(req, 200, { ok: true, usuario: r.usuario });
 }
 
 async function resolver(req: Request, b: Record<string, unknown>): Promise<Response> {
@@ -270,6 +383,9 @@ Deno.serve(async (req: Request) => {
             case 'ver':       return await ver(req, b);
             case 'resolver':  return await resolver(req, b);
             case 'activar':   return await activar(req, b);
+            case 'solicitar_reseteo': return await solicitarReseteo(req, b);
+            case 'resolver_reseteo':  return await resolverReseteo(req, b);
+            case 'resetear':          return await resetear(req, b);
             default:          return json(req, 400, { error: 'Acción no válida' });
         }
     } catch (e) {

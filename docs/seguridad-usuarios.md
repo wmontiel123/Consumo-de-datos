@@ -59,3 +59,19 @@ Despliegue en dos fases:
 2. `scripts/auth_rls_fase2.sql` quita las políticas abiertas y todo privilegio de `anon`. A partir de ahí, la clave pública solo sirve para llamar a `login` y `solicitud-usuario`.
 
 Si algo falla, `scripts/revertir_auth_rls.sql` deshace las dos fases.
+
+## Reseteo de contraseña
+
+1. **Cuándo aparece:** la opción "¿Olvidaste tu contraseña?" se muestra en el login recién después de una contraseña incorrecta o de un bloqueo.
+2. **Qué se pide:** el usuario indica su nombre de usuario y el correo donde quiere recibir el enlace. La respuesta es siempre la misma, exista o no el usuario, para que no sirva para averiguar usuarios.
+3. **Aprobación:** el pedido llega a los aprobadores, igual que una solicitud de acceso. El mail avisa si el correo coincide con el registrado. Si no coincide o no hay correo registrado, el aprobador debe confirmar la identidad por otro medio, y la página pide una confirmación extra.
+4. **Enlace al usuario:** al aprobar, el usuario recibe un enlace de un solo uso que vence en 24 horas. Al crear la contraseña nueva:
+   - se aplica la misma política de contraseñas, y la nueva no puede repetir la anterior;
+   - se levanta el bloqueo por intentos;
+   - se cierran todas sus sesiones abiertas;
+   - si no tenía correo registrado, queda guardado el aprobado;
+   - se le envía un aviso de "contraseña cambiada".
+5. **Límites:** 3 pedidos por IP por hora, 30 por día y 1 pendiente por usuario.
+6. **Auditoría:** se registra cada paso en `auditoria_seguridad`: `reseteo_solicitado`, `reseteo_aprobado` o `reseteo_rechazado`, y `password_reseteada`.
+
+El SQL está en `scripts/reseteo_password.sql` (aplicado el 2026-11-09).

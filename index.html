@@ -72,7 +72,32 @@
                     </div>
                 </div>
                 <button class="login-btn" id="loginBtn" onclick="intentarLogin()">Ingresar</button>
+                <!-- Aparece solo después de una contraseña incorrecta -->
+                <p class="login-alt login-olvido" id="loginReseteoLink" style="display:none">¿Olvidaste tu contraseña? <a href="#" onclick="mostrarReseteo(true); return false;">Solicitar reseteo</a></p>
                 <p class="login-alt">¿No tenés usuario? <a href="#" onclick="mostrarSolicitudAcceso(true); return false;">Solicitar acceso</a></p>
+            </div>
+
+            <!-- Reseteo de contraseña (lo aprueba soporte por mail) -->
+            <div class="login-body" id="reseteoBody" style="display:none">
+                <div id="reseteoForm">
+                    <p class="solicitud-intro">Indicá tu usuario y el correo donde querés recibir el enlace. Soporte revisa el pedido y, si lo aprueba, te llega un enlace para crear una contraseña nueva.</p>
+                    <div id="reseteoError" class="login-error" style="display:none"></div>
+                    <div class="login-group">
+                        <input type="text" id="resUsuario" class="sol-input" placeholder="Usuario" maxlength="60" autocomplete="username"
+                               oninput="this.value = this.value.toLowerCase().replace(/[^a-z0-9._-]/g, '')">
+                    </div>
+                    <div class="login-group">
+                        <input type="email" id="resEmail" class="sol-input" placeholder="Correo electrónico" maxlength="254" autocomplete="email">
+                    </div>
+                    <!-- Trampa para bots: oculto para las personas -->
+                    <input type="text" id="resWeb" class="sol-trampa" tabindex="-1" autocomplete="off" aria-hidden="true">
+                    <button class="login-btn" id="resBtn" onclick="enviarReseteo()">Solicitar reseteo</button>
+                </div>
+                <div id="reseteoOk" class="solicitud-ok" style="display:none">
+                    <strong>¡Pedido enviado!</strong>
+                    <p>Si el usuario existe, soporte va a recibir el pedido. Cuando lo apruebe, te llega un correo con el enlace para crear tu contraseña nueva.</p>
+                </div>
+                <p class="login-alt"><a href="#" onclick="mostrarReseteo(false); return false;">← Volver al inicio de sesión</a></p>
             </div>
 
             <!-- Solicitud de acceso (se aprueba por mail desde soporte) -->

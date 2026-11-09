@@ -136,6 +136,7 @@ function cerrarSesion() {
     document.getElementById('loginUsuario').value  = '';
     document.getElementById('loginPassword').value = '';
     document.getElementById('loginError').style.display = 'none';
+    document.getElementById('loginReseteoLink').style.display = 'none';
 
     // Resetear tab activo y sub-vista a Consumo
     document.getElementById('tabBtnConsumo').classList.add('tab-activo');
@@ -179,6 +180,10 @@ async function intentarLogin() {
         if (error) {
             msgError = 'No se pudo iniciar sesión. Probá de nuevo.';
             try { msgError = (await error.context.json()).error || msgError; } catch (_) { /* sin cuerpo */ }
+            // Contraseña incorrecta (401) o usuario bloqueado (429): ofrecer el reseteo
+            if ([401, 429].includes(error.context?.status)) {
+                document.getElementById('loginReseteoLink').style.display = '';
+            }
         } else if (data?.access_token) {
             const { error: es } = await window.clienteSupabase.auth.setSession({
                 access_token: data.access_token, refresh_token: data.refresh_token,
@@ -219,6 +224,56 @@ function mostrarSolicitudAcceso(mostrar) {
         document.getElementById('solicitudForm').style.display = '';
         document.getElementById('solicitudOk').style.display = 'none';
         document.getElementById('solNombre').focus();
+    }
+}
+
+// ── Reseteo de contraseña (se ofrece solo tras una contraseña incorrecta) ──
+function mostrarReseteo(mostrar) {
+    document.querySelector('#loginOverlay .login-body').style.display = mostrar ? 'none' : '';
+    document.getElementById('reseteoBody').style.display = mostrar ? '' : 'none';
+    document.querySelector('#loginOverlay .login-greeting').textContent = mostrar ? 'Restablecer contraseña' : '¡Bienvenido!';
+    document.querySelector('#loginOverlay .login-subtitle').textContent =
+        mostrar ? 'Soporte aprueba el pedido por correo' : 'Ingresá tus credenciales para continuar';
+    if (mostrar) {
+        document.getElementById('reseteoForm').style.display = '';
+        document.getElementById('reseteoOk').style.display = 'none';
+        document.getElementById('reseteoError').style.display = 'none';
+        const u = document.getElementById('resUsuario');
+        u.value = document.getElementById('loginUsuario').value.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+        (u.value ? document.getElementById('resEmail') : u).focus();
+    }
+}
+
+async function enviarReseteo() {
+    const datos = {
+        accion: 'solicitar_reseteo',
+        usuario: document.getElementById('resUsuario').value.trim().toLowerCase(),
+        email: document.getElementById('resEmail').value.trim().toLowerCase(),
+        web: document.getElementById('resWeb').value,   // trampa para bots
+    };
+    const errorEl = document.getElementById('reseteoError');
+    const mostrarError = txt => { errorEl.textContent = txt; errorEl.style.display = 'flex'; };
+    errorEl.style.display = 'none';
+    if (!/^[a-z0-9._-]{1,60}$/.test(datos.usuario)) return mostrarError('Ingresá tu nombre de usuario.');
+    if (!/^[^@\s<>]+@[^@\s<>]+\.[a-z]{2,}$/i.test(datos.email)) return mostrarError('Ingresá un correo válido.');
+
+    const btn = document.getElementById('resBtn');
+    btn.disabled = true; btn.textContent = 'Enviando…';
+    try {
+        const { data, error } = await window.clienteSupabase.functions.invoke('solicitud-usuario', { body: datos });
+        if (error) {
+            let msg = 'No se pudo enviar el pedido. Probá de nuevo más tarde.';
+            try { msg = (await error.context.json()).error || msg; } catch (_) { /* sin cuerpo */ }
+            return mostrarError(msg);
+        }
+        if (!data?.ok) return mostrarError('No se pudo enviar el pedido.');
+        document.getElementById('resEmail').value = '';
+        document.getElementById('reseteoForm').style.display = 'none';
+        document.getElementById('reseteoOk').style.display = '';
+    } catch (e) {
+        mostrarError('No se pudo conectar con el servidor. Revisá tu conexión.');
+    } finally {
+        btn.disabled = false; btn.textContent = 'Solicitar reseteo';
     }
 }
 
