@@ -283,14 +283,17 @@ function prepararTablasResponsivas() {
 // Reacomoda un .table-container: el encabezado arriba y, debajo, una columna
 // con las tarjetas (aside) y el resto del contenido a la derecha.
 function ponerResumenAlCostado(contenedor, kpiId) {
-    if (!contenedor || contenedor.querySelector('.inv-layout')) return;
+    if (!contenedor) return;
     const encabezado = contenedor.querySelector(':scope > .table-header-row');
+    // El título va en la columna de la tabla, alineado con la primera columna
+    const yaArmado = contenedor.querySelector('.inv-principal');
+    if (yaArmado) { if (encabezado) yaArmado.prepend(encabezado); return; }
     const layout = document.createElement('div');
     layout.className = 'inv-layout';
     layout.innerHTML = `<aside class="inv-lado" aria-label="Resumen"><div id="${kpiId}" class="kpi-row kpi-lateral"></div></aside>`;
     const principal = document.createElement('div');
     principal.className = 'inv-principal';
-    [...contenedor.children].filter(el => el !== encabezado).forEach(el => principal.appendChild(el));
+    [...contenedor.children].forEach(el => principal.appendChild(el));
     layout.appendChild(principal);
     contenedor.appendChild(layout);
 }
@@ -313,6 +316,7 @@ function cambiarSubtabAltas(cual) {
 
 function iniciarMejorasUI() {
     ponerResumenAlCostado(document.querySelector('#tab-consumo .table-container'), 'kpiConsumo');
+    ponerResumenAlCostado(document.querySelector('#subtab-inventario .table-container'), 'kpiInventario');
     prepararTablasResponsivas();
     let sub = 'altas';
     try { sub = localStorage.getItem('subtabAltas') || 'altas'; } catch { /* sin almacenamiento */ }

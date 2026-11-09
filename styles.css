@@ -2182,6 +2182,7 @@ img, canvas, svg { max-width: 100%; }
 .inv-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 20px; align-items: start; }
 .inv-lado { position: sticky; top: 12px; }
 .inv-principal { min-width: 0; }
+.inv-principal > .table-header-row, .inv-principal > .paginacion-info { padding-left: 15px; } /* alineado con el texto de la 1ª columna */
 .kpi-lateral { display: flex; flex-direction: column; gap: 6px; margin: 0; }
 .kpi-lateral .kpi {
     display: grid; grid-template-columns: 1fr auto; align-items: baseline; column-gap: 8px;
@@ -2215,4 +2216,12 @@ img, canvas, svg { max-width: 100%; }
     #subtab-altas .filter-buttons { margin-top: auto; padding-top: 14px; }
     #subtab-altas .escaneo-lista { max-height: 260px; overflow-y: auto; }
     #subtab-altas > .filters:not(:first-child) .filter-row { grid-template-columns: 1fr; }
+}
+/* Resumen al costado: el título va sobre la tabla; en pantallas chicas, título → tarjetas → tabla */
+@media (max-width: 900px) {
+    .inv-layout { display: flex; flex-direction: column; gap: 12px; }
+    .inv-principal { display: contents; }
+    .inv-principal > .table-header-row { order: -2; margin-bottom: 0; padding-left: 0; }
+    .inv-principal > .paginacion-info { padding-left: 0; }
+    .inv-lado { order: -1; }
 }
