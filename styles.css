@@ -1892,3 +1892,11 @@ a.login-btn.cuenta-link { display: block; text-align: center; text-decoration: n
 .login-btn:disabled { opacity: .55; cursor: not-allowed; transform: none; box-shadow: none; }
 @media (max-width: 480px) { .cuenta-reglas { columns: 1; } .login-body { padding: 24px 20px 28px; } }
 .cuenta-card .login-group input { padding: 14px 16px; }
+
+/* Exportar a Excel / PDF */
+.export-btns { display: inline-flex; gap: 8px; align-items: center; }
+.export-btns.exportando { opacity: .55; pointer-events: none; cursor: progress; }
+.btn-excel:hover { border-color: #1d7a45; color: #1d7a45; background: #eef8f2; }
+.btn-pdf:hover   { border-color: #c0392b; color: #c0392b; background: #fdf0ee; }
+.header-acciones { display: inline-flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.check-inline { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #555; white-space: nowrap; cursor: pointer; }

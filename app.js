@@ -800,15 +800,21 @@ function formatearFechaHora(ts) {
            d.toLocaleTimeString('es-PY', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
+// Filas del historial que cumplen la búsqueda (las usa la tabla y la exportación)
+function filasHistorialSIM() {
+    const q = (document.getElementById('historialSimBuscar')?.value || '').trim().toLowerCase();
+    return !q ? (historialSimLista || []) : (historialSimLista || []).filter(h =>
+        [h.rc_codigo, h.numero_ant, h.numero_nuevo, h.imei_ant, h.imei_nuevo, h.usuario, h.observacion]
+            .some(v => String(v || '').toLowerCase().includes(q)));
+}
+
 function renderHistorialSIMLista() {
     const tbody  = document.getElementById('historialSimBody');
     const infoEl = document.getElementById('historialSimInfo');
     if (!tbody || historialSimLista === null) return;
 
     const q = (document.getElementById('historialSimBuscar')?.value || '').trim().toLowerCase();
-    const filas = !q ? historialSimLista : historialSimLista.filter(h =>
-        [h.rc_codigo, h.numero_ant, h.numero_nuevo, h.imei_ant, h.imei_nuevo, h.usuario, h.observacion]
-            .some(v => String(v || '').toLowerCase().includes(q)));
+    const filas = filasHistorialSIM();
 
     if (!filas.length) {
         tbody.innerHTML = `<tr><td colspan="8" class="panel-empty">${q ? 'Sin cambios que coincidan con la búsqueda' : 'Sin cambios registrados'}</td></tr>`;
@@ -3246,51 +3252,7 @@ function irPaginaEquipos(num) {
 
 // ── EXPORTAR ──────────────────────────────────────────────────────
 
-async function exportarConsumo() {
-    const wb = XLSX.utils.book_new();
-
-    if (vistaConsumo === 'equipos') {
-        const filas = buildConsolidado(consumosFiltrados);
-        const rows  = filas.map(f => ({
-            'RC':              f.rc,
-            'Regional':        f.regional,
-            'SIM Principal':   f.sim1Label,
-            'MB SIM Principal': f.sim1MB,
-            'SIM Respaldo':    f.sim2Label !== '-' ? f.sim2Label : '',
-            'MB SIM Respaldo': f.sim2Label !== '-' ? f.sim2MB    : '',
-            'Total MB':        f.totalMB,
-        }));
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Por Equipo');
-    } else {
-        // consumosFiltrados está sumado por línea: para el detalle diario se trae todo acá
-        let detalle;
-        try {
-            detalle = (await consultarConsumosCompletos()).data;
-        } catch (e) {
-            alert('❌ Error al exportar: ' + e.message);
-            return;
-        }
-        const rows = detalle.map(c => {
-            const est = estadoConsDisplay(c);
-            const cfg = esViewer() ? ESTADO_CONFIG_VIEWER[estadoSimple(est)] : ESTADO_CONFIG_DISP[est];
-            const row = {
-                'Estado':    (cfg?.label || est).replace('● ', ''),
-                'RC':        encontrarRC(c),
-                'Número':    c.numero    || '',
-                'ICCID':     normalizarImei(c.imei) || '',
-                'Telefonía': c.telefonia || '',
-                'MB':        parseFloat(c.consumo_mb) || 0,
-                'Fecha':     c.fecha_consumo || '',
-            };
-            if (!esViewer()) row['Observación'] = c.observacion || '';
-            return row;
-        });
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Por Línea');
-    }
-
-    const fecha = new Date().toISOString().substring(0, 10);
-    XLSX.writeFile(wb, `consumo_ANDE_${fecha}.xlsx`);
-}
+// Excel / PDF de cada vista: exportar.js (exportarVista)
 
 // ── IMPRIMIR ──────────────────────────────────────────────────────
 
@@ -4745,18 +4707,29 @@ async function registrarEstado(tipo, referencia, anterior, nuevo, motivo = null)
 }
 
 async function cargarActivaciones() {
-    const { data, error } = await window.clienteSupabase
-        .from('historial_estados')
-        .select('*')
-        .order('fecha', { ascending: false })
-        .limit(2000);
-    if (error) {
+    try {
+        activacionesLista = await traerTodasLasFilas(() => window.clienteSupabase
+            .from('historial_estados')
+            .select('*')
+            .order('fecha', { ascending: false })
+            .order('id',    { ascending: false }));
+    } catch (error) {
         console.warn('⚠️ No se pudo cargar historial_estados:', error.message);
         activacionesLista = [];
-    } else {
-        activacionesLista = data || [];
     }
     renderActivaciones();
+}
+
+// Registros que cumplen los filtros (los usa la tabla y la exportación).
+// "Ocultar altas automáticas": las líneas que el sistema suma desde los reportes de consumo.
+function filasActivaciones() {
+    const q       = (document.getElementById('activacionesBuscar')?.value || '').trim().toLowerCase();
+    const tipo    = document.getElementById('activacionesTipo')?.value || '';
+    const ocultar = document.getElementById('activacionesOcultarSistema')?.checked;
+    return (activacionesLista || []).filter(h =>
+        (!tipo || h.tipo === tipo) &&
+        (!ocultar || h.usuario !== 'sistema') &&
+        (!q || [h.referencia, h.usuario, h.motivo].some(v => String(v || '').toLowerCase().includes(q))));
 }
 
 function renderActivaciones() {
@@ -4766,9 +4739,7 @@ function renderActivaciones() {
 
     const q    = (document.getElementById('activacionesBuscar')?.value || '').trim().toLowerCase();
     const tipo = document.getElementById('activacionesTipo')?.value || '';
-    const filas = activacionesLista.filter(h =>
-        (!tipo || h.tipo === tipo) &&
-        (!q || [h.referencia, h.usuario, h.motivo].some(v => String(v || '').toLowerCase().includes(q))));
+    const filas = filasActivaciones();
 
     if (!filas.length) {
         tbody.innerHTML = `<tr><td colspan="6" class="panel-empty">${q || tipo ? 'Sin registros que coincidan' : 'Sin registros todavía'}</td></tr>`;
@@ -4817,11 +4788,14 @@ async function prepararAltas() {
 }
 
 async function cargarLineas() {
-    const { data, error } = await window.clienteSupabase
-        .from('lineas')
-        .select('*')
-        .order('creado_en', { ascending: false })
-        .limit(5000);
+    let data = null, error = null;
+    try {
+        data = await traerTodasLasFilas(() => window.clienteSupabase
+            .from('lineas')
+            .select('*')
+            .order('creado_en', { ascending: false })
+            .order('id',        { ascending: false }));
+    } catch (e) { error = e; }
     if (error) {
         console.warn('⚠️ No se pudo cargar lineas:', error.message);
         inventarioLineas = [];
@@ -4839,14 +4813,21 @@ async function cargarLineas() {
     renderInventarioLineas();
 }
 
+// Líneas del inventario que cumplen los filtros (las usa la tabla y la exportación)
+function filasInventario() {
+    const q      = (document.getElementById('lineasBuscar')?.value || '').trim().toLowerCase();
+    const estado = document.getElementById('lineasEstado')?.value || '';
+    const tel    = document.getElementById('lineasTelefonia')?.value || '';
+    return inventarioLineas.filter(l =>
+        (!estado || l.estado === estado) &&
+        (!tel || String(l.telefonia || '').toLowerCase() === tel.toLowerCase()) &&
+        (!q || [l.numero, l.iccid, l.rc_codigo].some(v => String(v || '').toLowerCase().includes(q))));
+}
+
 function renderInventarioLineas() {
     const tbody  = document.getElementById('lineasBody');
     const infoEl = document.getElementById('lineasInfo');
-    const q      = (document.getElementById('lineasBuscar')?.value || '').trim().toLowerCase();
-    const estado = document.getElementById('lineasEstado')?.value || '';
-    const filas  = inventarioLineas.filter(l =>
-        (!estado || l.estado === estado) &&
-        (!q || [l.numero, l.iccid, l.rc_codigo].some(v => String(v || '').toLowerCase().includes(q))));
+    const filas  = filasInventario();
 
     if (!filas.length) {
         tbody.innerHTML = `<tr><td colspan="8" class="panel-empty">${inventarioLineas.length ? 'Sin líneas que coincidan' : 'Todavía no hay líneas cargadas'}</td></tr>`;
