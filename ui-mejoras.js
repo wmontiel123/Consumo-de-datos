@@ -247,9 +247,39 @@ function quitarFiltro(clave, id) {
 
 function pintarTodosLosChips() { Object.keys(GRUPOS_FILTRO).forEach(pintarChips); }
 
+// ── Tablas legibles en celular ────────────────────────────────────
+// Cada celda recibe data-label con el nombre de su columna: en pantallas
+// angostas el CSS muestra cada fila como una tarjeta "Columna: valor".
+
+const TABLAS_RESPONSIVAS = ['#tablaConsumo', '#tablaConsumo2', '#tablaConsolidado', '#tablaLineasBD',
+                            '#tab-historial .panel-historial', '#tab-activaciones .panel-historial', '#tab-altas .panel-historial'];
+
+function etiquetarTabla(tabla) {
+    const titulos = [...tabla.querySelectorAll('thead th')].map(th => th.textContent.replace(/[⇅▲▼]/g, '').trim());
+    tabla.querySelectorAll('tbody tr').forEach(tr => {
+        [...tr.children].forEach((td, i) => {
+            if (td.colSpan > 1) { td.classList.add('td-mensaje'); return; }
+            if (titulos[i] && td.dataset.label !== titulos[i]) td.dataset.label = titulos[i];
+        });
+    });
+}
+
+function prepararTablasResponsivas() {
+    TABLAS_RESPONSIVAS.forEach(sel => {
+        const tabla = document.querySelector(sel);
+        if (!tabla || tabla.dataset.responsiva) return;
+        tabla.dataset.responsiva = '1';
+        tabla.classList.add('tabla-responsiva');
+        etiquetarTabla(tabla);
+        const tbody = tabla.querySelector('tbody');
+        if (tbody) new MutationObserver(() => etiquetarTabla(tabla)).observe(tbody, { childList: true });
+    });
+}
+
 // ── Enganches ─────────────────────────────────────────────────────
 
 function iniciarMejorasUI() {
+    prepararTablasResponsivas();
     Object.keys(GRUPOS_FILTRO).forEach(prepararGrupoFiltro);
 
     ['aplicarFiltrosConsumo', 'limpiarFiltrosConsumo', 'cargarConsumos', 'aplicarFiltrosLineas', 'limpiarFiltrosLineas',

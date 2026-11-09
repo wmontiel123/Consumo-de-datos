@@ -184,14 +184,14 @@
                 </div>
                 <div class="historial-sim-buscar historial-filtros">
                     <input type="text" id="activacionesBuscar" placeholder="Buscar por RC, número, ICCID, usuario o motivo…"
-                           oninput="renderActivaciones()">
-                    <select id="activacionesTipo" onchange="renderActivaciones()">
+                           oninput="renderActivaciones(1)">
+                    <select id="activacionesTipo" onchange="renderActivaciones(1)">
                         <option value="">RC y líneas</option>
                         <option value="rc">Solo RC</option>
                         <option value="linea">Solo líneas</option>
                     </select>
                     <label class="check-inline" title="Líneas que el sistema agrega solo desde los reportes de consumo">
-                        <input type="checkbox" id="activacionesOcultarSistema" checked onchange="renderActivaciones()">
+                        <input type="checkbox" id="activacionesOcultarSistema" checked onchange="renderActivaciones(1)">
                         Ocultar altas automáticas
                     </label>
                 </div>
@@ -363,14 +363,14 @@
                 </div>
                 <div class="historial-sim-buscar historial-filtros">
                     <input type="text" id="lineasBuscar" placeholder="Buscar por número, ICCID o RC…"
-                           oninput="renderInventarioLineas()">
-                    <select id="lineasEstado" onchange="renderInventarioLineas()">
+                           oninput="renderInventarioLineas(1)">
+                    <select id="lineasEstado" onchange="renderInventarioLineas(1)">
                         <option value="">Todos los estados</option>
                         <option value="disponible">Disponible</option>
                         <option value="asignada">Asignada</option>
                         <option value="desactivada">Desactivada</option>
                     </select>
-                    <select id="lineasTelefonia" onchange="renderInventarioLineas()">
+                    <select id="lineasTelefonia" onchange="renderInventarioLineas(1)">
                         <option value="">Todas las telefonías</option>
                         <option>Claro</option>
                         <option>Personal</option>
@@ -413,7 +413,7 @@
                 </div>
                 <div class="historial-sim-buscar">
                     <input type="text" id="historialSimBuscar" placeholder="Buscar por RC, número, ICCID o usuario…"
-                           oninput="renderHistorialSIMLista()">
+                           oninput="renderHistorialSIMLista(1)">
                 </div>
                 <div id="historialSimInfo" class="paginacion-info"></div>
                 <div class="historial-sim-lista">

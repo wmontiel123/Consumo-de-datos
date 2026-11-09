@@ -806,7 +806,7 @@ function filasHistorialSIM() {
             .some(v => String(v || '').toLowerCase().includes(q)));
 }
 
-function renderHistorialSIMLista() {
+function renderHistorialSIMLista(pagina, desdeControles) {
     const tbody  = document.getElementById('historialSimBody');
     const infoEl = document.getElementById('historialSimInfo');
     if (!tbody || historialSimLista === null) return;
@@ -814,6 +814,7 @@ function renderHistorialSIMLista() {
     const q = (document.getElementById('historialSimBuscar')?.value || '').trim().toLowerCase();
     const filas = filasHistorialSIM();
 
+    const pag = paginarLista('historial-sim', filas, pagina, tbody, 'renderHistorialSIMLista');
     if (!filas.length) {
         tbody.innerHTML = `<tr><td colspan="8" class="panel-empty">${q ? 'Sin cambios que coincidan con la búsqueda' : 'Sin cambios registrados'}</td></tr>`;
         infoEl.textContent = '';
@@ -821,20 +822,19 @@ function renderHistorialSIMLista() {
     }
 
     const cambio = (ant, nuevo) => `${escHtml(ant) || '-'} → <strong>${escHtml(nuevo) || '-'}</strong>`;
-    tbody.innerHTML = filas.slice(0, HISTORIAL_SIM_MAX).map(h => `
+    tbody.innerHTML = pag.filas.map(h => `
         <tr>
             <td>${h.fecha_campo ? formatearFecha(h.fecha_campo) : '-'}</td>
             <td style="white-space:nowrap">${formatearFechaHora(h.fecha_cambio)}</td>
             <td><span class="link-num" onclick="abrirPanelRC(this.textContent)">${escHtml(h.rc_codigo)}</span></td>
             <td>${h.sim_slot === 'sim1' ? 'SIM 1' : 'SIM 2'}</td>
             <td style="color:#666">${cambio(h.numero_ant, h.numero_nuevo)}</td>
-            <td style="color:#666">${cambio(h.imei_ant, h.imei_nuevo)}</td>
+            <td style="color:#666">${iccidVisual(h.imei_ant) || '-'} → <strong>${iccidVisual(h.imei_nuevo) || '-'}</strong></td>
             <td>${escHtml(h.usuario) || '-'}</td>
             <td style="color:#666">${escHtml(h.observacion) || '-'}</td>
         </tr>`).join('');
-    infoEl.textContent = filas.length > HISTORIAL_SIM_MAX
-        ? `Mostrando los ${HISTORIAL_SIM_MAX} cambios más recientes de ${filas.length}`
-        : `${filas.length} cambio(s)`;
+    infoEl.innerHTML = `Mostrando <strong>${pag.desde + 1}–${pag.desde + pag.filas.length}</strong> de <strong>${formatearNumero(filas.length)}</strong> cambios`;
+    if (desdeControles) _subirATabla(tbody);
 }
 
 // Helpers para el badge de estado
@@ -1022,6 +1022,48 @@ function paginasVisibles(actual, total) {
     if (actual <= 4)        return [1, 2, 3, 4, 5, '...', total];
     if (actual >= total - 3) return [1, '...', total-4, total-3, total-2, total-1, total];
     return [1, '...', actual - 1, actual, actual + 1, '...', total];
+}
+
+// ── Paginación de listas en memoria (inventario, historial, activaciones) ──
+const FILAS_POR_PAGINA_LISTA = 20;
+const _paginasLista = {};   // página actual de cada lista
+
+// Devuelve las filas de la página pedida y dibuja los controles debajo de la tabla.
+// pagina: número, o undefined para quedarse en la actual (ej. al recargar datos).
+function paginarLista(clave, filas, pagina, tbody, funcion) {
+    const total   = Math.max(1, Math.ceil(filas.length / FILAS_POR_PAGINA_LISTA));
+    const actual  = Math.min(Math.max(1, pagina ?? _paginasLista[clave] ?? 1), total);
+    _paginasLista[clave] = actual;
+
+    let cont = document.getElementById('paginacion-' + clave);
+    if (!cont && tbody) {
+        cont = document.createElement('div');
+        cont.id = 'paginacion-' + clave;
+        cont.className = 'paginacion';
+        const tabla = tbody.closest('table');
+        const ref = tabla.parentElement.classList.contains('historial-sim-lista') ? tabla.parentElement : tabla;
+        ref.insertAdjacentElement('afterend', cont);
+    }
+    if (cont) {
+        if (total <= 1) cont.innerHTML = '';
+        else {
+            let html = '<div class="pag-controles">';
+            html += `<button class="pag-btn" onclick="${funcion}(${actual - 1}, true)" ${actual === 1 ? 'disabled' : ''}>← Anterior</button>`;
+            paginasVisibles(actual, total).forEach(n => {
+                html += n === '...' ? '<span class="pag-dots">…</span>'
+                    : `<button class="pag-btn pag-num ${n === actual ? 'pag-activa' : ''}" onclick="${funcion}(${n}, true)">${n}</button>`;
+            });
+            html += `<button class="pag-btn" onclick="${funcion}(${actual + 1}, true)" ${actual === total ? 'disabled' : ''}>Siguiente →</button></div>`;
+            cont.innerHTML = html;
+        }
+    }
+    const desde = (actual - 1) * FILAS_POR_PAGINA_LISTA;
+    return { filas: filas.slice(desde, desde + FILAS_POR_PAGINA_LISTA), desde, actual, total };
+}
+
+// Al cambiar de página, volver al principio de la tabla
+function _subirATabla(tbody) {
+    tbody?.closest('.table-container')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // Ir a una página específica
@@ -4749,7 +4791,7 @@ function filasActivaciones() {
         (!q || [h.referencia, h.usuario, h.motivo].some(v => String(v || '').toLowerCase().includes(q))));
 }
 
-function renderActivaciones() {
+function renderActivaciones(pagina, desdeControles) {
     const tbody  = document.getElementById('activacionesBody');
     const infoEl = document.getElementById('activacionesInfo');
     if (!tbody || activacionesLista === null) return;
@@ -4758,6 +4800,7 @@ function renderActivaciones() {
     const tipo = document.getElementById('activacionesTipo')?.value || '';
     const filas = filasActivaciones();
 
+    const pag = paginarLista('activaciones', filas, pagina, tbody, 'renderActivaciones');
     if (!filas.length) {
         tbody.innerHTML = `<tr><td colspan="6" class="panel-empty">${q || tipo ? 'Sin registros que coincidan' : 'Sin registros todavía'}</td></tr>`;
         infoEl.textContent = '';
@@ -4765,20 +4808,19 @@ function renderActivaciones() {
     }
 
     const est = e => escHtml(ESTADO_HIST_LABEL[e] || e) || '-';
-    tbody.innerHTML = filas.slice(0, ACTIVACIONES_MAX).map(h => `
+    tbody.innerHTML = pag.filas.map(h => `
         <tr>
             <td style="white-space:nowrap">${formatearFechaHora(h.fecha)}</td>
             <td>${h.tipo === 'rc' ? 'RC' : 'Línea'}</td>
             <td>${h.tipo === 'rc'
                     ? `<span class="link-num" onclick="abrirPanelRC(this.textContent)">${escHtml(h.referencia)}</span>`
-                    : escHtml(h.referencia)}</td>
+                    : iccidVisual(h.referencia)}</td>
             <td>${h.estado_anterior ? est(h.estado_anterior) + ' → ' : ''}<strong>${est(h.estado_nuevo)}</strong></td>
             <td>${escHtml(h.usuario) || '-'}</td>
             <td style="color:#666">${escHtml(h.motivo) || '-'}</td>
         </tr>`).join('');
-    infoEl.textContent = filas.length > ACTIVACIONES_MAX
-        ? `Mostrando los ${ACTIVACIONES_MAX} registros más recientes de ${filas.length}`
-        : `${filas.length} registro(s)`;
+    infoEl.innerHTML = `Mostrando <strong>${pag.desde + 1}–${pag.desde + pag.filas.length}</strong> de <strong>${formatearNumero(filas.length)}</strong> registros`;
+    if (desdeControles) _subirATabla(tbody);
 }
 
 
@@ -4841,10 +4883,11 @@ function filasInventario() {
         (!q || [l.numero, l.iccid, l.rc_codigo].some(v => String(v || '').toLowerCase().includes(q))));
 }
 
-function renderInventarioLineas() {
+function renderInventarioLineas(pagina, desdeControles) {
     const tbody  = document.getElementById('lineasBody');
     const infoEl = document.getElementById('lineasInfo');
     const filas  = filasInventario();
+    const pag    = paginarLista('inventario', filas, pagina, tbody, 'renderInventarioLineas');
 
     if (!filas.length) {
         tbody.innerHTML = `<tr><td colspan="8" class="panel-empty">${inventarioLineas.length ? 'Sin líneas que coincidan' : 'Todavía no hay líneas cargadas'}</td></tr>`;
@@ -4852,22 +4895,23 @@ function renderInventarioLineas() {
         return;
     }
 
-    tbody.innerHTML = filas.slice(0, 300).map(l => `
+    tbody.innerHTML = pag.filas.map(l => `
         <tr>
             <td>${escHtml(l.numero) || '-'}</td>
-            <td>${escHtml(l.iccid) || '-'}</td>
-            <td>${escHtml(l.telefonia) || '-'}</td>
+            <td class="td-imei">${l.iccid ? iccidVisual(l.iccid) : '-'}</td>
+            <td>${badgeTelefonia(l.telefonia)}</td>
             <td><span class="badge-estado ${LINEA_ESTADO_CLS[l.estado] || ''}">${escHtml(ESTADO_HIST_LABEL[l.estado] || l.estado)}</span></td>
             <td>${l.rc_codigo
                     ? `<span class="link-num" onclick="abrirPanelRC(this.textContent)">${escHtml(l.rc_codigo)}</span>${l.sim_slot ? ` (${l.sim_slot === 'sim1' ? 'SIM 1' : 'SIM 2'})` : ''}`
                     : '-'}</td>
-            <td style="white-space:nowrap">${formatearFechaHora(l.creado_en)}</td>
+            <td class="td-fecha">${formatearFechaHora(l.creado_en)}</td>
             <td>${escHtml(l.creado_por) || '-'}</td>
             <td>${l.estado === 'desactivada'
                     ? `<button class="btn-linea btn-linea-activar" onclick="cambiarEstadoLinea(${l.id}, true)">Activar</button>`
                     : `<button class="btn-linea btn-linea-desactivar" onclick="cambiarEstadoLinea(${l.id}, false)">Desactivar</button>`}</td>
         </tr>`).join('');
-    infoEl.textContent = filas.length > 300 ? `Mostrando 300 de ${filas.length} líneas` : `${filas.length} línea(s)`;
+    infoEl.innerHTML = `Mostrando <strong>${pag.desde + 1}–${pag.desde + pag.filas.length}</strong> de <strong>${formatearNumero(filas.length)}</strong> líneas`;
+    if (desdeControles) _subirATabla(tbody);
 }
 
 // Busca una línea del inventario por número (si no es M2M) o por ICCID
