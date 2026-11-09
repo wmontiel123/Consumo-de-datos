@@ -739,7 +739,7 @@
                             <th class="sortable" data-sort="imei"      onclick="setSortLineas('imei')">ICCID</th>
                             <th class="sortable" data-sort="rc"        onclick="setSortLineas('rc')">RC</th>
                             <th class="sortable" data-sort="telefonia" onclick="setSortLineas('telefonia')">Telefonía</th>
-                            <th class="sortable" data-sort="mb"        onclick="setSortLineas('mb')">MB</th>
+                            <th class="sortable th-num" data-sort="mb"        onclick="setSortLineas('mb')">MB</th>
                             <th class="sortable" data-sort="fecha"     onclick="setSortLineas('fecha')">Fecha</th>
                             <th id="thObservacion">Observación</th>
                         </tr>
@@ -757,10 +757,10 @@
                             <th class="sortable" data-sort="rc"       onclick="setSortEquipos('rc')">RC</th>
                             <th class="sortable" data-sort="regional" onclick="setSortEquipos('regional')">Regional</th>
                             <th class="sortable" data-sort="sim1"     onclick="setSortEquipos('sim1')">SIM Principal</th>
-                            <th class="sortable" data-sort="sim1mb"   onclick="setSortEquipos('sim1mb')">MB SIM Principal</th>
+                            <th class="sortable th-num" data-sort="sim1mb"   onclick="setSortEquipos('sim1mb')">MB SIM Principal</th>
                             <th class="sortable" data-sort="sim2"     onclick="setSortEquipos('sim2')">SIM Respaldo</th>
-                            <th class="sortable" data-sort="sim2mb"   onclick="setSortEquipos('sim2mb')">MB SIM Respaldo</th>
-                            <th class="sortable" data-sort="total"    onclick="setSortEquipos('total')">Total MB</th>
+                            <th class="sortable th-num" data-sort="sim2mb"   onclick="setSortEquipos('sim2mb')">MB SIM Respaldo</th>
+                            <th class="sortable th-num" data-sort="total"    onclick="setSortEquipos('total')">Total MB</th>
                         </tr>
                     </thead>
                     <tbody id="tablaConsolidadoBody"></tbody>
@@ -776,8 +776,8 @@
                             <th>ICCID</th>
                             <th>Telefonía</th>
                             <th>RC</th>
-                            <th style="text-align:right">MB Mes</th>
-                            <th style="text-align:right">MB Total</th>
+                            <th class="th-num">MB Mes</th>
+                            <th class="th-num">MB Total</th>
                         </tr>
                     </thead>
                     <tbody id="tablaLineasBDBody">

@@ -1931,3 +1931,64 @@ a.login-btn.cuenta-link { display: block; text-align: center; text-decoration: n
 .rep-atajos button:hover { background: #e8eaf6; }
 .rep-filtro input[type="text"] { padding: 9px 11px; border: 1.5px solid #c7cae8; border-radius: 8px; font-size: 13px; }
 .rep-fechas input[type="date"] { padding: 6px 8px; border: 1.5px solid #c7cae8; border-radius: 8px; }
+
+/* ══ Ajustes visuales (filtros, links, ICCID, números, encabezado de tabla) ══ */
+
+/* 1. Botones de filtros: compactos, jerarquía clara */
+.filter-buttons { align-items: center; flex-wrap: wrap; }
+.filter-buttons button {
+    flex: none;
+    padding: 9px 22px;
+    font-size: 14px;
+    border: 1.5px solid #35398C;
+}
+.filter-buttons button:hover { transform: none; box-shadow: 0 2px 8px rgba(53, 57, 140, 0.18); }
+.filter-buttons .btn-secondary { background: #fff; color: #35398C; border-color: #c7cae8; }
+.filter-buttons .btn-secondary:hover { background: #f0f2f8; border-color: #35398C; }
+.filter-buttons .btn-refresh {
+    margin-left: auto;
+    background: #fff;
+    color: #0e7490;
+    border-color: #a5d8e3;
+    font-size: 13px;
+    padding: 8px 16px;
+}
+.filter-buttons .btn-refresh:hover { background: #ecfeff; border-color: #0e7490; }
+
+/* 2. Links de tablas: sin subrayado hasta pasar el mouse */
+.link-rc, .link-num {
+    font-weight: 600;
+    text-decoration: none;
+    border-radius: 3px;
+}
+.link-rc:hover, .link-num:hover {
+    color: #35398C;
+    text-decoration: underline;
+    text-decoration-style: solid;
+    text-underline-offset: 3px;
+}
+
+/* 3. ICCID en grupos de 4 (al copiar sale sin espacios) */
+.iccid { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.iccid > span + span { margin-left: .32em; }
+.td-imei { font-family: inherit; font-size: 12.5px; color: #6b7280; letter-spacing: .01em; }
+
+/* 4. Números y fechas: alineados y con dígitos de ancho fijo */
+.td-num, .th-num { text-align: right !important; }
+.td-num, .td-fecha { font-variant-numeric: tabular-nums; white-space: nowrap; }
+th.th-num.sortable::after { margin-left: 2px; }
+
+/* 6. Encabezado de tabla más bajo y suave */
+thead { background: #eef0f8; color: #35398C; }
+th {
+    padding: 10px 15px;
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    border-bottom: 2px solid #d9dcef;
+}
+th.sortable:hover { background: #e2e5f3; }
+td { padding: 11px 15px; border-bottom: 1px solid #f0f1f5; }
+tbody tr:nth-child(even) { background: #fbfbfd; }
+tbody tr:hover { background: #f4f5fb; }

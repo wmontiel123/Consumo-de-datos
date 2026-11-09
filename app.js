@@ -919,6 +919,14 @@ function simNumDisplay(num, imei) {
     return `${dot}<span style="${clrSty || 'color:inherit'}">${label}</span>`;
 }
 
+// ICCID en grupos de 4 dígitos para leerlo mejor. Solo visual: los grupos son
+// <span> con margen, así al copiar sale el número completo sin espacios.
+function iccidVisual(v) {
+    const s = String(v ?? '').trim();
+    if (!/^\d{9,}$/.test(s)) return escHtml(s);
+    return '<span class="iccid">' + s.match(/.{1,4}/g).map(g => `<span>${g}</span>`).join('') + '</span>';
+}
+
 // Punto + IMEI coloreado (y clicable) para la columna IMEI
 function simImeiDisplay(num, imei) {
     const i = normalizarImei(imei);
@@ -927,7 +935,7 @@ function simImeiDisplay(num, imei) {
     const dotClr = est ? _simDotColor(est) : null;
     const clrSty = est ? _simTextStyle(est) : '';
     const dot    = dotClr ? `<span style="color:${dotClr};font-size:9px;margin-right:3px;vertical-align:middle">●</span>` : '';
-    return `${dot}<span class="link-num" style="${clrSty}" onclick="abrirPanelSIM('','${i}')">${i}</span>`;
+    return `${dot}<span class="link-num" style="${clrSty}" onclick="abrirPanelSIM('','${i}')">${iccidVisual(i)}</span>`;
 }
 
 // Mostrar datos en la tabla (con paginación)
@@ -972,7 +980,7 @@ function mostrarEnTabla(datos) {
             <td class="td-imei">${simImeiDisplay(fila['sim1_num'], fila['sim1_imei'])}</td>
             <td>${simNumDisplay(fila['sim2_num'], i2)}</td>
             <td class="td-imei">${simImeiDisplay(fila['sim2_num'], fila['sim2_imei'])}</td>
-            <td>${formatearFecha(fila['fecha_activacion'])}</td>
+            <td class="td-fecha">${formatearFecha(fila['fecha_activacion'])}</td>
         `;
         tbody.appendChild(tr);
     });
@@ -1942,11 +1950,11 @@ function mostrarEnTablaConsumo(filas, totalServidor) {
         tr.innerHTML = `
             <td><span class="badge-estado ${cfg.cls}">${cfg.label}</span></td>
             <td>${c.numero ? `${dot}<span class="link-num" onclick="abrirPanelSIM('${c.numero}')">${c.numero}</span>` : '-'}</td>
-            <td class="td-imei">${normalizarImei(c.imei) || '-'}</td>
+            <td class="td-imei">${c.imei ? iccidVisual(normalizarImei(c.imei)) : '-'}</td>
             <td>${rc !== '-' ? `<span class="link-rc" onclick="abrirPanelRC('${rc}')">${rc}</span>` : '-'}</td>
             <td>${badgeTelefonia(c.telefonia)}</td>
-            <td>${mb}</td>
-            <td>${formatearFecha(c.fecha_consumo)}</td>
+            <td class="td-num">${mb}</td>
+            <td class="td-fecha">${formatearFecha(c.fecha_consumo)}</td>
             ${esViewer() ? '' : `<td>${c.observacion || '-'}</td>`}
         `;
         tbody.appendChild(tr);
@@ -2914,7 +2922,7 @@ function mostrarLineasBD(filas, totalServidor) {
         // IMEI — navega a pestaña Consumo filtrado por ese IMEI
         const imei = row.imei || '';
         const imeiCell = imei
-            ? `<span class="link-num" onclick="irAConsumoFiltrado('${imei}')" title="Ver consumo →">${imei.length > 12 ? imei.slice(0,12)+'…' : imei}</span>`
+            ? `<span class="link-num" onclick="irAConsumoFiltrado('${imei}')" title="Ver consumo →">${iccidVisual(imei)}</span>`
             : '-';
 
         // RC — link a panel RC
@@ -2939,8 +2947,8 @@ function mostrarLineasBD(filas, totalServidor) {
             <td class="td-imei">${imeiCell}</td>
             <td>${badgeTelefonia(row.telefonia)}</td>
             <td>${rcCell}</td>
-            <td style="text-align:right">${formatearNumero(parseFloat(row.consumo_mes_mb) || 0)} MB</td>
-            <td style="text-align:right">${formatearNumero(parseFloat(row.consumo_total_mb) || 0)} MB</td>
+            <td class="td-num">${formatearNumero(parseFloat(row.consumo_mes_mb) || 0)} MB</td>
+            <td class="td-num">${formatearNumero(parseFloat(row.consumo_total_mb) || 0)} MB</td>
         `;
         tbody.appendChild(tr);
     });
@@ -3121,10 +3129,10 @@ function renderFilasConsolidado(filas) {
             <td>${f.rc && f.rc !== '-' ? `<span class="link-rc" onclick="abrirPanelRC('${f.rc}')">${f.rc}</span>` : `<strong>${f.rc}</strong>`}</td>
             <td><span class="badge-regional">${f.regional}</span></td>
             <td>${sim1Label}</td>
-            <td>${formatearNumero(sim1MB)} MB</td>
+            <td class="td-num">${formatearNumero(sim1MB)} MB</td>
             <td>${sim2Label !== '-' ? sim2Label : '<span style="color:#bbb">—</span>'}</td>
-            <td>${sim2Label !== '-' ? formatearNumero(sim2MB) + ' MB' : '<span style="color:#bbb">—</span>'}</td>
-            <td><strong>${formatearNumero(totalMB)} MB</strong></td>
+            <td class="td-num">${sim2Label !== '-' ? formatearNumero(sim2MB) + ' MB' : '<span style="color:#bbb">—</span>'}</td>
+            <td class="td-num"><strong>${formatearNumero(totalMB)} MB</strong></td>
         `;
         tbody.appendChild(tr);
     });
