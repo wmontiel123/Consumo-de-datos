@@ -3252,7 +3252,7 @@ function irPaginaEquipos(num) {
 
 // ── EXPORTAR ──────────────────────────────────────────────────────
 
-// Excel / PDF de cada vista: exportar.js (exportarVista)
+// Reportes en Excel / PDF de cada vista: exportar.js (abrirReporte)
 
 // ── IMPRIMIR ──────────────────────────────────────────────────────
 
