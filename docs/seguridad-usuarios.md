@@ -46,12 +46,16 @@
    - `SMTP_PASS`: la contraseña de aplicación del paso 1.
    - Opcionales: `SMTP_HOST` (`smtp.zoho.com` si la cuenta es personal), `MAIL_FROM` (ej. `Gestión ANDE <soporte@inovasi.com.py>`; tiene que ser `SMTP_USER` o un alias suyo), `APROBADORES`, `APP_URL`.
 
-## Pendiente (riesgo conocido)
+## Autorización en el servidor (sesión por usuario + RLS)
 
-La autorización por rol se aplica solo en la interfaz. La sesión se guarda en `sessionStorage` y las tablas de datos
-(`dispositivos_ande`, `consumo_sim`, `lineas`, …) aceptan lectura y escritura con la clave pública. Alguien que use
-esa clave fuera de la app podría modificar datos sin iniciar sesión. Para cerrarlo hay que:
+- **Ingreso:** la Edge Function `login` valida la contraseña con `verificar_login` (bloqueo por intentos y registro). Si es correcta, emite una sesión de Supabase Auth para ese usuario, con un JWT propio que se renueva solo y se borra al cerrar la pestaña. El usuario de Auth se crea en el primer ingreso, con el correo interno `<usuario>@usuarios.gcnoc.inovasi.com.py` y una contraseña aleatoria: solo se puede ingresar por la función.
+- **Permisos en la base:** las políticas RLS consultan `app_rol()`, que lee el rol actual de `usuarios_app`. Viewer: solo lectura (y crear `solicitudes` a su nombre). Admin: lectura y escritura. Un usuario desactivado pierde el acceso al instante.
+- **Registro público de Auth desactivado:** nadie puede crearse una cuenta por su cuenta.
+- **Importador:** `scripts/importar_consumos.py` usa la clave de servicio de la variable de entorno `SUPABASE_SERVICE_KEY`.
 
-- migrar el login a Supabase Auth, para que cada usuario tenga su propio JWT;
-- crear políticas RLS por rol (viewer: solo lectura; admin: escritura);
-- hacer que los scripts de importación usen una clave de servicio y no la pública.
+Despliegue en dos fases:
+
+1. `scripts/auth_rls_fase1.sql` agrega lo nuevo sin quitar nada (aplicada el 2026-11-09).
+2. `scripts/auth_rls_fase2.sql` quita las políticas abiertas y todo privilegio de `anon`. A partir de ahí, la clave pública solo sirve para llamar a `login` y `solicitud-usuario`.
+
+Si algo falla, `scripts/revertir_auth_rls.sql` deshace las dos fases.

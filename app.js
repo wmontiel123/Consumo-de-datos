@@ -1,5 +1,6 @@
 // Rol del usuario autenticado.
 let rolActual = 'viewer';
+let usuarioActual = '';
 
 // Guard para evitar que callbacks async actualicen la UI después del logout.
 let _sesionActiva = false;
@@ -101,7 +102,9 @@ function rcEstadoDesdeSimEstados(s1e, s2e) {
 
 function cerrarSesion() {
     _sesionActiva = false;
+    usuarioActual = '';
     sessionStorage.removeItem('session');
+    window.clienteSupabase?.auth.signOut().catch(() => {});   // revoca el refresh token
     // Resetear estado
     rolActual = 'viewer';
     todosLosDatos = []; datosFiltrados = [];
@@ -165,26 +168,42 @@ async function intentarLogin() {
         return;
     }
 
-    // Verificación server-side: la contraseña NUNCA sale del servidor
-    const { data: rol, error } = await window.clienteSupabase.rpc('verificar_login', {
-        p_usuario:  usuario,
-        p_password: password,
-    });
+    // La Edge Function "login" verifica la contraseña (con bloqueo por intentos)
+    // y devuelve una sesión de Supabase Auth: con ese JWT la base aplica los
+    // permisos según el rol (RLS). La contraseña nunca se guarda en el navegador.
+    let res = null, msgError = '';
+    try {
+        const { data, error } = await window.clienteSupabase.functions.invoke('login', {
+            body: { usuario, password },
+        });
+        if (error) {
+            msgError = 'No se pudo iniciar sesión. Probá de nuevo.';
+            try { msgError = (await error.context.json()).error || msgError; } catch (_) { /* sin cuerpo */ }
+        } else if (data?.access_token) {
+            const { error: es } = await window.clienteSupabase.auth.setSession({
+                access_token: data.access_token, refresh_token: data.refresh_token,
+            });
+            if (es) msgError = 'No se pudo iniciar sesión: ' + es.message;
+            else res = data;
+        } else {
+            msgError = 'Usuario o contraseña incorrectos.';
+        }
+    } catch (_) {
+        msgError = 'No se pudo conectar con el servidor. Revisá tu conexión.';
+    }
 
     btn.disabled    = false;
     btn.textContent = 'Ingresar';
 
-    console.log('[login] rol:', rol, '| error:', error?.message, error?.code);
-
-    if (error || !rol) {
+    if (!res) {
         const SVG_ERR = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
-        errorEl.innerHTML = SVG_ERR + ' ' + (error ? `Error: ${error.message}` : 'Usuario o contraseña incorrectos.');
+        errorEl.innerHTML = SVG_ERR + ' ' + msgError;
         errorEl.style.display = 'block';
         document.getElementById('loginPassword').value = '';
         return;
     }
 
-    _activarSesion(usuario, rol);
+    _activarSesion(res.usuario, res.rol);
 }
 
 // ── Solicitud de acceso (pantalla de login) ──────────────────────
@@ -245,11 +264,11 @@ async function enviarSolicitudAcceso() {
     }
 }
 
-// Activa la UI y guarda la sesión en sessionStorage (se borra al cerrar la pestaña)
+// Activa la UI. La sesión (JWT) la guarda supabase-js en sessionStorage: se borra al cerrar la pestaña
 function _activarSesion(usuario, rol) {
     _sesionActiva = true;
     rolActual = rol;
-    sessionStorage.setItem('session', JSON.stringify({ usuario, rol }));
+    usuarioActual = usuario;
     document.getElementById('loginOverlay').style.display = 'none';
     document.getElementById('appPrincipal').style.display = 'block';
     document.getElementById('loginError').style.display   = 'none';
@@ -300,8 +319,18 @@ function aplicarRol() {
 // Inicializar Supabase + restaurar sesión de la pestaña actual
 document.addEventListener('DOMContentLoaded', function() {
 
-    // Crear cliente Supabase antes del login (necesario para el RPC de verificación)
-    window.clienteSupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    // Cliente Supabase. La sesión vive en sessionStorage (se borra al cerrar la pestaña)
+    // y supabase-js renueva el JWT solo mientras la pestaña está abierta.
+    window.clienteSupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+        auth: {
+            storage: window.sessionStorage, storageKey: 'gcnoc-auth',
+            persistSession: true, autoRefreshToken: true, detectSessionInUrl: false,
+        },
+    });
+    // Si la sesión se pierde (vencida o revocada), volver al login
+    window.clienteSupabase.auth.onAuthStateChange(evento => {
+        if (evento === 'SIGNED_OUT' && _sesionActiva) cerrarSesion();
+    });
 
     // Permitir Enter en los campos del login
     ['loginUsuario', 'loginPassword'].forEach(function(id) {
@@ -310,21 +339,26 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Restaurar sesión desde sessionStorage (persiste en F5, se borra al cerrar la pestaña)
-    try {
-        const saved = sessionStorage.getItem('session');
-        if (saved) {
-            const { usuario, rol } = JSON.parse(saved);
-            if (usuario && ['admin', 'viewer'].includes(rol)) {
-                _activarSesion(usuario, rol);
-            } else {
-                sessionStorage.removeItem('session');
-            }
-        }
-    } catch (_) {
-        sessionStorage.removeItem('session');
-    }
+    // Restaurar la sesión al recargar (F5): el perfil se pide a la base, no se
+    // toma de lo guardado en el navegador
+    sessionStorage.removeItem('session');   // formato anterior, ya no se usa
+    restaurarSesion();
 });
+
+async function restaurarSesion() {
+    try {
+        const { data: { session } } = await window.clienteSupabase.auth.getSession();
+        if (!session) return;
+        const { data: perfil, error } = await window.clienteSupabase.rpc('mi_perfil');
+        if (!error && perfil?.usuario && ['admin', 'viewer'].includes(perfil.rol)) {
+            _activarSesion(perfil.usuario, perfil.rol);
+        } else {
+            await window.clienteSupabase.auth.signOut();
+        }
+    } catch (e) {
+        console.warn('No se pudo restaurar la sesión:', e);
+    }
+}
 
 // Configuración de Supabase
 const SUPABASE_URL = 'https://rnnsvvujedwcvcjyyajm.supabase.co';
@@ -617,8 +651,9 @@ async function cargarDatos() {
         // Mostrar tabla inmediatamente sin esperar la sincronización de estados
         mostrarDatos(todosLosDatos);
 
-        // Sincronizar estado de RCs en background (escribe a BD, no bloquea la UI)
-        sincronizarEstadosDispositivos()
+        // Sincronizar estado de RCs en background (escribe a BD, no bloquea la UI).
+        // Solo admin: un viewer no tiene permiso de escritura.
+        (esViewer() ? Promise.resolve() : sincronizarEstadosDispositivos())
             .then(() => { if (_sesionActiva && todosLosDatos.length) mostrarDatos(todosLosDatos); })
             .catch(e => console.warn('⚠️ sincronizar estados:', e));
 
@@ -4195,13 +4230,10 @@ async function aplicarCambioLineas(plan, codigo, slot) {
 
 // ── Solicitudes (perfil viewer → genera solicitud en BD) ───────────
 
-// Nombre del usuario logueado (sessionStorage), para registrar quién hizo cada acción
+// Nombre del usuario logueado, para registrar quién hizo cada acción
+// (en solicitudes la base exige que coincida con el usuario de la sesión)
 function usuarioSesion() {
-    try {
-        return JSON.parse(sessionStorage.getItem('session') || '{}').usuario || rolActual || 'desconocido';
-    } catch (_) {
-        return rolActual || 'desconocido';
-    }
+    return usuarioActual || 'desconocido';
 }
 
 // Escribe una fila en la tabla solicitudes con el usuario actual

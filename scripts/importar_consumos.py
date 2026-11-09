@@ -32,13 +32,21 @@ from statistics import median
 import requests
 
 SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://rnnsvvujedwcvcjyyajm.supabase.co')
-SUPABASE_KEY = os.environ.get('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJubnN2dnVqZWR3Y3Zjanl5YWptIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4MjM2NjcsImV4cCI6MjA4NDM5OTY2N30.VhmUP-tal_iMwmJU_MDDAploV5sDqkzgbi9E2hyCqZc')
+# Clave de servicio (service_role / secret): con la clave pública ya no se puede
+# escribir en la base. Se toma de la variable de entorno SUPABASE_SERVICE_KEY
+# (Supabase → Project Settings → API Keys). No guardarla en el repositorio.
+SUPABASE_KEY = os.environ.get('SUPABASE_SERVICE_KEY', '').strip()
+if not SUPABASE_KEY:
+    sys.exit('Falta la variable de entorno SUPABASE_SERVICE_KEY (clave service_role de Supabase).\n'
+             'Cargala una vez con:  setx SUPABASE_SERVICE_KEY "<clave>"  y abrí una terminal nueva.')
 REST = f'{SUPABASE_URL}/rest/v1'
 HEADERS = {
     'apikey': SUPABASE_KEY,
-    'Authorization': f'Bearer {SUPABASE_KEY}',
     'Content-Type': 'application/json',
 }
+# Las claves JWT (eyJ...) van también como Bearer; las nuevas sb_secret_ solo en apikey
+if SUPABASE_KEY.startswith('eyJ'):
+    HEADERS['Authorization'] = f'Bearer {SUPABASE_KEY}'
 
 BATCH_INSERT = 500
 CHUNK = 100
