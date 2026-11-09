@@ -255,7 +255,8 @@ function pintarTodosLosChips() { Object.keys(GRUPOS_FILTRO).forEach(pintarChips)
 // angostas el CSS muestra cada fila como una tarjeta "Columna: valor".
 
 const TABLAS_RESPONSIVAS = ['#tablaConsumo', '#tablaConsumo2', '#tablaConsolidado', '#tablaLineasBD',
-                            '#tab-historial .panel-historial', '#tab-activaciones .panel-historial', '#tab-altas .panel-historial'];
+                            '#tab-historial .panel-historial', '#tab-activaciones .panel-historial', '#subtab-inventario .panel-historial',
+                            '#tablaCargasSesion'];
 
 function etiquetarTabla(tabla) {
     const titulos = [...tabla.querySelectorAll('thead th')].map(th => th.textContent.replace(/[⇅▲▼]/g, '').trim());
@@ -298,6 +299,198 @@ function ponerResumenAlCostado(contenedor, kpiId) {
     contenedor.appendChild(layout);
 }
 
+// ── Altas: formularios desplegables, elegir cuáles ver y "Cargado en esta sesión" ──
+
+const FORMULARIOS_ALTA = [
+    { clave: 'rc',     titulo: 'Nuevo RC' },
+    { clave: 'lector', titulo: 'Carga rápida con lector' },
+    { clave: 'linea',  titulo: 'Nueva línea' },
+];
+
+function _prefsAltas() {
+    try { return JSON.parse(localStorage.getItem('prefsAltas') || '{}'); } catch { return {}; }
+}
+function _guardarPrefsAltas(p) {
+    try { localStorage.setItem('prefsAltas', JSON.stringify(p)); } catch { /* sin almacenamiento */ }
+}
+
+function prepararFormulariosAlta() {
+    const cont = document.getElementById('subtab-altas');
+    if (!cont || cont.dataset.mejorado) return;
+    cont.dataset.mejorado = '1';
+    const tarjetas = [...cont.querySelectorAll(':scope > .filters')];
+    const prefs = _prefsAltas();
+
+    // Barra "Mostrar:" para elegir qué formularios ver
+    const barra = document.createElement('div');
+    barra.className = 'altas-barra';
+    barra.innerHTML = '<span class="altas-barra-tit">Mostrar:</span>' + FORMULARIOS_ALTA.map(f =>
+        `<label class="rep-chip"><input type="checkbox" data-form="${f.clave}" ${prefs.ocultos?.includes(f.clave) ? '' : 'checked'}>
+         <span>${escHtml(f.titulo)}</span></label>`).join('') +
+        '<span class="altas-vacio" style="display:none">Elegí al menos un formulario para cargar.</span>';
+    cont.prepend(barra);
+
+    tarjetas.forEach((card, i) => {
+        const f = FORMULARIOS_ALTA[i];
+        if (!f) return;
+        card.dataset.form = f.clave;
+        card.classList.add('alta-card');
+        const h2 = card.querySelector('h2');
+        if (h2) {
+            h2.classList.add('filtros-titulo');
+            h2.setAttribute('role', 'button');
+            h2.setAttribute('tabindex', '0');
+            h2.title = 'Desplegar o plegar';
+            h2.insertAdjacentHTML('beforeend', '<span class="filtros-chevron" aria-hidden="true">▾</span>');
+            const alternar = () => {
+                const p = _prefsAltas();
+                p.plegados = p.plegados || [];
+                const plegar = !card.classList.contains('plegado');
+                card.classList.toggle('plegado', plegar);
+                h2.setAttribute('aria-expanded', String(!plegar));
+                p.plegados = plegar ? [...new Set([...p.plegados, f.clave])] : p.plegados.filter(x => x !== f.clave);
+                _guardarPrefsAltas(p);
+            };
+            h2.addEventListener('click', alternar);
+            h2.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); alternar(); } });
+            const plegado = !!prefs.plegados?.includes(f.clave);
+            card.classList.toggle('plegado', plegado);
+            h2.setAttribute('aria-expanded', String(!plegado));
+        }
+    });
+
+    barra.querySelectorAll('[data-form]').forEach(chk => chk.addEventListener('change', aplicarVisibilidadAltas));
+    aplicarVisibilidadAltas();
+
+    // Panel con lo cargado en esta sesión, debajo de los formularios
+    const panel = document.createElement('div');
+    panel.className = 'table-container cargas-sesion';
+    panel.innerHTML = `
+        <div class="table-header-row">
+            <h2>Cargado en esta sesión</h2>
+            <div class="header-acciones">
+                <span id="cargasSesionResumen" class="cargas-resumen"></span>
+                <button type="button" class="btn-accion" onclick="limpiarCargasSesion()">Limpiar lista</button>
+            </div>
+        </div>
+        <div class="historial-sim-lista">
+            <table class="panel-historial" id="tablaCargasSesion">
+                <thead><tr><th>Hora</th><th>Tipo</th><th>Número / Código</th><th>ICCID</th><th>Telefonía</th><th>Estado</th><th>RC / Detalle</th><th>Origen</th></tr></thead>
+                <tbody id="cargasSesionBody"></tbody>
+            </table>
+        </div>`;
+    cont.appendChild(panel);
+    pintarCargasSesion();
+}
+
+function aplicarVisibilidadAltas() {
+    const cont = document.getElementById('subtab-altas');
+    const visibles = [...cont.querySelectorAll('.altas-barra [data-form]:checked')].map(c => c.dataset.form);
+    cont.querySelectorAll(':scope > .alta-card').forEach(card => {
+        card.style.display = visibles.includes(card.dataset.form) ? '' : 'none';
+    });
+    cont.querySelector('.altas-vacio').style.display = visibles.length ? 'none' : '';
+    const p = _prefsAltas();
+    p.ocultos = FORMULARIOS_ALTA.map(f => f.clave).filter(k => !visibles.includes(k));
+    _guardarPrefsAltas(p);
+}
+
+// Lo cargado se guarda en sessionStorage: sobrevive a recargar la página, no a cerrar la pestaña
+let _cargasSesion = [];
+try { _cargasSesion = JSON.parse(sessionStorage.getItem('cargasSesion') || '[]'); } catch { _cargasSesion = []; }
+let _origenCarga = 'Manual';
+
+function registrarCarga(c) {
+    _cargasSesion.unshift({ hora: new Date().toISOString(), ...c });
+    try { sessionStorage.setItem('cargasSesion', JSON.stringify(_cargasSesion.slice(0, 500))); } catch { /* sin almacenamiento */ }
+    pintarCargasSesion();
+}
+
+function limpiarCargasSesion() {
+    if (_cargasSesion.length && !confirm('¿Vaciar la lista de lo cargado en esta sesión?\n(No borra nada de la base: solo esta lista.)')) return;
+    _cargasSesion = [];
+    try { sessionStorage.removeItem('cargasSesion'); } catch { /* sin almacenamiento */ }
+    pintarCargasSesion();
+}
+
+function pintarCargasSesion() {
+    const tbody = document.getElementById('cargasSesionBody');
+    if (!tbody) return;
+    const rcs = _cargasSesion.filter(c => c.tipo === 'RC').length;
+    document.getElementById('cargasSesionResumen').textContent = _cargasSesion.length
+        ? `${rcs} RC · ${_cargasSesion.length - rcs} línea(s)` : '';
+    if (!_cargasSesion.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="panel-empty">Todavía no cargaste nada en esta sesión. Lo que des de alta arriba aparece acá.</td></tr>';
+        return;
+    }
+    const hora = ts => new Date(ts).toLocaleTimeString('es-PY', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    tbody.innerHTML = _cargasSesion.map(c => `
+        <tr>
+            <td class="td-fecha">${hora(c.hora)}</td>
+            <td><span class="badge-tipo-carga ${c.tipo === 'RC' ? 'carga-rc' : 'carga-linea'}">${escHtml(c.tipo)}</span></td>
+            <td>${c.tipo === 'RC'
+                    ? `<span class="link-rc" onclick="abrirPanelRC(this.textContent)">${escHtml(c.ref)}</span>`
+                    : escHtml(c.ref) || '-'}</td>
+            <td class="td-imei">${c.iccid ? iccidVisual(c.iccid) : '-'}</td>
+            <td>${c.telefonia ? badgeTelefonia(c.telefonia) : '-'}</td>
+            <td>${escHtml(c.estado) || '-'}</td>
+            <td>${c.rc && c.tipo !== 'RC' ? `<span class="link-rc" onclick="abrirPanelRC(this.textContent)">${escHtml(c.rc)}</span>` : escHtml(c.rc && c.tipo === 'RC' ? c.rc : '') || '-'}</td>
+            <td>${escHtml(c.origen)}</td>
+        </tr>`).join('');
+}
+
+// Engancha las altas de app.js para anotar lo que se carga
+function engancharCargasSesion() {
+    const crear = window.crearLineaInventario;
+    if (typeof crear === 'function') {
+        window.crearLineaInventario = async function (datos) {
+            const fila = await crear.call(this, datos);   // si falla, lanza y no se anota
+            if (fila) registrarCarga({
+                tipo: 'Línea',
+                ref: fila.numero || '',
+                iccid: fila.iccid || '',
+                telefonia: fila.telefonia,
+                estado: ESTADO_HIST_LABEL[fila.estado] || fila.estado,
+                rc: fila.rc_codigo || '',
+                origen: _origenCarga,
+            });
+            return fila;
+        };
+    }
+    const conOrigen = (nombre, origen) => {
+        const orig = window[nombre];
+        if (typeof orig !== 'function') return;
+        window[nombre] = async function (...args) {
+            _origenCarga = origen;
+            try { return await orig.apply(this, args); } finally { _origenCarga = 'Manual'; }
+        };
+    };
+    conOrigen('guardarEscaneo', 'Lector');
+    conOrigen('guardarAltaLinea', 'Nueva línea');
+
+    const altaRC = window.guardarAltaRC;
+    if (typeof altaRC === 'function') {
+        window.guardarAltaRC = async function (...args) {
+            const v = id => (document.getElementById(id)?.value || '').trim();
+            const datos = { codigo: v('altaRcCodigo'), regional: v('altaRcRegional'),
+                            sim1: v('altaRcSim1Num'), iccid1: v('altaRcSim1Iccid'), sim2: v('altaRcSim2Num') };
+            const antes = todosLosDatos.length;
+            const r = await altaRC.apply(this, args);
+            const creado = todosLosDatos.length > antes && todosLosDatos.some(d => d.codigo === datos.codigo);
+            if (creado) registrarCarga({
+                tipo: 'RC',
+                ref: datos.codigo,
+                iccid: datos.iccid1,
+                telefonia: typeof telefoniaDeIccid === 'function' ? telefoniaDeIccid(limpiarIccid(datos.iccid1)) : '',
+                estado: 'Activado',
+                rc: [datos.regional, datos.sim1 && `SIM 1: ${datos.sim1}`, datos.sim2 && `SIM 2: ${datos.sim2}`].filter(Boolean).join(' · '),
+                origen: 'Nuevo RC',
+            });
+            return r;
+        };
+    }
+}
+
 // ── Sub-pestañas de Altas: "Nuevo RC y líneas" / "Inventario de líneas" ──
 
 function cambiarSubtabAltas(cual) {
@@ -317,6 +510,8 @@ function cambiarSubtabAltas(cual) {
 function iniciarMejorasUI() {
     ponerResumenAlCostado(document.querySelector('#tab-consumo .table-container'), 'kpiConsumo');
     ponerResumenAlCostado(document.querySelector('#subtab-inventario .table-container'), 'kpiInventario');
+    prepararFormulariosAlta();
+    engancharCargasSesion();
     prepararTablasResponsivas();
     let sub = 'altas';
     try { sub = localStorage.getItem('subtabAltas') || 'altas'; } catch { /* sin almacenamiento */ }

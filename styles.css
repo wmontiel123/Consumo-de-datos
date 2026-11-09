@@ -2205,18 +2205,31 @@ img, canvas, svg { max-width: 100%; }
     .subtab-btn { flex: 1; justify-content: center; padding: 10px 6px; font-size: 13px; gap: 5px; }
 }
 
-/* ══ Altas: Nuevo RC, Carga rápida y Nueva línea uno al lado del otro ══ */
+/* ══ Altas: formularios uno al lado del otro, desplegables y a elección ══ */
+#subtab-altas { display: flex; flex-wrap: wrap; gap: 18px; align-items: stretch; }
+#subtab-altas > * { flex: 1 1 100%; min-width: 0; }
+#subtab-altas > .alta-card { margin-bottom: 0; display: flex; flex-direction: column; }
+#subtab-altas > .alta-card .filter-buttons { margin-top: auto; padding-top: 14px; }
+#subtab-altas > .alta-card.plegado { align-self: flex-start; padding-top: 16px; padding-bottom: 16px; }
+#subtab-altas > .alta-card.plegado > :not(h2) { display: none !important; }
+#subtab-altas > .alta-card.plegado > h2 { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+#subtab-altas .escaneo-lista { max-height: 260px; overflow-y: auto; }
 @media (min-width: 1100px) {
-    #subtab-altas { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 18px; align-items: stretch; }
-    #subtab-altas[style*="display: none"], #subtab-altas[style*="display:none"] { display: none; }
-    #subtab-altas > .filters { margin-bottom: 0; padding: 20px; display: flex; flex-direction: column; min-width: 0; }
-    #subtab-altas > .filters h2 { font-size: 1.25em; }
+    #subtab-altas > .alta-card { flex: 1 1 0; padding: 20px; }
+    #subtab-altas > .alta-card[data-form="rc"] { flex-grow: 1.35; }
+    #subtab-altas > .alta-card h2 { font-size: 1.25em; }
     #subtab-altas .filter-row { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
     #subtab-altas .filter-group label { white-space: normal; font-size: 13px; }
-    #subtab-altas .filter-buttons { margin-top: auto; padding-top: 14px; }
-    #subtab-altas .escaneo-lista { max-height: 260px; overflow-y: auto; }
-    #subtab-altas > .filters:not(:first-child) .filter-row { grid-template-columns: 1fr; }
+    #subtab-altas > .alta-card:not([data-form="rc"]) .filter-row { grid-template-columns: 1fr; }
 }
+.altas-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.altas-barra-tit { font-size: 13px; font-weight: 600; color: #6b7280; margin-right: 2px; }
+.altas-vacio { font-size: 13px; color: #b45309; }
+.cargas-sesion { margin-top: 4px; }
+.cargas-resumen { font-size: 13px; color: #6b7280; font-weight: 600; }
+.badge-tipo-carga { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+.carga-rc    { background: #eef0f8; color: #35398C; }
+.carga-linea { background: #ecfdf5; color: #047857; }
 /* Resumen al costado: el título va sobre la tabla; en pantallas chicas, título → tarjetas → tabla */
 @media (max-width: 900px) {
     .inv-layout { display: flex; flex-direction: column; gap: 12px; }
