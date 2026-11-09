@@ -2203,3 +2203,16 @@ img, canvas, svg { max-width: 100%; }
 @media (max-width: 760px) {
     .subtab-btn { flex: 1; justify-content: center; padding: 10px 6px; font-size: 13px; gap: 5px; }
 }
+
+/* ══ Altas: Nuevo RC, Carga rápida y Nueva línea uno al lado del otro ══ */
+@media (min-width: 1100px) {
+    #subtab-altas { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 18px; align-items: stretch; }
+    #subtab-altas[style*="display: none"], #subtab-altas[style*="display:none"] { display: none; }
+    #subtab-altas > .filters { margin-bottom: 0; padding: 20px; display: flex; flex-direction: column; min-width: 0; }
+    #subtab-altas > .filters h2 { font-size: 1.25em; }
+    #subtab-altas .filter-row { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+    #subtab-altas .filter-group label { white-space: normal; font-size: 13px; }
+    #subtab-altas .filter-buttons { margin-top: auto; padding-top: 14px; }
+    #subtab-altas .escaneo-lista { max-height: 260px; overflow-y: auto; }
+    #subtab-altas > .filters:not(:first-child) .filter-row { grid-template-columns: 1fr; }
+}
