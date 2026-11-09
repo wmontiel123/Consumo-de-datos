@@ -1,0 +1,8 @@
+
+# Carga automática de reportes (datos locales de cada PC)
+scripts/cargar_reportes.ini
+scripts/cargar_reportes_estado.json
+scripts/cargar_reportes.lock
+scripts/logs/
+scripts/__pycache__/
+dist/

@@ -452,13 +452,37 @@ def main():
     if not archivos:
         sys.exit('❌ No se encontraron archivos .csv')
 
+    importar(archivos, carpeta, ejecutar=args.ejecutar, m2m_telefonia=args.m2m_telefonia,
+             recalcular=not args.sin_recalcular, corregir_neg=args.corregir_negativos)
+
+
+def fecha_max_bd(telefonia):
+    """Última fecha_consumo cargada para esa telefonía (None si no hay datos)."""
+    r = _check(sesion.get(f'{REST}/consumo_sim', params={
+        'select': 'fecha_consumo', 'telefonia': f'eq.{telefonia}',
+        'order': 'fecha_consumo.desc', 'limit': 1}), 'GET consumo_sim')
+    filas = r.json()
+    return filas[0]['fecha_consumo'] if filas else None
+
+
+def importar(archivos, carpeta, ejecutar, m2m_telefonia='Tigo', recalcular=True,
+             corregir_neg=False, solo_recalcular_si_es_lo_mas_nuevo=False):
+    """Lee los CSV, descarta duplicados (contra la BD y entre archivos) e inserta lo nuevo.
+
+    solo_recalcular_si_es_lo_mas_nuevo: si los archivos de una telefonía son más viejos
+    que lo que ya está en la BD (p. ej. un día faltante que se carga después), sus filas
+    se insertan pero no se recalculan los estados de esa telefonía (si no, las líneas que
+    no figuran en ese reporte viejo quedarían como desactivadas).
+    Devuelve {'insertadas': n, 'omitidos': [...], 'por_telefonia': {tel: {...}}}.
+    """
+    resumen = {'insertadas': 0, 'omitidos': [], 'por_telefonia': {}}
     print(f'📂 {carpeta}  →  {len(archivos)} archivo(s) CSV\n')
 
     # 1. Leer todos los archivos
     por_tel = {}          # telefonia → filas
     omitidos = []
     for ruta in archivos:
-        tel = detectar_telefonia(ruta, args.m2m_telefonia)
+        tel = detectar_telefonia(ruta, m2m_telefonia)
         rel = ruta.relative_to(carpeta)
         if not tel:
             omitidos.append(f'{rel} (no se pudo detectar la telefonía)')
@@ -494,6 +518,8 @@ def main():
                 vistas.add(cl)
                 nuevas.append(f)
         nuevas_por_tel[tel] = nuevas
+        resumen['por_telefonia'][tel] = {'leidas': len(filas), 'nuevas': len(nuevas), 'ya_en_bd': dup_bd,
+                                         'desde': min(fechas), 'hasta': max(fechas)}
         print(f'📱 {tel:<9} {len(filas):>7} filas leídas ({min(fechas)} a {max(fechas)})  |  '
               f'{len(nuevas):>7} nuevas  |  {dup_bd:>6} ya en BD  |  {dup_arch:>5} repetidas en archivos')
 
@@ -502,29 +528,41 @@ def main():
         for o in omitidos:
             print('   -', o)
 
+    resumen['omitidos'] = omitidos
     total_nuevas = sum(len(v) for v in nuevas_por_tel.values())
     print(f'\nTotal a insertar: {total_nuevas}')
 
-    if not args.ejecutar:
+    # Telefonías cuyos archivos no traen nada más nuevo que lo que ya hay en la BD
+    no_recalcular = set()
+    if solo_recalcular_si_es_lo_mas_nuevo:
+        for tel, filas in por_tel.items():
+            ult = fecha_max_bd(tel)
+            if ult and max(f['fecha_consumo'] for f in filas) < ult:
+                no_recalcular.add(tel)
+                print(f'ℹ️  {tel}: los archivos son anteriores a lo cargado ({ult}); '
+                      'se insertan sin recalcular estados.')
+
+    if not ejecutar:
         negativos = sum(1 for filas in por_tel.values() for f in filas
                         if f['consumo_mb'] is not None and f['consumo_mb'] < 0)
         if negativos:
             print(f'\n⚠️  {negativos} filas con consumo negativo en los archivos '
-                  f'(se guardan tal cual{"" if args.corregir_negativos else "; usá --corregir-negativos para corregirlos"}).')
-        if args.corregir_negativos:
+                  f'(se guardan tal cual{"" if corregir_neg else "; usá --corregir-negativos para corregirlos"}).')
+        if corregir_neg:
             print('\n🔧 Negativos que ya están en la BD:')
             corregir_negativos(sorted(por_tel), ejecutar=False)
         print('\nℹ️  Simulación: no se escribió nada. Ejecutá con --ejecutar para insertar.')
-        return
+        return resumen
 
     # 3. Insertar
     for tel, nuevas in nuevas_por_tel.items():
         if nuevas:
             print(f'⬆️  Insertando {len(nuevas)} filas de {tel}…')
             insertar('consumo_sim', nuevas)
+    resumen['insertadas'] = total_nuevas
 
     # Corregir consumos negativos (solo si se pidió) y reflejarlo en las filas leídas
-    if args.corregir_negativos:
+    if corregir_neg:
         print('\n🔧 Corrigiendo consumos negativos…')
         cambios = corregir_negativos(sorted(por_tel), ejecutar=True)
         for tel, filas in por_tel.items():
@@ -533,13 +571,15 @@ def main():
                 if cl in cambios:
                     f['consumo_mb'] = cambios[cl]
 
-    if args.sin_recalcular:
-        print('\n✅ Listo (sin recalcular estados).')
-        return
+    if not recalcular or total_nuevas == 0:
+        print(f'\n✅ Listo: {total_nuevas} registros insertados (sin recalcular estados).')
+        return resumen
 
     # 4. Recalcular estados por telefonía, separando M2M de las líneas con número
     print('\n🔄 Recalculando estados…')
     for tel, filas in por_tel.items():
+        if tel in no_recalcular:
+            continue
         for grupo_m2m in (False, True):
             sub = [f for f in filas if es_m2m(f['numero']) == grupo_m2m]
             if sub:
@@ -555,6 +595,7 @@ def main():
                '      Ejecutá en el SQL Editor de Supabase:  select refresh_lineas_estado();')
 
     print(f'\n✅ Listo: {total_nuevas} registros insertados.')
+    return resumen
 
 
 if __name__ == '__main__':
