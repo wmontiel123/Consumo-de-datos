@@ -357,7 +357,6 @@ function aplicarRol() {
     document.getElementById('filtroTipoGroup').style.display = 'none';
 
     // Ocultar botones de importación (solo admin puede importar datos)
-    document.getElementById('btnImportDispositivos').style.display = 'none';
     document.getElementById('btnImportConsumo').style.display      = 'none';
 
     // Ocultar botón "Actualizar Estados" (escribe en BD)
