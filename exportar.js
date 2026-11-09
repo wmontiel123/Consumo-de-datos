@@ -70,11 +70,22 @@ const FILTROS = {
     tipoRC:     { tipo: 'multi', titulo: 'Tipo de RC', opciones: () => Object.entries(TIPO_CONFIG).map(([k, v]) => [k, v.label]) },
     estadoInv:  { tipo: 'multi', titulo: 'Estado en inventario', opciones: () => [['disponible', 'Disponible'], ['asignada', 'Asignada'], ['desactivada', 'Desactivada']] },
     tipoAct:    { tipo: 'multi', titulo: 'Tipo', opciones: () => [['rc', 'RC'], ['linea', 'Líneas']] },
-    rc:         { tipo: 'texto', titulo: 'RC (uno o varios, separados por coma)', placeholder: 'Ej: RC_55591, RC_10243' },
+    rc:         { tipo: 'texto', titulo: 'RC (uno o varios, separados por coma)', etiqueta: 'RC', lista: true, placeholder: 'Ej: RC_55591, RC_10243' },
+    numero:     { tipo: 'texto', titulo: 'Número / ICCID (uno o varios, separados por coma)', etiqueta: 'Número / ICCID', lista: true, placeholder: 'Ej: 976989482, 8959502…' },
+    obs:        { tipo: 'texto', titulo: 'Observación contiene', etiqueta: 'Observación', placeholder: 'Ej: Backup', soloAdmin: true },
+    buscar:     { tipo: 'texto', titulo: 'Búsqueda (texto libre)', etiqueta: 'Búsqueda', placeholder: 'Número, ICCID, RC, usuario…' },
     fechas:     { tipo: 'fechas', titulo: 'Período' },
     fechasAct:  { tipo: 'fechas', titulo: 'Fecha de activación' },
     automaticas:{ tipo: 'check', titulo: 'Incluir altas automáticas (sistema)' },
 };
+
+// Número/ICCID: alguno de los valores de la lista aparece en alguno de los campos
+const _coincideNumero = (f, ...vals) => {
+    const lista = _listaTexto(f.numero);
+    return !lista.length || lista.some(x => vals.some(v => _norm(v).includes(x)));
+};
+// Texto libre contenido en alguno de los campos
+const _contiene = (q, ...vals) => !_norm(q) || vals.some(v => _norm(v).includes(_norm(q)));
 
 // Filtra una lista con las opciones múltiples elegidas (vacío = todas)
 const _pasa = (valor, elegidos, normalizar = _norm) =>
@@ -121,15 +132,19 @@ const REPORTES = {
     consumoLinea: {
         titulo: 'Consumo por línea',
         descripcion: 'MB de cada línea sumados en el período.',
-        filtros: ['fechas', 'telefonia', 'regional', 'estadoSim', 'rc'],
+        filtros: ['fechas', 'telefonia', 'regional', 'estadoSim', 'rc', 'numero', 'obs'],
         async obtener(f) {
+            const nums = _listaTexto(f.numero);
             const { data, error } = await window.clienteSupabase.rpc('consumo_por_linea', {
                 p_telefonia: f.telefonia?.length === 1 ? f.telefonia[0] : null,
                 p_estados: null, p_desde: f.desde || null, p_hasta: f.hasta || null,
-                p_numeros: null, p_imeis: null, p_num_like: null, p_obs_like: null,
+                p_numeros: null, p_imeis: null,
+                p_num_like: nums.length === 1 ? nums[0] : null,
+                p_obs_like: _norm(f.obs) ? f.obs.trim() : null,
             });
             if (error) throw error;
-            let filas = (data || []).filter(c => _pasa(c.telefonia, f.telefonia) && _pasa(_estadoLinea(c), f.estadoSim));
+            let filas = (data || []).filter(c => _pasa(c.telefonia, f.telefonia) && _pasa(_estadoLinea(c), f.estadoSim) &&
+                                                 _coincideNumero(f, c.numero, c.imei));
             filas = _filtrarPorRC(filas, f, c => c.numero, c => c.imei);
             filas.sort((a, b) => (parseFloat(b.consumo_mb) || 0) - (parseFloat(a.consumo_mb) || 0));
             const mb = c => parseFloat(c.consumo_mb) || 0;
@@ -151,15 +166,18 @@ const REPORTES = {
     consumoRC: {
         titulo: 'Consumo por RC',
         descripcion: 'MB de la SIM principal y de respaldo de cada RC en el período.',
-        filtros: ['fechas', 'telefonia', 'regional', 'rc'],
+        filtros: ['fechas', 'telefonia', 'regional', 'estadoSim', 'rc', 'numero', 'obs'],
         async obtener(f) {
+            const nums = _listaTexto(f.numero);
             const { data, error } = await window.clienteSupabase.rpc('consumo_por_linea', {
                 p_telefonia: f.telefonia?.length === 1 ? f.telefonia[0] : null, p_estados: null,
-                p_desde: f.desde || null, p_hasta: f.hasta || null,
-                p_numeros: null, p_imeis: null, p_num_like: null, p_obs_like: null,
+                p_desde: f.desde || null, p_hasta: f.hasta || null, p_numeros: null, p_imeis: null,
+                p_num_like: nums.length === 1 ? nums[0] : null,
+                p_obs_like: _norm(f.obs) ? f.obs.trim() : null,
             });
             if (error) throw error;
-            let filas = (data || []).filter(c => _pasa(c.telefonia, f.telefonia));
+            let filas = (data || []).filter(c => _pasa(c.telefonia, f.telefonia) && _pasa(_estadoLinea(c), f.estadoSim) &&
+                                                 _coincideNumero(f, c.numero, c.imei));
             filas = _filtrarPorRC(filas, f, c => c.numero, c => c.imei);
             const cons = buildConsolidado(filas).filter(x => x.rc && x.rc !== '-').sort((a, b) => b.totalMB - a.totalMB);
             const reg = x => _deviceDeRC(x.rc)?.regional || x.regional;
@@ -176,17 +194,20 @@ const REPORTES = {
     consumoDiario: {
         titulo: 'Consumo diario (detalle)',
         descripcion: 'Una fila por línea y por día. Conviene acotar el período.',
-        filtros: ['fechas', 'telefonia', 'regional', 'estadoSim', 'rc'],
+        filtros: ['fechas', 'telefonia', 'regional', 'estadoSim', 'rc', 'numero', 'obs'],
         async obtener(f, avance) {
+            const nums = _listaTexto(f.numero);
             const COLS = 'consumo_mb,fecha_consumo,telefonia,numero,imei,estado,observacion,estado_operador';
             let filas = await traerTodasEnParalelo(({ head } = {}) => {
                 let q = window.clienteSupabase.from('consumo_sim').select(head ? '*' : COLS, head ? { count: 'exact', head: true } : undefined);
                 if (f.telefonia?.length) q = q.in('telefonia', f.telefonia);
                 if (f.desde) q = q.gte('fecha_consumo', f.desde);
                 if (f.hasta) q = q.lte('fecha_consumo', f.hasta);
+                if (_norm(f.obs)) q = q.ilike('observacion', `%${f.obs.trim()}%`);
+                if (nums.length === 1) q = q.or(`numero.ilike.%${nums[0]}%,imei.ilike.%${nums[0]}%`);
                 return head ? q : q.order('fecha_consumo', { ascending: true }).order('id', { ascending: true });
             }, avance);
-            filas = filas.filter(c => _pasa(_estadoLinea(c), f.estadoSim));
+            filas = filas.filter(c => _pasa(_estadoLinea(c), f.estadoSim) && _coincideNumero(f, c.numero, c.imei));
             filas = _filtrarPorRC(filas, f, c => c.numero, c => c.imei);
             const mb = c => parseFloat(c.consumo_mb) || 0;
             const columnas = ['Fecha', 'Estado', 'RC', 'Regional', 'Número', 'ICCID', 'Telefonía', 'MB'];
@@ -211,7 +232,7 @@ const REPORTES = {
     lineas: {
         titulo: 'Líneas',
         descripcion: 'Estado actual de cada línea, con MB del mes y totales.',
-        filtros: ['telefonia', 'regional', 'estadoSim', 'rc'],
+        filtros: ['telefonia', 'regional', 'estadoSim', 'rc', 'buscar'],
         async obtener(f) {
             let filas = await traerTodasLasFilas(() => {
                 let q = window.clienteSupabase.from('vista_lineas_estado').select('*');
@@ -220,7 +241,8 @@ const REPORTES = {
             });
             filas = filas.filter(r => _pasa(estadoSimple(getEstadoSIM(r)), f.estadoSim));
             const rcs = _listaTexto(f.rc);
-            filas = filas.filter(r => _pasa(r.regional, f.regional) && (!rcs.length || rcs.some(x => _norm(r.rc).includes(x))));
+            filas = filas.filter(r => _pasa(r.regional, f.regional) && (!rcs.length || rcs.some(x => _norm(r.rc).includes(x))) &&
+                                      _contiene(f.buscar, r.numero, r.imei, r.rc, r.observacion));
             const mbT = r => parseFloat(r.consumo_total_mb) || 0;
             return {
                 columnas: ['Estado', 'Número', 'ICCID', 'Telefonía', 'RC', 'Regional', 'MB Mes', 'MB Total', 'Última fecha'],
@@ -240,14 +262,15 @@ const REPORTES = {
     dispositivos: {
         titulo: 'Dispositivos',
         descripcion: 'RC con su ubicación, SIM y fecha de activación.',
-        filtros: ['regional', 'estadoRC', 'tipoRC', 'fechasAct', 'rc'],
+        filtros: ['regional', 'estadoRC', 'tipoRC', 'fechasAct', 'rc', 'numero'],
         async obtener(f) {
             const rcs = _listaTexto(f.rc);
             const est = d => esViewer() ? estadoSimple(estadoDisp(d)) : estadoDisp(d);
             const filas = todosLosDatos.filter(d =>
                 _pasa(d.regional, f.regional) && _pasa(est(d), f.estadoRC) && _pasa(getTipoDevice(d), f.tipoRC) &&
                 (!(f.desde || f.hasta) || (d.fecha_activacion && _enRango(_fechaDe(d.fecha_activacion), f))) &&
-                (!rcs.length || rcs.some(x => _norm(d.codigo).includes(x))))
+                (!rcs.length || rcs.some(x => _norm(d.codigo).includes(x))) &&
+                _coincideNumero(f, d.sim1_num, d.sim2_num, d.sim1_imei, d.sim2_imei))
                 .sort((a, b) => String(a.regional).localeCompare(b.regional) || String(a.codigo).localeCompare(b.codigo));
             return {
                 columnas: ['Estado', 'Regional', 'Código', 'Tipo', 'Ubicación', 'SIM 1 - Número', 'SIM 1 - ICCID',
@@ -269,7 +292,7 @@ const REPORTES = {
         titulo: 'Inventario de líneas',
         descripcion: 'Líneas del inventario y a qué RC están asignadas.',
         soloAdmin: true,
-        filtros: ['telefonia', 'estadoInv', 'regional', 'rc'],
+        filtros: ['telefonia', 'estadoInv', 'regional', 'rc', 'buscar'],
         async obtener(f) {
             if (!inventarioLineas.length) await cargarLineas();
             const rcs = _listaTexto(f.rc);
@@ -277,7 +300,8 @@ const REPORTES = {
             const filas = inventarioLineas.filter(l =>
                 _pasa(l.telefonia, f.telefonia) && _pasa(l.estado, f.estadoInv) &&
                 (!f.regional?.length || _pasa(reg(l), f.regional)) &&
-                (!rcs.length || rcs.some(x => _norm(l.rc_codigo).includes(x))));
+                (!rcs.length || rcs.some(x => _norm(l.rc_codigo).includes(x))) &&
+                _contiene(f.buscar, l.numero, l.iccid, l.rc_codigo));
             return {
                 columnas: ['Número', 'ICCID', 'Telefonía', 'Estado', 'RC', 'Slot', 'Regional', 'Cargada', 'Por', 'Observación'],
                 filas: filas.map(l => [_txt(l.numero), _txt(l.iccid), _txt(l.telefonia),
@@ -295,14 +319,15 @@ const REPORTES = {
     historialSim: {
         titulo: 'Cambios de SIM',
         descripcion: 'Historial de cambios de SIM en los RC.',
-        filtros: ['fechas', 'regional', 'rc'],
+        filtros: ['fechas', 'regional', 'rc', 'buscar'],
         async obtener(f) {
             if (historialSimLista === null) await cargarHistorialSIMLista();
             const rcs = _listaTexto(f.rc);
             const reg = h => _deviceDeRC(h.rc_codigo)?.regional;
             const filas = (historialSimLista || []).filter(h =>
                 _enRango(_fechaDe(h.fecha_campo || h.fecha_cambio), f) && _pasa(reg(h), f.regional) &&
-                (!rcs.length || rcs.some(x => _norm(h.rc_codigo).includes(x))));
+                (!rcs.length || rcs.some(x => _norm(h.rc_codigo).includes(x))) &&
+                _contiene(f.buscar, h.rc_codigo, h.numero_ant, h.numero_nuevo, h.imei_ant, h.imei_nuevo, h.usuario, h.observacion));
             return {
                 columnas: ['Fecha en campo', 'Registrado', 'Código', 'Regional', 'Slot', 'Número anterior', 'Número nuevo',
                            'ICCID anterior', 'ICCID nuevo', 'Usuario', 'Observación'],
@@ -318,12 +343,13 @@ const REPORTES = {
     activaciones: {
         titulo: 'Activaciones y desactivaciones',
         descripcion: 'Altas, activaciones y desactivaciones de RC y líneas.',
-        filtros: ['fechas', 'tipoAct', 'automaticas'],
+        filtros: ['fechas', 'tipoAct', 'automaticas', 'buscar'],
         async obtener(f) {
             if (activacionesLista === null) await cargarActivaciones();
             const est = e => e ? (ESTADO_HIST_LABEL[e] || e) : '';
             const filas = (activacionesLista || []).filter(h =>
-                _enRango(_fechaDe(h.fecha), f) && _pasa(h.tipo, f.tipoAct) && (f.automaticas || h.usuario !== 'sistema'));
+                _enRango(_fechaDe(h.fecha), f) && _pasa(h.tipo, f.tipoAct) && (f.automaticas || h.usuario !== 'sistema') &&
+                _contiene(f.buscar, h.referencia, h.usuario, h.motivo));
             return {
                 columnas: ['Fecha', 'Tipo', 'RC / Línea', 'Estado anterior', 'Estado nuevo', 'Usuario', 'Motivo'],
                 filas: filas.map(h => [formatearFechaHora(h.fecha), h.tipo === 'rc' ? 'RC' : 'Línea',
@@ -349,10 +375,59 @@ const REPORTE_DE_VISTA = {
 // ── Ventana "Generar reporte" ─────────────────────────────────────
 
 let _reporteSel = 'consumoLinea';
-const _seleccion = {};   // filtros elegidos, se recuerdan mientras la página esté abierta
+let _seleccion = {};   // filtros elegidos en la ventana
+
+// Lee los filtros que están puestos en la pantalla desde donde se abre el reporte
+function filtrosDePantalla(vista) {
+    const v = id => (document.getElementById(id)?.value || '').trim();
+    const uno = (id, filtro) => {
+        const val = v(id);
+        if (!val) return [];
+        // El valor tal como lo usa la casilla del reporte (ej. "VOX" -> "Vox")
+        const op = FILTROS[filtro].opciones().find(([k]) => _norm(k) === _norm(val));
+        return op ? [op[0]] : [];
+    };
+    const s = {};
+    if (vista === 'consumo') {
+        if (vistaConsumo === 'lineas-bd') {
+            s.telefonia = uno('filtroLineasTelefonia', 'telefonia');
+            s.estadoSim = uno('filtroLineasEstado', 'estadoSim');
+            s.buscar    = v('filtroLineasBuscar');
+        } else {
+            s.telefonia = uno('filtroTelefonia', 'telefonia');
+            s.estadoSim = uno('filtroEstadoConsumo', 'estadoSim');
+            s.rc        = [v('filtroRCConsumo'), vistaConsumo === 'equipos' ? v('filtroRCBuscar') : ''].filter(Boolean).join(', ');
+            s.numero    = v('filtroNumConsumo');
+            s.obs       = v('filtroObservacion');
+            s.desde     = v('filtroFechaDesde');
+            s.hasta     = v('filtroFechaHasta');
+            if (vistaConsumo === 'equipos') s.regional = uno('filtroRCRegional', 'regional');
+        }
+    } else if (vista === 'dispositivos') {
+        s.regional = uno('filtroRegional', 'regional');
+        s.rc       = v('filtroCodigo');
+        s.numero   = v('filtroSim');
+        s.actDesde = s.actHasta = v('filtroFecha');
+        s.estadoRC = uno('filtroEstado', 'estadoRC');
+        s.tipoRC   = esViewer() ? [] : uno('filtroTipo', 'tipoRC');
+    } else if (vista === 'historial') {
+        s.buscar = v('historialSimBuscar');
+    } else if (vista === 'activaciones') {
+        s.buscar      = v('activacionesBuscar');
+        s.tipoAct     = uno('activacionesTipo', 'tipoAct');
+        s.automaticas = !document.getElementById('activacionesOcultarSistema')?.checked;
+    } else if (vista === 'inventario') {
+        s.buscar    = v('lineasBuscar');
+        s.estadoInv = uno('lineasEstado', 'estadoInv');
+        s.telefonia = uno('lineasTelefonia', 'telefonia');
+    }
+    if (s.desde === undefined) { s.desde = ''; s.hasta = ''; }
+    return s;
+}
 
 function abrirReporte(vista) {
     _reporteSel = REPORTE_DE_VISTA[vista]?.() || _reporteSel;
+    _seleccion = filtrosDePantalla(vista);
     if (!document.getElementById('modalReporte')) _crearModalReporte();
     const sel = document.getElementById('repTipo');
     sel.innerHTML = Object.entries(REPORTES)
@@ -411,10 +486,7 @@ function _renderFiltrosReporte() {
     const rep = REPORTES[_reporteSel];
     document.getElementById('repDescripcion').textContent = rep.descripcion;
     const s = _seleccion;
-    // Período por defecto: el mes actual (el consumo diario sin período sería enorme)
-    if (s.desde === undefined) { s.desde = _inicioMes(); s.hasta = _hoy(); }
-
-    document.getElementById('repFiltros').innerHTML = rep.filtros.map(k => {
+    document.getElementById('repFiltros').innerHTML = rep.filtros.filter(k => !(FILTROS[k].soloAdmin && esViewer())).map(k => {
         const def = FILTROS[k];
         if (def.tipo === 'fechas') {
             const act = k === 'fechasAct';
@@ -491,7 +563,8 @@ function _describirFiltros(rep, f) {
             if (d || h) partes.push([def.titulo, `${d ? formatearFecha(d) : 'inicio'} al ${h ? formatearFecha(h) : 'hoy'}`]);
             else if (k === 'fechas') partes.push([def.titulo, 'todo']);
         } else if (def.tipo === 'texto') {
-            if (_listaTexto(f[k]).length) partes.push(['RC', _listaTexto(f[k]).map(x => x.toUpperCase()).join(', ')]);
+            if (def.lista && _listaTexto(f[k]).length) partes.push([def.etiqueta, _listaTexto(f[k]).map(x => k === 'rc' ? x.toUpperCase() : x).join(', ')]);
+            else if (!def.lista && _norm(f[k])) partes.push([def.etiqueta, f[k].trim()]);
         } else if (def.tipo === 'check') {
             partes.push([def.titulo, f[k] ? 'Sí' : 'No']);
         } else {
@@ -515,6 +588,8 @@ async function generarReporte() {
     if (rep.filtros.includes('fechasAct')) { f.desde = f.actDesde; f.hasta = f.actHasta; }
     else if (!rep.filtros.includes('fechas')) { f.desde = f.hasta = ''; }
     if (f.desde && f.hasta && f.desde > f.hasta) { estado.textContent = '⚠️ La fecha "desde" es posterior a "hasta".'; return; }
+    if (_reporteSel === 'consumoDiario' && !f.desde &&
+        !confirm('El consumo diario sin fecha "desde" trae todo el historial (cientos de miles de filas) y puede tardar varios minutos.\n¿Seguir igual?')) return;
 
     _generando = true;
     boton.disabled = true;
@@ -656,6 +731,7 @@ async function generarPDF(r, nombre) {
     // Detalle
     if (r.conDetalle) {
         const num = new Set(r.numericas || []);
+        const colTel = r.columnas.indexOf('Telefonía');
         const cs = {}; num.forEach(k => { cs[k] = { halign: 'right' }; });
         if (y > doc.internal.pageSize.getHeight() - 120) { doc.addPage(); y = 40; }
         doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...AZUL);
@@ -667,7 +743,13 @@ async function generarPDF(r, nombre) {
             headStyles: { fillColor: AZUL, textColor: 255, fontStyle: 'bold' },
             alternateRowStyles: { fillColor: [244, 245, 251] },
             columnStyles: cs,
-            didParseCell: d => { if (num.has(d.column.index)) d.cell.styles.halign = 'right'; },
+            didParseCell: d => {
+                if (num.has(d.column.index)) d.cell.styles.halign = 'right';
+                if (d.section === 'body' && d.column.index === colTel) {
+                    d.cell.styles.textColor = marcaTelefonia(d.cell.raw).texto;
+                    d.cell.styles.fontStyle = 'bold';
+                }
+            },
             didDrawPage: pie,
         });
     }

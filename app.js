@@ -357,7 +357,6 @@ function aplicarRol() {
     document.getElementById('filtroTipoGroup').style.display = 'none';
 
     // Ocultar botones de importación (solo admin puede importar datos)
-    document.getElementById('btnImportConsumo').style.display      = 'none';
 
     // Ocultar botón "Actualizar Estados" (escribe en BD)
     document.getElementById('btnActualizarEstados').style.display  = 'none';
@@ -1637,18 +1636,28 @@ function calcularEstadoConsumo(consumo) {
     return 'activo';
 }
 
-// Badge de telefonía (coloreado por operadora)
-const TELEFONIA_COLORES = {
-    'Personal':    { bg: 'rgba(37,99,235,0.12)',  color: '#1d4ed8' },
-    'Claro':       { bg: 'rgba(220,38,38,0.12)',   color: '#b91c1c' },
-    'Tigo':        { bg: 'rgba(234,88,12,0.12)',   color: '#c2410c' },
-    'Vox':         { bg: 'rgba(22,163,74,0.12)',   color: '#15803d' },
-    'Desconocida': { bg: 'rgba(107,114,128,0.12)', color: '#4b5563' },
+// Color de marca de cada operadora: el mismo en tablas, gráficos y reportes
+const TEL_MARCA = {
+    Claro:       { color: '#da291c', texto: '#b3170c', rgb: '218,41,28' },
+    Personal:    { color: '#0096d6', texto: '#0074a8', rgb: '0,150,214' },
+    Tigo:        { color: '#00377b', texto: '#00377b', rgb: '0,55,123' },
+    Vox:         { color: '#f39200', texto: '#b86e00', rgb: '243,146,0' },
+    Desconocida: { color: '#6b7280', texto: '#4b5563', rgb: '107,114,128' },
 };
+// Busca sin importar mayúsculas ("VOX", "tigo"…)
+function marcaTelefonia(tel) {
+    const k = Object.keys(TEL_MARCA).find(x => x.toLowerCase() === String(tel || '').trim().toLowerCase());
+    return TEL_MARCA[k || 'Desconocida'];
+}
+
+// Badge de telefonía (coloreado por operadora)
+const TELEFONIA_COLORES = Object.fromEntries(Object.entries(TEL_MARCA)
+    .map(([k, m]) => [k, { bg: `rgba(${m.rgb},0.12)`, color: m.texto }]));
 
 function badgeTelefonia(tel) {
     if (!tel) return '-';
-    const cfg = TELEFONIA_COLORES[tel] || TELEFONIA_COLORES['Desconocida'];
+    const m = marcaTelefonia(tel);
+    const cfg = { bg: `rgba(${m.rgb},0.12)`, color: m.texto };
     return `<span class="badge-estado" style="background:${cfg.bg};color:${cfg.color}">${tel}</span>`;
 }
 
@@ -2054,13 +2063,8 @@ function crearGraficosConsumo(resumen, datos) {
 
     if (!historico.length && !top15raw.length && !datosDount.length) return;
 
-    const TELEFONIA_CHART = {
-        Personal:    { color: '#1d4ed8', bg: 'rgba(37,99,235,0.08)' },
-        Claro:       { color: '#dc2626', bg: 'rgba(220,38,38,0.08)' },
-        Tigo:        { color: '#c2410c', bg: 'rgba(234,88,12,0.08)' },
-        Vox:         { color: '#16a34a', bg: 'rgba(22,163,74,0.08)' },
-        Desconocida: { color: '#6b7280', bg: 'rgba(107,114,128,0.08)' },
-    };
+    const TELEFONIA_CHART = Object.fromEntries(Object.entries(TEL_MARCA)
+        .map(([k, m]) => [k, { color: m.color, bg: `rgba(${m.rgb},0.08)` }]));
 
     // ── 1. Histórico: MB por día desglosado por telefonía ───────────
     const fechasSet = new Set();
@@ -2231,7 +2235,7 @@ function crearGraficosConsumo(resumen, datos) {
     };
 
     // ── 3. MB por Telefonía (doughnut) ───────────────────────────────
-    const TEL_COLORS = { Personal: '#1d4ed8', Claro: '#dc2626' };
+    const TEL_COLORS = Object.fromEntries(Object.entries(TEL_MARCA).map(([k, m]) => [k, m.color]));
     const mbPorTel = {};
     (datosDount || []).forEach(r => {
         const t = (r.telefonia || 'Sin dato').trim() || 'Sin dato';
@@ -2679,21 +2683,27 @@ function _aplicarFiltrosLineasQuery(q, f) {
 //  la vista es pre-calculada, así que son pocas filas y rápido)
 async function consultarTotalesLineasBD() {
     const f = filtrosLineas();
-    let mes = 0, total = 0;
+    let mes = 0, total = 0, lineas = 0, desactivadas = 0;
+    const porTel = {};   // MB del mes por telefonía (tarjetas de resumen)
     for (let desde = 0; ; desde += 1000) {
         let q = window.clienteSupabase
             .from('vista_lineas_estado')
-            .select('consumo_mes_mb,consumo_total_mb');
+            .select('numero,imei,telefonia,estado_operador,observacion,consumo_mes_mb,consumo_total_mb');
         q = _aplicarFiltrosLineasQuery(q, f).range(desde, desde + 999);
         const { data, error } = await q;
         if (error) { console.warn('⚠️ totales líneas:', error.message); return null; }
         (data || []).forEach(r => {
-            mes   += parseFloat(r.consumo_mes_mb)   || 0;
+            const m = parseFloat(r.consumo_mes_mb) || 0;
+            mes   += m;
             total += parseFloat(r.consumo_total_mb) || 0;
+            lineas++;
+            if (getEstadoSIM(r) === 'desactivado') desactivadas++;
+            const t = r.telefonia || 'Sin dato';
+            porTel[t] = (porTel[t] || 0) + m;
         });
         if (!data || data.length < 1000) break;
     }
-    return { mes, total };
+    return { mes, total, lineas, desactivadas, porTel };
 }
 
 function actualizarTotalesLineas(totales) {

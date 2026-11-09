@@ -1992,3 +1992,54 @@ th.sortable:hover { background: #e2e5f3; }
 td { padding: 11px 15px; border-bottom: 1px solid #f0f1f5; }
 tbody tr:nth-child(even) { background: #fbfbfd; }
 tbody tr:hover { background: #f4f5fb; }
+
+/* ══ Tarjetas de resumen (KPI) ══ */
+#totalConsumoResumen, #totalLineasResumen { display: none !important; }
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 4px 0 18px; }
+.kpi-row:empty { display: none; }
+.kpi {
+    --kpi-acento: #35398C;
+    background: #fff;
+    border: 1px solid #e6e8f2;
+    border-left: 4px solid var(--kpi-acento);
+    border-radius: 10px;
+    padding: 12px 14px;
+    min-width: 0;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+.kpi-verde   { --kpi-acento: #16a34a; }
+.kpi-rojo    { --kpi-acento: #dc2626; }
+.kpi-naranja { --kpi-acento: #f97316; }
+.kpi-gris    { --kpi-acento: #9ca3af; }
+.kpi-titulo  { font-size: 11.5px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: .03em; }
+.kpi-valor   { font-size: 22px; font-weight: 700; color: #1f2347; margin-top: 4px; font-variant-numeric: tabular-nums;
+               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi-tel .kpi-valor { color: var(--kpi-acento); }
+.kpi-detalle { font-size: 12px; color: #6b7280; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+/* ══ Filtros plegables y chips ══ */
+.filtros-titulo { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 10px; }
+.filtros-titulo:focus-visible { outline: 2px solid #35398C; outline-offset: 4px; border-radius: 4px; }
+.filtros-contador { font-size: 12px; font-weight: 600; color: #fff; background: #35398C; border-radius: 999px; padding: 2px 9px; }
+.filtros-contador:empty { display: none; }
+.filtros-chevron { margin-left: auto; font-size: 16px; color: #35398C; transition: transform .2s; }
+.plegado .filtros-chevron { transform: rotate(-90deg); }
+.filters.plegado { padding-top: 16px; padding-bottom: 16px; }
+.filters.plegado > .filter-row, .filters.plegado > .filter-buttons { display: none; }
+.filters.plegado .filtros-titulo { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+.filters.plegado .filtros-activos { margin-top: 12px; }
+.filtros-activos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; align-items: center; }
+.chip-filtro {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: #eef0f8; color: #1f2347; border: 1px solid #d9dcef;
+    border-radius: 999px; padding: 3px 4px 3px 11px; font-size: 12.5px;
+}
+.chip-etq { color: #6b7280; }
+.chip-quitar, .chip-limpiar {
+    flex: none; width: auto; min-width: 0; margin: 0; box-shadow: none;
+    background: none; border: none; cursor: pointer; color: #6b7280; font-weight: 700;
+}
+.chip-quitar { padding: 0; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; line-height: 20px; }
+.chip-quitar:hover { background: #dc2626; color: #fff; transform: none; box-shadow: none; }
+.chip-limpiar { padding: 3px 8px; font-size: 12px; color: #35398C; text-decoration: underline; }
+.chip-limpiar:hover { background: none; color: #8A35AB; transform: none; box-shadow: none; }
