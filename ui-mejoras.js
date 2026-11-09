@@ -279,6 +279,22 @@ function prepararTablasResponsivas() {
     });
 }
 
+// ── Tarjetas de resumen al costado de la tabla ────────────────────
+// Reacomoda un .table-container: el encabezado arriba y, debajo, una columna
+// con las tarjetas (aside) y el resto del contenido a la derecha.
+function ponerResumenAlCostado(contenedor, kpiId) {
+    if (!contenedor || contenedor.querySelector('.inv-layout')) return;
+    const encabezado = contenedor.querySelector(':scope > .table-header-row');
+    const layout = document.createElement('div');
+    layout.className = 'inv-layout';
+    layout.innerHTML = `<aside class="inv-lado" aria-label="Resumen"><div id="${kpiId}" class="kpi-row kpi-lateral"></div></aside>`;
+    const principal = document.createElement('div');
+    principal.className = 'inv-principal';
+    [...contenedor.children].filter(el => el !== encabezado).forEach(el => principal.appendChild(el));
+    layout.appendChild(principal);
+    contenedor.appendChild(layout);
+}
+
 // ── Sub-pestañas de Altas: "Nuevo RC y líneas" / "Inventario de líneas" ──
 
 function cambiarSubtabAltas(cual) {
@@ -296,6 +312,7 @@ function cambiarSubtabAltas(cual) {
 // ── Enganches ─────────────────────────────────────────────────────
 
 function iniciarMejorasUI() {
+    ponerResumenAlCostado(document.querySelector('#tab-consumo .table-container'), 'kpiConsumo');
     prepararTablasResponsivas();
     let sub = 'altas';
     try { sub = localStorage.getItem('subtabAltas') || 'altas'; } catch { /* sin almacenamiento */ }

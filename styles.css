@@ -2179,7 +2179,7 @@ img, canvas, svg { max-width: 100%; }
 .subtab-btn.subtab-activa { color: #35398C; border-bottom-color: #35398C; }
 
 /* ══ Inventario: tarjetas de resumen al costado ══ */
-.inv-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; align-items: start; }
+.inv-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 20px; align-items: start; }
 .inv-lado { position: sticky; top: 12px; }
 .inv-principal { min-width: 0; }
 .kpi-lateral { display: flex; flex-direction: column; gap: 6px; margin: 0; }
