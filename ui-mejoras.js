@@ -17,7 +17,7 @@ function _despuesDe(nombre, fn) {
 }
 
 const _mb = v => `${formatearNumero(v)} MB`;
-const _pct = (a, b) => b ? `${Math.round(a * 100 / b)}%` : '';
+const _pct = (a, b) => !b ? '' : (a > 0 && a * 100 / b < 1) ? '<1%' : `${Math.round(a * 100 / b)}%`;
 
 // ── Tarjetas de resumen ───────────────────────────────────────────
 
@@ -33,6 +33,7 @@ function pintarTarjetas(contId, antesDeId, tarjetas) {
         ref.parentNode.insertBefore(cont, ref);
     }
     cont.innerHTML = tarjetas.map(t => {
+        if (t.separador) return `<div class="kpi-separador">${escHtml(t.separador)}</div>`;
         const marca = TEL_MARCA[t.tono];
         const estilo = marca ? ` style="--kpi-acento:${marca.color}"` : '';
         return `<div class="kpi kpi-${marca ? 'tel' : (t.tono || 'azul')}"${estilo}>
@@ -106,11 +107,13 @@ function kpiInventario() {
     const porTel = {};
     filas.forEach(l => { const t = l.telefonia || 'Sin dato'; porTel[t] = (porTel[t] || 0) + 1; });
     pintarTarjetas('kpiInventario', 'lineasInfo', [
+        { separador: 'Por estado' },
         { titulo: 'Líneas', valor: formatearNumero(filas.length), tono: 'azul' },
         { titulo: 'Asignadas', valor: formatearNumero(cuenta('asignada')), detalle: _pct(cuenta('asignada'), filas.length), tono: 'verde' },
         { titulo: 'Disponibles', valor: formatearNumero(cuenta('disponible')), detalle: _pct(cuenta('disponible'), filas.length), tono: 'naranja' },
-        { titulo: 'Desactivadas', valor: formatearNumero(cuenta('desactivada')), tono: 'rojo' },
-        ...Object.entries(porTel).sort((a, b) => b[1] - a[1]).slice(0, 4)
+        { titulo: 'Desactivadas', valor: formatearNumero(cuenta('desactivada')), detalle: _pct(cuenta('desactivada'), filas.length), tono: 'rojo' },
+        { separador: 'Por telefonía' },
+        ...Object.entries(porTel).sort((a, b) => b[1] - a[1])
             .map(([t, n]) => ({ titulo: t, valor: formatearNumero(n), detalle: _pct(n, filas.length), tono: TEL_MARCA[t] ? t : marcaTelefoniaClave(t) })),
     ]);
 }
@@ -276,10 +279,27 @@ function prepararTablasResponsivas() {
     });
 }
 
+// ── Sub-pestañas de Altas: "Nuevo RC y líneas" / "Inventario de líneas" ──
+
+function cambiarSubtabAltas(cual) {
+    ['altas', 'inventario'].forEach(k => {
+        const panel = document.getElementById('subtab-' + k);
+        const btn = document.getElementById('subtabBtn' + (k === 'altas' ? 'Altas' : 'Inventario'));
+        if (panel) panel.style.display = k === cual ? '' : 'none';
+        btn?.classList.toggle('subtab-activa', k === cual);
+        btn?.setAttribute('aria-selected', String(k === cual));
+    });
+    try { localStorage.setItem('subtabAltas', cual); } catch { /* sin almacenamiento */ }
+    if (cual === 'inventario') kpiInventario();
+}
+
 // ── Enganches ─────────────────────────────────────────────────────
 
 function iniciarMejorasUI() {
     prepararTablasResponsivas();
+    let sub = 'altas';
+    try { sub = localStorage.getItem('subtabAltas') || 'altas'; } catch { /* sin almacenamiento */ }
+    cambiarSubtabAltas(sub);
     Object.keys(GRUPOS_FILTRO).forEach(prepararGrupoFiltro);
 
     ['aplicarFiltrosConsumo', 'limpiarFiltrosConsumo', 'cargarConsumos', 'aplicarFiltrosLineas', 'limpiarFiltrosLineas',
