@@ -1,0 +1,55 @@
+CARGA AUTOMÁTICA DE REPORTES DE CONSUMO (ANDE)
+==============================================
+
+Sube a la base los reportes nuevos de las carpetas claro, m2m, personal y tigo.
+No reemplaza nada: una fila que ya está en la base (misma telefonía, línea y fecha)
+se descarta. Recuerda qué archivos ya cargó y solo procesa los nuevos o modificados.
+
+
+INSTALAR
+--------
+Iniciar sesión en Windows con el usuario que va a correr la carga (ej. Automation360)
+y abrir Instalar_CargaReportes.exe (o Instalar.bat desde la carpeta descomprimida).
+
+En la ventana:
+  - Carpeta de reportes: la que tiene claro, m2m, personal y tigo.
+  - Carpeta de instalación: donde queda el programa, sus logs y su configuración.
+  - Clave de Supabase (service_role): Supabase > Project Settings > API Keys >
+    Legacy > service_role. Se verifica contra la base y se guarda cifrada (DPAPI de
+    Windows): solo la puede usar ese usuario de Windows en ese equipo.
+  - Frecuencia: cada cuántos minutos revisa la carpeta, y desde qué hora.
+  - "Correr aunque no haya sesión iniciada": requiere abrir el instalador como
+    administrador (clic derecho > Ejecutar como administrador). En ese modo la tarea no
+    puede leer carpetas de red (\\servidor\...).
+
+El instalador prueba el programa y crea la tarea programada
+"Carga reportes de consumo ANDE". Para cambiar algo, volver a abrirlo: la clave en
+blanco conserva la que ya estaba.
+
+
+USO
+---
+- Resultado de cada ejecución: carpeta logs\ del programa (cargar_AAAA-MM-DD.log).
+- La primera ejecución lee todos los archivos que haya (puede tardar varios minutos).
+- Los archivos que se están copiando (modificados hace menos de 2 minutos) se toman
+  en la ejecución siguiente.
+- Si una carga falla, los archivos no se marcan como cargados y se reintentan solos.
+- Desde una consola, en la carpeta del programa:
+      cargar_reportes.exe --probar      verifica configuración, clave y conexión
+      cargar_reportes.exe --simular     muestra lo que cargaría, sin escribir
+      cargar_reportes.exe --reprocesar  vuelve a revisar todos los archivos
+  (el resultado se ve en logs\)
+
+
+SI WINDOWS BLOQUEA EL PROGRAMA
+------------------------------
+Algunos equipos (Control de aplicaciones / Smart App Control) no permiten ejecutar
+programas sin firma digital. En ese caso el instalador usa Python automáticamente si
+está instalado. Si no lo está, instalar Python desde python.org y volver a abrir el
+instalador (desde la carpeta descomprimida, con Instalar.bat).
+
+
+DESINSTALAR
+-----------
+Desinstalar.bat en la carpeta del programa: quita la tarea y la clave y, si se
+confirma, borra la carpeta del programa. No toca los reportes ni la base.

@@ -25,13 +25,14 @@ script / ejecutable (así se cambia la carpeta sin volver a generar el .exe):
     m2m_telefonia    = Tigo
     corregir_negativos = no
 
-La clave de la base se toma de la variable de entorno SUPABASE_SERVICE_KEY
-(nunca se guarda en este archivo).
+La clave de la base: clave.dat (cifrada con DPAPI por el instalador), o la variable
+de entorno SUPABASE_SERVICE_KEY. Nunca se guarda en texto plano.
 
 Uso:
     py cargar_reportes.py              # carga lo nuevo
     py cargar_reportes.py --simular    # muestra lo que haría, sin escribir
     py cargar_reportes.py --reprocesar # vuelve a leer todos los archivos (los duplicados igual se descartan)
+    py cargar_reportes.py --probar     # verifica configuración, clave y conexión
 
 Código de salida: 0 = OK (o nada nuevo), 1 = error, 2 = ya había otra carga en curso.
 """
@@ -128,6 +129,57 @@ def leer_config():
     return cfg
 
 
+# ── Clave de Supabase ────────────────────────────────────────────
+# El instalador la guarda cifrada con DPAPI de Windows en clave.dat (solo la puede
+# descifrar el mismo usuario, o el mismo equipo en el modo "sin sesión iniciada").
+ENTROPIA_DPAPI = b'CargaReportesANDE'
+
+
+def descifrar_dpapi(datos):
+    import ctypes
+    from ctypes import wintypes
+
+    class BLOB(ctypes.Structure):
+        _fields_ = [('cbData', wintypes.DWORD), ('pbData', ctypes.POINTER(ctypes.c_char))]
+
+    def blob(b):
+        buf = ctypes.create_string_buffer(b, len(b))
+        return BLOB(len(b), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char))), buf
+
+    entrada, _b1 = blob(datos)
+    entropia, _b2 = blob(ENTROPIA_DPAPI)
+    salida = BLOB()
+    if not ctypes.windll.crypt32.CryptUnprotectData(ctypes.byref(entrada), None, ctypes.byref(entropia),
+                                                     None, None, 0, ctypes.byref(salida)):
+        raise OSError(f'CryptUnprotectData falló (error {ctypes.GetLastError()})')
+    try:
+        return ctypes.string_at(salida.pbData, salida.cbData).decode('utf-8')
+    finally:
+        ctypes.windll.kernel32.LocalFree(salida.pbData)
+
+
+def cargar_clave():
+    """Deja la clave en SUPABASE_SERVICE_KEY. Orden: clave.dat (instalador) →
+    variable de entorno → registro del usuario (setx). Devuelve de dónde salió."""
+    archivo = BASE / 'clave.dat'
+    if archivo.exists():
+        try:
+            os.environ['SUPABASE_SERVICE_KEY'] = descifrar_dpapi(archivo.read_bytes()).strip()
+            return 'clave.dat (cifrada)'
+        except Exception as e:
+            print(f'⚠️  No se pudo descifrar clave.dat ({e}). ¿Se instaló con otro usuario de Windows?')
+    if os.environ.get('SUPABASE_SERVICE_KEY', '').strip():
+        return 'variable de entorno'
+    # Una tarea programada sin sesión iniciada puede no heredar las variables del usuario
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, 'Environment') as k:
+            os.environ['SUPABASE_SERVICE_KEY'] = winreg.QueryValueEx(k, 'SUPABASE_SERVICE_KEY')[0]
+            return 'registro del usuario'
+    except OSError:
+        return None
+
+
 def huella(ruta):
     st = ruta.stat()
     return {'tamano': st.st_size, 'modificado': st.st_mtime_ns}
@@ -177,7 +229,11 @@ def main():
     ap.add_argument('--simular', action='store_true', help='Muestra lo que haría, sin escribir en la base')
     ap.add_argument('--reprocesar', action='store_true',
                     help='Vuelve a leer todos los archivos (las filas que ya están en la base se descartan igual)')
+    ap.add_argument('--probar', action='store_true',
+                    help='Solo verifica la configuración, la clave y la conexión a la base (no lee archivos)')
     args = ap.parse_args()
+    if not getattr(sys, 'frozen', False) and str(BASE) not in sys.path:
+        sys.path.insert(0, str(BASE))      # importar_consumos.py está en la misma carpeta
 
     iniciar_log()
     lock = tomar_lock()
@@ -192,19 +248,23 @@ def main():
             print(f'❌ No existe la carpeta de reportes: {carpeta}\n'
                   f'   Revisá CARPETA_REPORTES o {ARCHIVO_INI.name}.')
             return 1
-        if not os.environ.get('SUPABASE_SERVICE_KEY', '').strip():
-            # Una tarea programada sin sesión iniciada puede no heredar las variables de
-            # entorno del usuario: se lee directo del registro (donde la guarda setx)
-            try:
-                import winreg
-                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, 'Environment') as k:
-                    os.environ['SUPABASE_SERVICE_KEY'] = winreg.QueryValueEx(k, 'SUPABASE_SERVICE_KEY')[0]
-            except OSError:
-                pass
-        if not os.environ.get('SUPABASE_SERVICE_KEY', '').strip():
-            print('❌ Falta la variable de entorno SUPABASE_SERVICE_KEY (clave service_role de Supabase).\n'
-                  '   Cargala con:  setx SUPABASE_SERVICE_KEY "<clave>"')
+        origen = cargar_clave()
+        if not origen:
+            print('❌ No se encontró la clave de Supabase (service_role).\n'
+                  '   Volvé a correr el instalador, o cargala con:  setx SUPABASE_SERVICE_KEY "<clave>"')
             return 1
+        print(f'🔑 Clave de Supabase: {origen}')
+
+        if args.probar:
+            import requests
+            from importar_consumos import REST, sesion   # usa la clave recién cargada
+            r = sesion.get(f'{REST}/consumo_sim', params={'select': 'id', 'limit': 1}, timeout=30)
+            if r.status_code != 200:
+                print(f'❌ La base rechazó la conexión: HTTP {r.status_code} {r.text[:200]}')
+                return 1
+            subs = [s for s in SUBCARPETAS if (carpeta / s).is_dir()]
+            print(f'✅ Prueba OK: conexión a la base correcta; subcarpetas encontradas: {", ".join(subs) or "ninguna"}')
+            return 0
 
         estado = leer_estado()
         pendientes = archivos_pendientes(carpeta, estado, args.reprocesar)
@@ -216,8 +276,6 @@ def main():
             print('   ·', r.relative_to(carpeta))
         print()
 
-        if not getattr(sys, 'frozen', False) and str(BASE) not in sys.path:
-            sys.path.insert(0, str(BASE))  # importar_consumos.py está en la misma carpeta
         import importar_consumos as imp   # se importa acá: necesita la clave ya verificada
         resumen = imp.importar(pendientes, carpeta, ejecutar=not args.simular,
                                m2m_telefonia=cfg['m2m'], recalcular=True,
