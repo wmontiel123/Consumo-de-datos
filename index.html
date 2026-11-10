@@ -376,11 +376,6 @@
                         Reporte
                     </button>
                 </div>
-                <div class="inv-layout">
-                <aside class="inv-lado" aria-label="Resumen del inventario">
-                    <div id="kpiInventario" class="kpi-row kpi-lateral"></div>
-                </aside>
-                <div class="inv-principal">
                 <div class="historial-sim-buscar historial-filtros">
                     <input type="text" id="lineasBuscar" placeholder="Buscar por número, ICCID o RC…"
                            oninput="renderInventarioLineas(1)">
@@ -411,14 +406,13 @@
                                 <th>Cargada</th>
                                 <th>Por</th>
                                 <th>Acción</th>
+                                <th class="th-editar" aria-label="Editar"></th>
                             </tr>
                         </thead>
                         <tbody id="lineasBody">
-                            <tr><td colspan="8" class="panel-empty">Cargando…</td></tr>
+                            <tr><td colspan="9" class="panel-empty">Cargando…</td></tr>
                         </tbody>
                     </table>
-                </div>
-                </div>
                 </div>
             </div>
             </div><!-- /subtab-inventario -->

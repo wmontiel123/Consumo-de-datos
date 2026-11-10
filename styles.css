@@ -2264,3 +2264,56 @@ th.sortable { cursor: pointer; user-select: none; }
     .btn-graficos { width: 100%; justify-content: center; padding: 10px; }
     .tabla-responsiva tbody td:hover { box-shadow: none; }
 }
+
+/* ══ Paneles de filtros compactos (Consumo, Dispositivos, Líneas, RC) ══ */
+.filters:not(.alta-card), .filter-section { padding: 12px 16px; margin-bottom: 18px; border-width: 1.5px; border-radius: 10px; }
+.filters:not(.alta-card) > h2 { font-size: 1.05em; margin-bottom: 10px; padding-bottom: 6px; border-bottom-width: 2px; }
+.filters:not(.alta-card) .filter-row, .filter-section .filter-row {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 10px; margin-bottom: 4px;
+}
+.filters:not(.alta-card) .filter-group label, .filter-section .filter-group label { font-size: 12px; margin-bottom: 3px; }
+.filters:not(.alta-card) .filter-group input, .filters:not(.alta-card) .filter-group select,
+.filter-section .filter-group input, .filter-section .filter-group select {
+    padding: 6px 10px; font-size: 13.5px; border-width: 1.5px; border-radius: 7px; height: 34px;
+}
+.filters:not(.alta-card) .filter-group select, .filter-section .filter-group select { padding-right: 30px; background-position: right 10px center; }
+.filters:not(.alta-card) .filter-buttons, .filter-section .filter-buttons { margin-top: 8px; gap: 8px; }
+.filters:not(.alta-card) .filter-buttons button, .filter-section .filter-buttons button { padding: 6px 16px; font-size: 13px; }
+.filters.plegado:not(.alta-card) { padding-top: 10px; padding-bottom: 10px; }
+.filtros-activos { margin-top: 8px; }
+
+/* ══ Filtro escrito en el título de columna ══ */
+.th-input {
+    width: 100%; min-width: 90px; padding: 4px 8px; font-size: 12.5px; font-weight: 500;
+    border: 1.5px solid #35398C; border-radius: 6px; text-transform: none; letter-spacing: 0;
+    background: #fff; color: #1f2347;
+}
+.th-input:focus { outline: none; box-shadow: 0 0 0 3px rgba(53, 57, 140, 0.15); }
+th.th-filtrada { background: #e2e5f3; }
+.th-chip {
+    display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; padding: 1px 2px 1px 7px;
+    background: #35398C; color: #fff; border-radius: 999px; font-size: 11px; text-transform: none; letter-spacing: 0;
+    font-weight: 600; max-width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle;
+}
+.th-chip button {
+    flex: none; width: 16px; height: 16px; padding: 0; margin: 0; border-radius: 50%;
+    background: transparent; color: #fff; font-size: 10px; line-height: 16px; box-shadow: none;
+}
+.th-chip button:hover { background: rgba(255,255,255,.25); transform: none; box-shadow: none; }
+
+/* ══ Lápiz para editar (inventario) ══ */
+.th-editar, .td-editar { width: 44px; text-align: center; }
+.btn-lapiz {
+    flex: none; width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; color: #6b7280; border: 1px solid transparent; border-radius: 8px;
+}
+.btn-lapiz:hover { background: #eef0f8; color: #35398C; border-color: #c7cae8; transform: none; box-shadow: none; }
+.edit-aviso { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
+#modalEditarLinea .filter-group { margin-bottom: 12px; }
+#modalEditarLinea .filter-buttons button { flex: 1; }
+@media (max-width: 760px) {
+    .filters:not(.alta-card) .filter-group input, .filters:not(.alta-card) .filter-group select,
+    .filter-section .filter-group input, .filter-section .filter-group select { font-size: 16px; height: 38px; }
+    .tabla-responsiva tbody td.td-editar { justify-content: flex-end; }
+    .tabla-responsiva tbody td.td-editar::before { content: 'Editar'; }
+}

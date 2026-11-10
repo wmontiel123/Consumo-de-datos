@@ -259,7 +259,7 @@ const TABLAS_RESPONSIVAS = ['#tablaConsumo', '#tablaConsumo2', '#tablaConsolidad
                             '#tablaCargasSesion'];
 
 function etiquetarTabla(tabla) {
-    const titulos = [...tabla.querySelectorAll('thead th')].map(th => th.textContent.replace(/[⇅▲▼]/g, '').trim());
+    const titulos = [...tabla.querySelectorAll('thead th')].map(th => th.dataset.titulo ?? th.textContent.replace(/[⇅▲▼]/g, '').trim());
     tabla.querySelectorAll('tbody tr').forEach(tr => {
         [...tr.children].forEach((td, i) => {
             if (td.colSpan > 1) { td.classList.add('td-mensaje'); return; }
@@ -503,12 +503,24 @@ const _txtCelda = td => {
     t = t.replace(/\s+MB$/i, '').trim();
     return (t === '-' || t === '—') ? '' : t;
 };
-const _aISO = t => { const m = String(t).match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : ''; };
+const _aISO = t => {
+    const s = String(t || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '';
+};
+// Para filtros de fecha: '' limpia; si no, la fecha tiene que ser válida
+const _ponerFecha = (ids, v) => {
+    if (!String(v || '').trim()) return ids.every(id => _ponerValor(id, ''));
+    const f = _aISO(v);
+    return !!f && ids.every(id => _ponerValor(id, f));
+};
 const _ponerValor = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; return !!el; };
 // Elige en un <select> la opción cuyo texto o valor coincide
 function _elegirOpcion(id, v) {
     const sel = document.getElementById(id);
     if (!sel) return false;
+    if (!String(v || '').trim()) { sel.value = ''; return true; }
     const op = [...sel.options].find(o => o.value && (_norm(o.text) === _norm(v) || _norm(o.value) === _norm(v)));
     if (!op) return false;
     sel.value = op.value;
@@ -537,11 +549,22 @@ const _cmp = (a, b) => {
     return String(a ?? '').localeCompare(String(b ?? ''), 'es', { numeric: true, sensitivity: 'base' });
 };
 
-const _orden = {};   // clave de tabla → { i: columna, dir: 'asc' | 'desc' }
+const _orden = {};        // clave de tabla → { i: columna, dir: 'asc' | 'desc' }
+const _filtrosCol = {};   // clave de tabla → { columna: texto }
 
 function ordenarLista(clave, filas) {
+    const conf = TABLAS_INTERACTIVAS[clave];
+    const fc = _filtrosCol[clave] || {};
+    const activos = Object.entries(fc).filter(([i, t]) => t && conf?.acc?.[i]);
+    if (activos.length) {
+        filas = filas.filter(f => activos.every(([i, t]) => {
+            const v = conf.acc[i](f);
+            const txt = _norm(v) + ' ' + _norm(ESTADO_HIST_LABEL?.[v] || '');
+            return txt.includes(_norm(t));
+        }));
+    }
     const st = _orden[clave];
-    const acc = TABLAS_INTERACTIVAS[clave]?.acc?.[st?.i];
+    const acc = conf?.acc?.[st?.i];
     if (!st || !acc) return filas;
     const m = st.dir === 'asc' ? 1 : -1;
     // Vacíos siempre al final
@@ -568,7 +591,7 @@ const TABLAS_INTERACTIVAS = {
             ICCID:       v => _ponerValor('filtroNumConsumo', v),
             RC:          v => _ponerValor('filtroRCConsumo', v),
             'Telefonía': v => _elegirOpcion('filtroTelefonia', v),
-            Fecha:       v => { const f = _aISO(v); return !!f && _ponerValor('filtroFechaDesde', f) && _ponerValor('filtroFechaHasta', f); },
+            Fecha:       v => _ponerFecha(['filtroFechaDesde', 'filtroFechaHasta'], v),
             'Observación': v => _ponerValor('filtroObservacion', v),
         },
         aplicar: () => aplicarFiltrosConsumo(),
@@ -607,7 +630,7 @@ const TABLAS_INTERACTIVAS = {
             'SIM 1 - ICCID': v => _ponerValor('filtroSim', v),
             'SIM 2 - Num':   v => _norm(v) !== 'm2m' && _ponerValor('filtroSim', v),
             'SIM 2 - ICCID': v => _ponerValor('filtroSim', v),
-            'Fecha Activación': v => { const f = _aISO(v); return !!f && _ponerValor('filtroFecha', f); },
+            'Fecha Activación': v => _ponerFecha(['filtroFecha'], v),
         },
         aplicar: () => aplicarFiltros(),
     },
@@ -636,7 +659,7 @@ const TABLAS_INTERACTIVAS = {
         sel: '#tab-activaciones .panel-historial',
         acc: [h => h.fecha, h => h.tipo, h => h.referencia, h => h.estado_nuevo, h => h.usuario, h => h.motivo],
         rehacer: () => renderActivaciones(1),
-        dbl: { Tipo: v => _elegirOpcion('activacionesTipo', v === 'RC' ? 'rc' : 'linea') },
+        dbl: { Tipo: v => _elegirOpcion('activacionesTipo', !v ? '' : _norm(v) === 'rc' ? 'rc' : 'linea') },
         dblTodas: v => _ponerValor('activacionesBuscar', v),
         aplicar: () => renderActivaciones(1),
     },
@@ -647,8 +670,87 @@ const TABLAS_INTERACTIVAS = {
     },
 };
 
+// Título "limpio" de cada columna (sin flechas ni el chip de filtro)
+const _tituloTh = th => th.dataset.titulo ?? th.textContent.replace(/[⇅▲▼]/g, '').trim();
 function _titulosDe(tabla) {
-    return [...tabla.querySelectorAll('thead th')].map(th => th.textContent.replace(/[⇅▲▼]/g, '').trim());
+    return [...tabla.querySelectorAll('thead th')].map(_tituloTh);
+}
+
+// Aplica un filtro de columna: usa el filtro propio de esa columna si existe;
+// si no (tablas en memoria), filtra por texto en esa columna.
+function filtrarColumna(clave, i, valor) {
+    const conf = TABLAS_INTERACTIVAS[clave];
+    const tabla = document.querySelector(conf.sel);
+    const th = tabla.querySelectorAll('thead th')[i];
+    const titulo = _tituloTh(th);
+    const accion = conf.dbl?.[titulo] || (conf.acc?.[i] ? null : conf.dblTodas);
+    if (accion) {
+        if (accion(valor) === false) { avisoBreve(`No se puede filtrar "${titulo}" por "${valor}"`); return false; }
+        conf.aplicar();
+    } else if (conf.acc?.[i]) {
+        _filtrosCol[clave] = { ...(_filtrosCol[clave] || {}), [i]: valor };
+        pintarChipColumna(clave, i);
+        conf.rehacer();
+    } else {
+        avisoBreve(`La columna "${titulo}" no se puede filtrar`);
+        return false;
+    }
+    avisoBreve(valor ? `Filtrando por ${titulo}: ${valor}` : `Sin filtro en ${titulo}`);
+    return true;
+}
+
+// Chip "texto ✕" dentro del título cuando la columna tiene un filtro de texto propio
+function pintarChipColumna(clave, i) {
+    const th = document.querySelector(TABLAS_INTERACTIVAS[clave].sel).querySelectorAll('thead th')[i];
+    th.querySelector('.th-chip')?.remove();
+    const t = _filtrosCol[clave]?.[i];
+    th.classList.toggle('th-filtrada', !!t);
+    if (!t) return;
+    const chip = document.createElement('span');
+    chip.className = 'th-chip';
+    chip.innerHTML = `${escHtml(t)} <button type="button" title="Quitar este filtro" aria-label="Quitar filtro">✕</button>`;
+    chip.querySelector('button').addEventListener('click', e => { e.stopPropagation(); filtrarColumna(clave, i, ''); });
+    chip.addEventListener('click', e => e.stopPropagation());
+    th.appendChild(chip);
+}
+
+// Doble clic en un título: aparece un campo para escribir; Enter filtra, Esc cancela
+function editarFiltroColumna(clave, i) {
+    const conf = TABLAS_INTERACTIVAS[clave];
+    const th = document.querySelector(conf.sel).querySelectorAll('thead th')[i];
+    if (th.querySelector('.th-input')) return;
+    const titulo = _tituloTh(th);
+    if (!titulo) return;
+    const previo = _filtrosCol[clave]?.[i] || '';
+    const guardado = th.innerHTML;
+    const anchoMin = Math.max(th.offsetWidth, 120);
+    th.innerHTML = '';
+    const input = document.createElement('input');
+    input.className = 'th-input';
+    input.type = 'text';
+    input.value = previo;
+    input.placeholder = `Filtrar ${titulo}…`;
+    input.setAttribute('aria-label', `Filtrar por ${titulo}`);
+    th.style.minWidth = anchoMin + 'px';
+    th.appendChild(input);
+    let listo = false;
+    const cerrar = () => {
+        if (listo) return;
+        listo = true;
+        th.innerHTML = guardado;
+        th.style.minWidth = '';
+        th.querySelector('.th-chip')?.remove();
+        pintarChipColumna(clave, i);
+    };
+    input.addEventListener('keydown', e => {
+        e.stopPropagation();
+        if (e.key === 'Enter') { const v = input.value.trim(); cerrar(); filtrarColumna(clave, i, v); }
+        if (e.key === 'Escape') cerrar();
+    });
+    input.addEventListener('click', e => e.stopPropagation());
+    input.addEventListener('blur', () => setTimeout(cerrar, 100));
+    input.focus();
+    input.select();
 }
 
 function prepararTablaInteractiva(clave) {
@@ -658,14 +760,18 @@ function prepararTablaInteractiva(clave) {
     tabla.dataset.interactiva = '1';
     const ths = [...tabla.querySelectorAll('thead th')];
 
-    // Ordenar (las tablas de Consumo y RC ya ordenan con su propio código)
-    if (!conf.yaOrdena) {
-        ths.forEach((th, i) => {
-            const ordenable = conf.servidor ? !!conf.servidor[i] : !!conf.acc?.[i];
-            if (!ordenable) return;
+    ths.forEach((th, i) => {
+        th.dataset.titulo = th.textContent.replace(/[⇅▲▼]/g, '').trim();
+        if (!th.dataset.titulo) return;
+        // Clic: ordenar. Se espera un instante por si es un doble clic (que abre el filtro).
+        let ordenar = null;
+        if (conf.yaOrdena) {
+            const original = th.onclick;          // Consumo y RC ya traen su propio orden
+            th.onclick = null;
+            if (original) ordenar = () => original.call(th);
+        } else if (conf.servidor ? conf.servidor[i] : conf.acc?.[i]) {
             th.classList.add('sortable');
-            th.title = 'Ordenar por esta columna';
-            th.addEventListener('click', () => {
+            ordenar = () => {
                 const st = _orden[clave];
                 const dir = st?.i === i && st.dir === 'asc' ? 'desc' : 'asc';
                 _orden[clave] = { i, dir };
@@ -678,9 +784,23 @@ function prepararTablaInteractiva(clave) {
                 } else {
                     conf.rehacer();
                 }
-            });
+            };
+        }
+        const filtrable = !!(conf.dbl?.[th.dataset.titulo] || conf.acc?.[i] || conf.dblTodas);
+        th.title = [ordenar && 'Clic: ordenar', filtrable && 'Doble clic: escribir un filtro'].filter(Boolean).join(' · ');
+        let timer = null;
+        th.addEventListener('click', e => {
+            if (e.target.closest('.th-input, .th-chip')) return;
+            clearTimeout(timer);
+            if (ordenar) timer = setTimeout(ordenar, 260);
         });
-    }
+        if (filtrable) th.addEventListener('dblclick', e => {
+            if (e.target.closest('.th-input, .th-chip')) return;
+            clearTimeout(timer);
+            window.getSelection()?.removeAllRanges();
+            editarFiltroColumna(clave, i);
+        });
+    });
 
     // Doble clic en un valor → filtrar
     if (conf.dbl || conf.dblTodas) {
@@ -738,13 +858,11 @@ function cambiarSubtabAltas(cual) {
         btn?.setAttribute('aria-selected', String(k === cual));
     });
     try { localStorage.setItem('subtabAltas', cual); } catch { /* sin almacenamiento */ }
-    if (cual === 'inventario') kpiInventario();
 }
 
 // ── Enganches ─────────────────────────────────────────────────────
 
 function iniciarMejorasUI() {
-    ponerResumenAlCostado(document.querySelector('#subtab-inventario .table-container'), 'kpiInventario');
     prepararFormulariosAlta();
     engancharCargasSesion();
     prepararTablasInteractivas();
@@ -761,7 +879,6 @@ function iniciarMejorasUI() {
     _despuesDe('actualizarTotalesLineas', t => { _ultimosTotalesLineas = t; kpiConsumo(); });
     ['actualizarTotalConsumo', 'mostrarConsolidado', 'aplicarFiltroRC', 'limpiarFiltroRC', 'cambiarVista']
         .forEach(n => _despuesDe(n, () => kpiConsumo()));
-    _despuesDe('renderInventarioLineas', kpiInventario);
     _despuesDe('renderActivaciones', kpiActivaciones);
     _despuesDe('renderHistorialSIMLista', kpiHistorialSIM);
 }

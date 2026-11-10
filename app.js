@@ -4750,6 +4750,7 @@ const ESTADO_HIST_LABEL = {
     disponible:         'Disponible',
     asignada:           'Asignada',
     desactivada:        'Desactivada',
+    editada:            'Editada',
 };
 
 // Registra una alta / activación / desactivación con el usuario logueado.
@@ -4765,6 +4766,114 @@ async function registrarEstado(tipo, referencia, anterior, nuevo, motivo = null)
     });
     if (error) console.warn('⚠️ No se pudo registrar en historial_estados:', error.message);
     else activacionesLista = null;   // forzar recarga la próxima vez
+}
+
+// ── Editar una línea del inventario (solo admin) ──────────────────
+let _lineaEditando = null;
+
+function abrirEditarLinea(id) {
+    if (esViewer()) return;
+    const l = inventarioLineas.find(x => x.id === id);
+    if (!l) return;
+    _lineaEditando = l;
+    let modal = document.getElementById('modalEditarLinea');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modalEditarLinea';
+        modal.className = 'import-modal-overlay';
+        modal.style.cssText = 'display:none;z-index:2600';
+        modal.onclick = e => { if (e.target === modal) cerrarEditarLinea(); };
+        modal.innerHTML = `
+            <div class="import-modal-card" style="max-width:460px">
+                <div class="import-modal-header">
+                    <h3>Editar línea</h3>
+                    <button class="import-close" onclick="cerrarEditarLinea()">✕</button>
+                </div>
+                <div class="import-modal-body">
+                    <div id="editLineaAviso" class="edit-aviso" style="display:none"></div>
+                    <div class="filter-group"><label>Número</label>
+                        <input type="text" id="editLineaNumero" placeholder="Ej: 994316194 o M2M" autocomplete="off"></div>
+                    <div class="filter-group"><label>ICCID</label>
+                        <input type="text" id="editLineaIccid" placeholder="ICCID de la SIM" autocomplete="off"></div>
+                    <div class="filter-group"><label>Telefonía</label>
+                        <select id="editLineaTelefonia">
+                            <option value="Claro">Claro</option><option value="Personal">Personal</option>
+                            <option value="Tigo">Tigo</option><option value="Vox">Vox</option>
+                        </select></div>
+                    <div class="filter-group"><label>Observación</label>
+                        <input type="text" id="editLineaObs" placeholder="Opcional" autocomplete="off"></div>
+                    <div id="editLineaStatus" class="alta-status"></div>
+                    <div class="filter-buttons">
+                        <button onclick="guardarEditarLinea()">Guardar cambios</button>
+                        <button class="btn-secondary" onclick="cerrarEditarLinea()">Cancelar</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+    }
+    const tel = document.getElementById('editLineaTelefonia');
+    // Telefonías del inventario que no están en la lista (ej. "VOX"): se agregan tal cual
+    if (l.telefonia && ![...tel.options].some(o => o.value === l.telefonia)) tel.add(new Option(l.telefonia, l.telefonia));
+    document.getElementById('editLineaNumero').value = l.numero || '';
+    document.getElementById('editLineaIccid').value  = l.iccid || '';
+    tel.value = l.telefonia || 'Claro';
+    document.getElementById('editLineaObs').value = l.observacion || '';
+    const aviso = document.getElementById('editLineaAviso');
+    aviso.style.display = l.rc_codigo ? '' : 'none';
+    aviso.textContent = l.rc_codigo
+        ? `Esta línea está asignada a ${l.rc_codigo}. Si cambiás el número o el ICCID acá, el RC sigue con los datos anteriores: para cambiar la SIM del RC usá "Cambio de SIM" en el panel del RC.`
+        : '';
+    document.getElementById('editLineaStatus').className = 'alta-status';
+    modal.style.display = 'flex';
+    document.getElementById('editLineaNumero').focus();
+}
+
+function cerrarEditarLinea() {
+    const modal = document.getElementById('modalEditarLinea');
+    if (modal) modal.style.display = 'none';
+    _lineaEditando = null;
+}
+
+async function guardarEditarLinea() {
+    if (esViewer() || !_lineaEditando) return;
+    const l = _lineaEditando;
+    const val = id => document.getElementById(id).value.trim();
+    let numero = val('editLineaNumero');
+    numero = esM2MTexto(numero) ? 'M2M' : (numero || null);
+    const iccid = limpiarIccid(val('editLineaIccid')) || null;
+    const telefonia = document.getElementById('editLineaTelefonia').value;
+    const observacion = val('editLineaObs') || null;
+
+    const msg = (ok, t) => mostrarEstadoAlta('editLineaStatus', ok, t);
+    if (!numero && !iccid) return msg(false, 'Cargá el número o el ICCID.');
+    if (numero === 'M2M' && !iccid) return msg(false, 'Las líneas M2M necesitan el ICCID.');
+    const otra = inventarioLineas.find(x => x.id !== l.id && (
+        (numero && numero !== 'M2M' && String(x.numero || '').trim() === numero) ||
+        (iccid && normalizarImei(x.iccid) === iccid)));
+    if (otra) return msg(false, `Ese número o ICCID ya está en otra línea del inventario${otra.rc_codigo ? ' (' + otra.rc_codigo + ')' : ''}.`);
+
+    const cambios = {};
+    if ((l.numero || null) !== numero)           cambios.numero = numero;
+    if ((l.iccid || null) !== iccid)             cambios.iccid = iccid;
+    if ((l.telefonia || '') !== telefonia)       cambios.telefonia = telefonia;
+    if ((l.observacion || null) !== observacion) cambios.observacion = observacion;
+    if (!Object.keys(cambios).length) return cerrarEditarLinea();
+    if (l.rc_codigo && ('numero' in cambios || 'iccid' in cambios) &&
+        !confirm(`La línea está asignada a ${l.rc_codigo} y el RC no se va a modificar.\n¿Guardar igual?`)) return;
+
+    msg(true, '⏳ Guardando…');
+    const { error } = await window.clienteSupabase.from('lineas').update(cambios).eq('id', l.id);
+    if (error) {
+        return msg(false, '❌ ' + (error.code === '23505' ? 'Ese número o ICCID ya está en el inventario.' : error.message));
+    }
+    const nombres = { numero: 'número', iccid: 'ICCID', telefonia: 'telefonía', observacion: 'observación' };
+    const detalle = Object.keys(cambios).map(k => `${nombres[k]}: ${l[k] || '-'} → ${cambios[k] || '-'}`).join('; ');
+    const ref = ((l.numero && !esM2MTexto(l.numero)) ? l.numero : null) || l.iccid;
+    await registrarEstado('linea', ref, l.estado, 'editada', 'Editada · ' + detalle);
+    Object.assign(l, cambios);
+    renderInventarioLineas();
+    cerrarEditarLinea();
+    if (typeof avisoBreve === 'function') avisoBreve('✅ Línea actualizada');
 }
 
 async function cargarActivaciones() {
@@ -4892,7 +5001,7 @@ function renderInventarioLineas(pagina, desdeControles) {
     const pag    = paginarLista('inventario', filas, pagina, tbody, 'renderInventarioLineas');
 
     if (!filas.length) {
-        tbody.innerHTML = `<tr><td colspan="8" class="panel-empty">${inventarioLineas.length ? 'Sin líneas que coincidan' : 'Todavía no hay líneas cargadas'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="panel-empty">${inventarioLineas.length ? 'Sin líneas que coincidan' : 'Todavía no hay líneas cargadas'}</td></tr>`;
         infoEl.textContent = '';
         return;
     }
@@ -4911,6 +5020,8 @@ function renderInventarioLineas(pagina, desdeControles) {
             <td>${l.estado === 'desactivada'
                     ? `<button class="btn-linea btn-linea-activar" onclick="cambiarEstadoLinea(${l.id}, true)">Activar</button>`
                     : `<button class="btn-linea btn-linea-desactivar" onclick="cambiarEstadoLinea(${l.id}, false)">Desactivar</button>`}</td>
+            <td class="td-editar">${esViewer() ? '' : `<button class="btn-lapiz" onclick="abrirEditarLinea(${l.id})" title="Editar esta línea" aria-label="Editar la línea ${escHtml(l.numero || l.iccid)}">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>`}</td>
         </tr>`).join('');
     infoEl.innerHTML = `Mostrando <strong>${pag.desde + 1}–${pag.desde + pag.filas.length}</strong> de <strong>${formatearNumero(filas.length)}</strong> líneas`;
     if (desdeControles) _subirATabla(tbody);
