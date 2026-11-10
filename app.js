@@ -459,6 +459,7 @@ let telefoniaActual   = '';
 let vistaConsumo      = 'lineas';    // 'lineas-bd' | 'equipos' | 'lineas'
 let sortLineas        = { col: 'fecha', dir: 'desc' };
 let sortEquipos       = { col: 'rc',    dir: 'asc'  };
+let sortLineasBD      = { col: 'numero', dir: 'asc' };   // vista Líneas (orden en la base)
 let paginaEquipos     = 1;
 let paginaLineasBD    = 1;
 let totalLineasBD     = 0;
@@ -2773,8 +2774,9 @@ async function consultarLineasBD() {
         .select('*', { count: 'exact' });
     q = _aplicarFiltrosLineasQuery(q, f);
     const from = (paginaLineasBD - 1) * ITEMS_POR_PAGINA;
-    q = q.order('numero', { ascending: true, nullsFirst: false })
-         .range(from, from + ITEMS_POR_PAGINA - 1);
+    q = q.order(sortLineasBD.col, { ascending: sortLineasBD.dir === 'asc', nullsFirst: false });
+    if (sortLineasBD.col !== 'numero') q = q.order('numero', { ascending: true, nullsFirst: false });
+    q = q.order('imei', { ascending: true }).range(from, from + ITEMS_POR_PAGINA - 1);
     const { data, error, count } = await q;
     if (error) throw error;
     return { data: data || [], count: count || 0 };

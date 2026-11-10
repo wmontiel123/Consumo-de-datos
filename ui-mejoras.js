@@ -424,7 +424,7 @@ function pintarCargasSesion() {
         return;
     }
     const hora = ts => new Date(ts).toLocaleTimeString('es-PY', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-    tbody.innerHTML = _cargasSesion.map(c => `
+    tbody.innerHTML = ordenarLista('cargas', _cargasSesion).map(c => `
         <tr>
             <td class="td-fecha">${hora(c.hora)}</td>
             <td><span class="badge-tipo-carga ${c.tipo === 'RC' ? 'carga-rc' : 'carga-linea'}">${escHtml(c.tipo)}</span></td>
@@ -491,6 +491,242 @@ function engancharCargasSesion() {
     }
 }
 
+// ══════════════════════════════════════════════════════════════════
+// ── Ordenar por columna y doble clic para filtrar ─────────────────
+//  - Clic en el título de una columna: ordena (asc ↔ desc).
+//  - Doble clic en un valor: filtra la tabla por ese valor en esa columna.
+// ══════════════════════════════════════════════════════════════════
+
+const _txtCelda = td => {
+    let t = (td.textContent || '').replace(/●/g, '').replace(/\(SIM [12]\)/g, '').trim();
+    if (t.includes('→')) t = t.split('→').pop().trim();   // "anterior → nuevo": se usa el nuevo
+    t = t.replace(/\s+MB$/i, '').trim();
+    return (t === '-' || t === '—') ? '' : t;
+};
+const _aISO = t => { const m = String(t).match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : ''; };
+const _ponerValor = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; return !!el; };
+// Elige en un <select> la opción cuyo texto o valor coincide
+function _elegirOpcion(id, v) {
+    const sel = document.getElementById(id);
+    if (!sel) return false;
+    const op = [...sel.options].find(o => o.value && (_norm(o.text) === _norm(v) || _norm(o.value) === _norm(v)));
+    if (!op) return false;
+    sel.value = op.value;
+    return true;
+}
+
+let _avisoTimer = null;
+function avisoBreve(texto) {
+    let el = document.getElementById('avisoBreve');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'avisoBreve';
+        el.setAttribute('role', 'status');
+        document.body.appendChild(el);
+    }
+    el.textContent = texto;
+    el.classList.add('visible');
+    clearTimeout(_avisoTimer);
+    _avisoTimer = setTimeout(() => el.classList.remove('visible'), 2600);
+}
+
+// Comparación natural: números como números, fechas ISO como texto, resto alfabético
+const _cmp = (a, b) => {
+    const na = typeof a === 'number' ? a : null, nb = typeof b === 'number' ? b : null;
+    if (na !== null && nb !== null) return na - nb;
+    return String(a ?? '').localeCompare(String(b ?? ''), 'es', { numeric: true, sensitivity: 'base' });
+};
+
+const _orden = {};   // clave de tabla → { i: columna, dir: 'asc' | 'desc' }
+
+function ordenarLista(clave, filas) {
+    const st = _orden[clave];
+    const acc = TABLAS_INTERACTIVAS[clave]?.acc?.[st?.i];
+    if (!st || !acc) return filas;
+    const m = st.dir === 'asc' ? 1 : -1;
+    // Vacíos siempre al final
+    return [...filas].sort((x, y) => {
+        const a = acc(x), b = acc(y);
+        const va = a === '' || a == null, vb = b === '' || b == null;
+        if (va || vb) return va === vb ? 0 : va ? 1 : -1;
+        return _cmp(a, b) * m;
+    });
+}
+
+const _num = v => parseFloat(v) || 0;
+
+// Configuración de cada tabla.
+//  acc: valor para ordenar de cada columna (null = no se ordena) — tablas con datos en memoria
+//  servidor: (i, dir) => ordena en la base — tablas paginadas en el servidor
+//  dbl: acción del doble clic por columna (devuelve false si no se pudo) + aplicar(): vuelve a buscar
+const TABLAS_INTERACTIVAS = {
+    consumo: {
+        sel: '#tablaConsumo2', yaOrdena: true,
+        dbl: {
+            Estado:      v => _elegirOpcion('filtroEstadoConsumo', v),
+            'Número':    v => _norm(v) !== 'm2m' && _ponerValor('filtroNumConsumo', v),
+            ICCID:       v => _ponerValor('filtroNumConsumo', v),
+            RC:          v => _ponerValor('filtroRCConsumo', v),
+            'Telefonía': v => _elegirOpcion('filtroTelefonia', v),
+            Fecha:       v => { const f = _aISO(v); return !!f && _ponerValor('filtroFechaDesde', f) && _ponerValor('filtroFechaHasta', f); },
+            'Observación': v => _ponerValor('filtroObservacion', v),
+        },
+        aplicar: () => aplicarFiltrosConsumo(),
+    },
+    lineasBD: {
+        sel: '#tablaLineasBD',
+        servidor: ['estado_operador', 'numero', 'imei', 'telefonia', 'rc', 'consumo_mes_mb', 'consumo_total_mb'],
+        dbl: {
+            Estado:      v => _elegirOpcion('filtroLineasEstado', v),
+            'Número':    v => _norm(v) !== 'm2m' && _ponerValor('filtroLineasBuscar', v),
+            ICCID:       v => _ponerValor('filtroLineasBuscar', v),
+            RC:          v => _ponerValor('filtroLineasBuscar', v),
+            'Telefonía': v => _elegirOpcion('filtroLineasTelefonia', v),
+        },
+        aplicar: () => aplicarFiltrosLineas(),
+    },
+    rc: {
+        sel: '#tablaConsolidado', yaOrdena: true,
+        dbl: {
+            RC:       v => _ponerValor('filtroRCBuscar', v),
+            Regional: v => _elegirOpcion('filtroRCRegional', v),
+        },
+        aplicar: () => aplicarFiltroRC(),
+    },
+    dispositivos: {
+        sel: '#tablaConsumo',
+        acc: [d => estadoDisp(d), d => d.regional, d => d.codigo, d => d.ubicacion,
+              d => d.sim1_num, d => normalizarImei(d.sim1_imei), d => d.sim2_num, d => normalizarImei(d.sim2_imei),
+              d => String(d.fecha_activacion || '').substring(0, 10)],
+        rehacer: () => { paginaActual = 1; mostrarEnTabla(datosFiltrados); },
+        dbl: {
+            Estado:     v => _elegirOpcion('filtroEstado', v),
+            Regional:   v => _elegirOpcion('filtroRegional', v),
+            'Código':   v => _ponerValor('filtroCodigo', v),
+            'SIM 1 - Num':   v => _norm(v) !== 'm2m' && _ponerValor('filtroSim', v),
+            'SIM 1 - ICCID': v => _ponerValor('filtroSim', v),
+            'SIM 2 - Num':   v => _norm(v) !== 'm2m' && _ponerValor('filtroSim', v),
+            'SIM 2 - ICCID': v => _ponerValor('filtroSim', v),
+            'Fecha Activación': v => { const f = _aISO(v); return !!f && _ponerValor('filtroFecha', f); },
+        },
+        aplicar: () => aplicarFiltros(),
+    },
+    inventario: {
+        sel: '#subtab-inventario .panel-historial',
+        acc: [l => l.numero, l => l.iccid, l => l.telefonia, l => l.estado, l => l.rc_codigo, l => l.creado_en, l => l.creado_por, null],
+        rehacer: () => renderInventarioLineas(1),
+        dbl: {
+            'Número':    v => _ponerValor('lineasBuscar', v),
+            ICCID:       v => _ponerValor('lineasBuscar', v),
+            RC:          v => _ponerValor('lineasBuscar', v),
+            'Telefonía': v => _elegirOpcion('lineasTelefonia', v),
+            Estado:      v => _elegirOpcion('lineasEstado', v),
+        },
+        aplicar: () => renderInventarioLineas(1),
+    },
+    historial: {
+        sel: '#tab-historial .panel-historial',
+        acc: [h => h.fecha_campo, h => h.fecha_cambio, h => h.rc_codigo, h => h.sim_slot, h => h.numero_nuevo,
+              h => normalizarImei(h.imei_nuevo), h => h.usuario, h => h.observacion],
+        rehacer: () => renderHistorialSIMLista(1),
+        dblTodas: v => _ponerValor('historialSimBuscar', v),
+        aplicar: () => renderHistorialSIMLista(1),
+    },
+    activaciones: {
+        sel: '#tab-activaciones .panel-historial',
+        acc: [h => h.fecha, h => h.tipo, h => h.referencia, h => h.estado_nuevo, h => h.usuario, h => h.motivo],
+        rehacer: () => renderActivaciones(1),
+        dbl: { Tipo: v => _elegirOpcion('activacionesTipo', v === 'RC' ? 'rc' : 'linea') },
+        dblTodas: v => _ponerValor('activacionesBuscar', v),
+        aplicar: () => renderActivaciones(1),
+    },
+    cargas: {
+        sel: '#tablaCargasSesion',
+        acc: [c => c.hora, c => c.tipo, c => c.ref, c => c.iccid, c => c.telefonia, c => c.estado, c => c.rc, c => c.origen],
+        rehacer: () => pintarCargasSesion(),
+    },
+};
+
+function _titulosDe(tabla) {
+    return [...tabla.querySelectorAll('thead th')].map(th => th.textContent.replace(/[⇅▲▼]/g, '').trim());
+}
+
+function prepararTablaInteractiva(clave) {
+    const conf = TABLAS_INTERACTIVAS[clave];
+    const tabla = document.querySelector(conf.sel);
+    if (!tabla || tabla.dataset.interactiva) return;
+    tabla.dataset.interactiva = '1';
+    const ths = [...tabla.querySelectorAll('thead th')];
+
+    // Ordenar (las tablas de Consumo y RC ya ordenan con su propio código)
+    if (!conf.yaOrdena) {
+        ths.forEach((th, i) => {
+            const ordenable = conf.servidor ? !!conf.servidor[i] : !!conf.acc?.[i];
+            if (!ordenable) return;
+            th.classList.add('sortable');
+            th.title = 'Ordenar por esta columna';
+            th.addEventListener('click', () => {
+                const st = _orden[clave];
+                const dir = st?.i === i && st.dir === 'asc' ? 'desc' : 'asc';
+                _orden[clave] = { i, dir };
+                ths.forEach(x => x.classList.remove('sort-asc', 'sort-desc'));
+                th.classList.add(dir === 'asc' ? 'sort-asc' : 'sort-desc');
+                if (conf.servidor) {
+                    sortLineasBD = { col: conf.servidor[i], dir };
+                    paginaLineasBD = 1;
+                    cargarLineasBD();
+                } else {
+                    conf.rehacer();
+                }
+            });
+        });
+    }
+
+    // Doble clic en un valor → filtrar
+    if (conf.dbl || conf.dblTodas) {
+        const tbody = tabla.querySelector('tbody');
+        tbody.classList.add('con-doble-clic');
+        tbody.addEventListener('dblclick', e => {
+            const td = e.target.closest('td');
+            if (!td || td.colSpan > 1 || e.target.closest('button, input, select')) return;
+            const titulo = _titulosDe(tabla)[td.cellIndex] || '';
+            const accion = conf.dbl?.[titulo] || conf.dblTodas;
+            window.getSelection()?.removeAllRanges();
+            if (!accion) return avisoBreve(`No se puede filtrar por "${titulo}"`);
+            const valor = _txtCelda(td);
+            if (!valor) return avisoBreve('Esa celda está vacía');
+            // Un doble clic sobre un link también lo abre: cerrar ese panel
+            if (e.target.closest('.link-num, .link-rc') && typeof cerrarPanel === 'function') setTimeout(cerrarPanel, 50);
+            if (accion(valor) === false) return avisoBreve(`No se puede filtrar por "${valor}" en ${titulo}`);
+            conf.aplicar();
+            avisoBreve(`Filtrando por ${titulo}: ${valor}`);
+        });
+    }
+}
+
+function prepararTablasInteractivas() {
+    Object.keys(TABLAS_INTERACTIVAS).forEach(prepararTablaInteractiva);
+    // Las listas en memoria se devuelven ordenadas (tabla, paginado y reporte usan el mismo orden)
+    [['filasInventario', 'inventario'], ['filasActivaciones', 'activaciones'], ['filasHistorialSIM', 'historial']]
+        .forEach(([fn, clave]) => {
+            const orig = window[fn];
+            if (typeof orig === 'function') window[fn] = (...a) => ordenarLista(clave, orig(...a));
+        });
+    const mostrar = window.mostrarEnTabla;
+    if (typeof mostrar === 'function') window.mostrarEnTabla = datos => mostrar(ordenarLista('dispositivos', datos));
+}
+
+// ── Ir a los gráficos / volver a la tabla ─────────────────────────
+function irAGraficos(tab) {
+    const destino = tab === 'consumo' ? 'seccionGraficosConsumo' : 'seccionGraficosDispositivos';
+    document.getElementById(destino)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function irATabla(tab) {
+    const cont = tab === 'consumo' ? document.querySelector('#tab-consumo .table-container')
+                                   : document.getElementById('tablaConsumo')?.closest('.table-container');
+    cont?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 // ── Sub-pestañas de Altas: "Nuevo RC y líneas" / "Inventario de líneas" ──
 
 function cambiarSubtabAltas(cual) {
@@ -508,10 +744,10 @@ function cambiarSubtabAltas(cual) {
 // ── Enganches ─────────────────────────────────────────────────────
 
 function iniciarMejorasUI() {
-    ponerResumenAlCostado(document.querySelector('#tab-consumo .table-container'), 'kpiConsumo');
     ponerResumenAlCostado(document.querySelector('#subtab-inventario .table-container'), 'kpiInventario');
     prepararFormulariosAlta();
     engancharCargasSesion();
+    prepararTablasInteractivas();
     prepararTablasResponsivas();
     let sub = 'altas';
     try { sub = localStorage.getItem('subtabAltas') || 'altas'; } catch { /* sin almacenamiento */ }

@@ -521,6 +521,10 @@
             <div class="table-header-row">
                 <h2>Datos</h2>
                 <div class="header-acciones">
+                <button class="btn-accion btn-graficos no-print" onclick="irAGraficos('dispositivos')" title="Ver el resumen, los gráficos y el mapa">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                        Ver gráficos
+                    </button>
                 <button class="btn-accion btn-reporte no-print" onclick="abrirReporte('dispositivos')" title="Generar un reporte en PDF o Excel, con filtros">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
                         Reporte
@@ -550,6 +554,10 @@
         </div>
 
         <!-- Estadísticas -->
+        <div id="seccionGraficosDispositivos" class="seccion-graficos-tit no-print">
+            <h2>Resumen y gráficos</h2>
+            <button class="btn-accion" onclick="irATabla('dispositivos')">↑ Volver a la tabla</button>
+        </div>
         <div class="stats">
             <div class="stat-card">
                 <h3>Total Dispositivos</h3>
@@ -737,6 +745,10 @@
                         </div>
                     </div>
                     <div class="consumo-header-right no-print">
+                        <button class="btn-accion btn-graficos no-print" onclick="irAGraficos('consumo')" title="Ver el resumen y los gráficos">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                        Ver gráficos
+                    </button>
                         <button class="btn-accion btn-reporte no-print" onclick="abrirReporte('consumo')" title="Generar un reporte en PDF o Excel, con filtros">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
                         Reporte
@@ -804,6 +816,15 @@
                     </tbody>
                 </table>
                 <div id="paginacion-lineas-bd" class="paginacion"></div>
+            </div>
+
+            <!-- Resumen (tarjetas) de la vista activa, junto a los gráficos -->
+            <div id="seccionGraficosConsumo" class="seccion-graficos no-print">
+                <div class="seccion-graficos-tit">
+                    <h2>Resumen y gráficos</h2>
+                    <button class="btn-accion" onclick="irATabla('consumo')">↑ Volver a la tabla</button>
+                </div>
+                <div id="kpiConsumo" class="kpi-row"></div>
             </div>
 
             <!-- Gráficos — vista Líneas: histórico de la línea seleccionada en la tabla -->
