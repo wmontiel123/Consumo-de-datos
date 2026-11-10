@@ -2317,3 +2317,8 @@ th.th-filtrada { background: #e2e5f3; }
     .tabla-responsiva tbody td.td-editar { justify-content: flex-end; }
     .tabla-responsiva tbody td.td-editar::before { content: 'Editar'; }
 }
+
+/* Botón "Limpiar filtros" de cada tabla */
+.btn-limpiar-filtros { flex: none; }
+.btn-limpiar-filtros:hover { border-color: #dc2626; color: #b91c1c; background: #fff5f5; }
+@media (max-width: 760px) { .btn-limpiar-filtros { width: 100%; justify-content: center; padding: 10px; } }

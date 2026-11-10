@@ -824,6 +824,82 @@ function prepararTablaInteractiva(clave) {
     }
 }
 
+// ── Botón "Limpiar filtros" en cada tabla ─────────────────────────
+// Quita los filtros de la pantalla y los escritos en los títulos de columna.
+
+const _vaciar = ids => ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+
+function _quitarFiltrosColumna(clave) {
+    const tenia = Object.values(_filtrosCol[clave] || {}).some(Boolean);
+    _filtrosCol[clave] = {};
+    const tabla = document.querySelector(TABLAS_INTERACTIVAS[clave]?.sel);
+    tabla?.querySelectorAll('thead th').forEach(th => { th.querySelector('.th-chip')?.remove(); th.classList.remove('th-filtrada'); });
+    return tenia;
+}
+
+const LIMPIAR_TABLA = {
+    consumo: () => {
+        if (vistaConsumo === 'lineas-bd') limpiarFiltrosLineas();
+        else if (vistaConsumo === 'equipos') limpiarFiltroRC();
+        else limpiarFiltrosConsumo();
+    },
+    dispositivos: () => { _quitarFiltrosColumna('dispositivos'); limpiarFiltros(); },
+    historial:    () => { _quitarFiltrosColumna('historial'); _vaciar(['historialSimBuscar']); renderHistorialSIMLista(1); },
+    activaciones: () => {
+        _quitarFiltrosColumna('activaciones');
+        _vaciar(['activacionesBuscar', 'activacionesTipo']);
+        const ocultar = document.getElementById('activacionesOcultarSistema');
+        if (ocultar) ocultar.checked = true;   // vuelve al valor de siempre
+        renderActivaciones(1);
+    },
+    inventario:   () => { _quitarFiltrosColumna('inventario'); _vaciar(['lineasBuscar', 'lineasEstado', 'lineasTelefonia']); renderInventarioLineas(1); },
+    cargas:       () => { _quitarFiltrosColumna('cargas'); pintarCargasSesion(); },
+};
+
+function limpiarFiltrosTabla(clave) {
+    LIMPIAR_TABLA[clave]?.();
+    avisoBreve('Filtros limpiados');
+}
+
+// Dónde va el botón: en el encabezado de cada tabla, antes de "Reporte" (o al final)
+const BOTON_LIMPIAR_EN = {
+    consumo:      () => document.querySelector('#tab-consumo .consumo-header-right'),
+    dispositivos: () => document.getElementById('tablaConsumo')?.closest('.table-container')?.querySelector('.header-acciones'),
+    historial:    () => document.querySelector('#tab-historial .table-header-row'),
+    activaciones: () => document.querySelector('#tab-activaciones .table-header-row'),
+    inventario:   () => document.querySelector('#subtab-inventario .table-header-row'),
+    cargas:       () => document.querySelector('.cargas-sesion .header-acciones'),
+};
+
+function agregarBotonesLimpiar() {
+    Object.entries(BOTON_LIMPIAR_EN).forEach(([clave, donde]) => {
+        const cont = donde();
+        if (!cont || cont.querySelector('.btn-limpiar-filtros')) return;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn-accion btn-limpiar-filtros no-print';
+        btn.title = 'Quitar todos los filtros de esta tabla';
+        btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/><line x1="17" y1="17" x2="23" y2="23"/><line x1="23" y1="17" x2="17" y2="23"/></svg> Limpiar filtros';
+        btn.addEventListener('click', () => limpiarFiltrosTabla(clave));
+        const ref = cont.querySelector(':scope > .btn-reporte, :scope > .btn-accion');
+        // En los encabezados simples (título + Reporte) el botón va junto a Reporte, a la derecha
+        if (cont.classList.contains('table-header-row')) {
+            let grupo = cont.querySelector(':scope > .header-acciones');
+            if (!grupo) {
+                grupo = document.createElement('div');
+                grupo.className = 'header-acciones';
+                [...cont.children].filter(el => el.tagName !== 'H2').forEach(el => grupo.appendChild(el));
+                cont.appendChild(grupo);
+            }
+            grupo.prepend(btn);
+        } else if (ref) {
+            cont.insertBefore(btn, ref);
+        } else {
+            cont.prepend(btn);
+        }
+    });
+}
+
 function prepararTablasInteractivas() {
     Object.keys(TABLAS_INTERACTIVAS).forEach(prepararTablaInteractiva);
     // Las listas en memoria se devuelven ordenadas (tabla, paginado y reporte usan el mismo orden)
@@ -866,6 +942,7 @@ function iniciarMejorasUI() {
     prepararFormulariosAlta();
     engancharCargasSesion();
     prepararTablasInteractivas();
+    agregarBotonesLimpiar();
     prepararTablasResponsivas();
     let sub = 'altas';
     try { sub = localStorage.getItem('subtabAltas') || 'altas'; } catch { /* sin almacenamiento */ }
