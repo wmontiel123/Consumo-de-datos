@@ -8,8 +8,10 @@
 --   - si no                    → disponible
 -- No modifica las líneas que ya estaban. Deja un "alta" en historial_estados.
 --
--- refresh_lineas_estado() (que corre después de cada importación) la llama,
--- así las líneas nuevas de los reportes entran solas al inventario.
+-- refresh_lineas_estado() (que corre después de cada importación) la llamaba,
+-- así las líneas nuevas de los reportes entraban solas al inventario.
+-- ⚠ APAGADO desde el 12/11/2026 (scripts/inventario_sin_sincronizar.sql): el
+--   inventario se arma con la planilla "stock y activaciones".
 --
 -- Ejecutar TODO junto en el SQL Editor de Supabase.
 -- ════════════════════════════════════════════════════════════════
