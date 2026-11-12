@@ -115,8 +115,10 @@ Etiqueta ($(if ($hayClave) { 'Ya hay una clave guardada: dejá el campo vacío p
 
 Etiqueta 'Frecuencia' 16 244 | Out-Null
 Etiqueta 'Revisar cada' 16 270 80 20 $fuente | Out-Null
-$numCada = New-Object Windows.Forms.NumericUpDown -Property @{ Location = New-Object Drawing.Point(100, 267); Size = New-Object Drawing.Size(60, 24)
-    Minimum = 5; Maximum = 1440; Increment = 5; Value = $cadaPrevio }
+$numCada = New-Object Windows.Forms.NumericUpDown -Property @{ Location = New-Object Drawing.Point(100, 267); Size = New-Object Drawing.Size(60, 24) }
+# En este orden: el valor no puede pasar el máximo (que arranca en 100)
+$numCada.Minimum = 5; $numCada.Maximum = 1440; $numCada.Increment = 5
+$numCada.Value = [Math]::Min(1440, [Math]::Max(5, $cadaPrevio))
 $form.Controls.Add($numCada)
 Etiqueta 'minutos, desde las' 168 270 110 20 $fuente | Out-Null
 $horaDesde = New-Object Windows.Forms.DateTimePicker -Property @{ Location = New-Object Drawing.Point(282, 267); Size = New-Object Drawing.Size(80, 24)
