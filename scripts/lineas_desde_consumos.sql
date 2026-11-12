@@ -37,19 +37,14 @@ begin
         where numero is not null and upper(numero) <> 'M2M' or iccid is not null
         order by coalesce(iccid, numero), (upper(coalesce(numero, 'M2M')) = 'M2M')
     ),
+    -- Solo las que no están en el inventario (comparación directa: usa los índices de lineas)
     nuevas as (
         select u.*
         from unicos u
-        where not exists (
-            select 1 from lineas x
-             where (u.numero is not null and upper(u.numero) <> 'M2M' and trim(x.numero) = u.numero)
-                or (u.iccid  is not null and trim(x.iccid) = u.iccid))
-          -- un número repetido con otro ICCID (cambio de SIM) entra una sola vez
-          and not exists (
-            select 1 from unicos o
-             where u.numero is not null and upper(u.numero) <> 'M2M'
-               and o.numero = u.numero and o.iccid is distinct from u.iccid
-               and coalesce(o.iccid, '') < coalesce(u.iccid, ''))
+        where not exists (select 1 from lineas x
+                           where u.numero is not null and upper(u.numero) <> 'M2M' and x.numero = u.numero)
+          and not exists (select 1 from lineas x
+                           where u.iccid is not null and x.iccid = u.iccid)
     ),
     rc as (
         select distinct on (key) key, codigo, slot
