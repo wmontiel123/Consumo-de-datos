@@ -43,8 +43,12 @@ USO
 
 SI NO FUNCIONA: DIAGNÓSTICO
 ---------------------------
+- Usar SIEMPRE el paquete armado (CargaReportes.zip o Instalar_CargaReportes.exe):
+  trae cargar_reportes.exe y los .py. La carpeta "instalador" del código fuente
+  no sirve para instalar.
 - El instalador deja su propio registro en %TEMP%\CargaReportes_instalacion.log
-  (y una copia en la carpeta del programa: instalacion.log). Si falla antes de
+  (y una copia en la carpeta del programa: instalacion.log); los mensajes de
+  PowerShell van a %TEMP%\CargaReportes_consola.log. Si falla antes de
   abrir la ventana, ese archivo se abre solo.
 - Diagnostico.bat (en el paquete y en la carpeta del programa) genera en el
   Escritorio CargaReportes_diagnostico.txt: usuario, permisos, bloqueos de Windows,

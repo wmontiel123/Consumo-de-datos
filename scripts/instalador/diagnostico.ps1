@@ -92,6 +92,11 @@ if (Test-Path $inst) {
     L; L 'Log del instalador (últimas 40 líneas):'
     Get-Content $inst -Tail 40 -Encoding UTF8 | ForEach-Object { L "  $_" }
 } else { L 'No hay log del instalador.' }
+$consola = Join-Path $env:TEMP 'CargaReportes_consola.log'
+if (Test-Path $consola) {
+    L; L 'Mensajes de PowerShell del instalador (últimas 30 líneas):'
+    Get-Content $consola -Tail 30 -Encoding UTF8 | ForEach-Object { L "  $_" }
+}
 
 $lineas | Set-Content -LiteralPath $salida -Encoding UTF8
 Start-Process notepad.exe $salida
