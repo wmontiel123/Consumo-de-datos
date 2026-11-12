@@ -7,6 +7,7 @@ let _sesionActiva = false;
 
 // Helpers de rol
 function esViewer() { return rolActual === 'viewer'; }
+function esAdmin()  { return rolActual === 'admin'; }
 
 // Colapsa todos los estados no-desactivado a 'activo' (para viewer y stats)
 function estadoSimple(est) {
@@ -363,6 +364,7 @@ function aplicarRol() {
 
     // Altas de RC y líneas: solo admin
     document.getElementById('tabBtnAltas').style.display = 'none';
+    document.getElementById('tabBtnInventario').style.display = 'none';
 
     // Actualizar labels de las tarjetas de estadísticas
     document.querySelector('.stat-activos h3').textContent      = 'Activados';
@@ -1713,6 +1715,7 @@ function cambiarTab(tab) {
         historial:    ['tab-historial',    'tabBtnHistorial'],
         activaciones: ['tab-activaciones', 'tabBtnActivaciones'],
         altas:        ['tab-altas',        'tabBtnAltas'],
+        inventario:   ['tab-inventario',   'tabBtnInventario'],
     };
     Object.entries(tabs).forEach(([nombre, [div, btn]]) => {
         document.getElementById(div).style.display = nombre === tab ? 'block' : 'none';
@@ -1726,7 +1729,7 @@ function cambiarTab(tab) {
         cargarHistorialSIMLista();
     } else if (tab === 'activaciones') {
         cargarActivaciones();
-    } else if (tab === 'altas') {
+    } else if (tab === 'altas' || tab === 'inventario') {
         prepararAltas();
     } else {
         cargarConsumos();  // usa caché si datos frescos (< 3 min)

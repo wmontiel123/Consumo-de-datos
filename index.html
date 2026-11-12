@@ -170,6 +170,10 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
                 Altas
             </button>
+            <button class="tab-btn" onclick="cambiarTab('inventario')" id="tabBtnInventario">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                Inventario
+            </button>
         </div>
 
         <!-- Tab: Activaciones (historial de altas, activaciones y desactivaciones) -->
@@ -220,17 +224,6 @@
         <div id="tab-altas" style="display:none">
             <datalist id="dlRegionales"></datalist>
             <datalist id="dlLineasDisponibles"></datalist>
-
-            <div class="subtabs" role="tablist">
-                <button class="subtab-btn subtab-activa" id="subtabBtnAltas" role="tab" onclick="cambiarSubtabAltas('altas')">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-                    Nuevo RC y líneas
-                </button>
-                <button class="subtab-btn" id="subtabBtnInventario" role="tab" onclick="cambiarSubtabAltas('inventario')">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                    Inventario de líneas
-                </button>
-            </div>
 
             <div id="subtab-altas">
             <div class="filters">
@@ -367,7 +360,11 @@
 
             </div><!-- /subtab-altas -->
 
-            <div id="subtab-inventario" style="display:none">
+        </div>
+
+        <!-- Tab: Inventario de líneas (solo admin) -->
+        <div id="tab-inventario" style="display:none">
+            <div id="subtab-inventario">
             <div class="table-container">
                 <div class="table-header-row">
                     <h2>Inventario de líneas</h2>

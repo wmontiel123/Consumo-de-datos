@@ -2322,3 +2322,12 @@ th.th-filtrada { background: #e2e5f3; }
 .btn-limpiar-filtros { flex: none; }
 .btn-limpiar-filtros:hover { border-color: #dc2626; color: #b91c1c; background: #fff5f5; }
 @media (max-width: 760px) { .btn-limpiar-filtros { width: 100%; justify-content: center; padding: 10px; } }
+
+/* ══ Panel de número: estado en el inventario + activar/desactivar (admin) ══ */
+.panel-linea-estado { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+    background: #f8f9fc; border: 1px solid #e6e8f2; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
+.panel-linea-txt { font-size: 13px; color: #374151; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.btn-panel-desactivar { background: #fff5f5 !important; color: #b91c1c !important; border: 1.5px solid #fecaca !important; }
+.btn-panel-desactivar:hover { background: #fee2e2 !important; }
+.btn-panel-activar { background: #f0fdf4 !important; color: #15803d !important; border: 1.5px solid #bbf7d0 !important; }
+.btn-panel-activar:hover { background: #dcfce7 !important; }

@@ -923,17 +923,53 @@ function irATabla(tab) {
     cont?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// ── Sub-pestañas de Altas: "Nuevo RC y líneas" / "Inventario de líneas" ──
+// ── Panel de un número: acceso directo para activar / desactivar la línea (solo rol admin) ──
+// Usa el mismo estado del inventario de líneas (disponible / asignada / desactivada).
 
-function cambiarSubtabAltas(cual) {
-    ['altas', 'inventario'].forEach(k => {
-        const panel = document.getElementById('subtab-' + k);
-        const btn = document.getElementById('subtabBtn' + (k === 'altas' ? 'Altas' : 'Inventario'));
-        if (panel) panel.style.display = k === cual ? '' : 'none';
-        btn?.classList.toggle('subtab-activa', k === cual);
-        btn?.setAttribute('aria-selected', String(k === cual));
-    });
-    try { localStorage.setItem('subtabAltas', cual); } catch { /* sin almacenamiento */ }
+async function _lineaInventarioDe(numero, iccid) {
+    const n = String(numero || '').trim(), i = normalizarImei(iccid);
+    const conds = [...(n && _norm(n) !== 'm2m' ? [`numero.eq.${n}`] : []), ...(i ? [`iccid.eq.${i}`] : [])];
+    if (!conds.length) return null;
+    const { data, error } = await window.clienteSupabase.from('lineas').select('*').or(conds.join(',')).limit(1);
+    if (error) throw error;
+    return data?.[0] || null;
+}
+
+function engancharPanelSIM() {
+    const orig = window.abrirPanelSIM;
+    if (typeof orig !== 'function') return;
+    window.abrirPanelSIM = async function (numero, imei = null) {
+        const r = await orig.call(this, numero, imei);
+        if (typeof esAdmin !== 'function' || !esAdmin()) return r;
+        const acciones = document.querySelector('#panelCuerpo .panel-actions');
+        if (!acciones) return r;
+        const caja = document.createElement('div');
+        caja.className = 'panel-linea-estado';
+        caja.innerHTML = '<span class="panel-loading" style="padding:0">⏳ Inventario…</span>';
+        acciones.parentElement.insertBefore(caja, acciones);
+        try {
+            const linea = await _lineaInventarioDe(numero, imei);
+            if (!linea) {
+                caja.innerHTML = '<span class="panel-linea-txt">No está en el inventario de líneas.</span>';
+                return r;
+            }
+            const desact = linea.estado === 'desactivada';
+            caja.innerHTML = `
+                <span class="panel-linea-txt">Inventario:
+                    <span class="badge-estado ${LINEA_ESTADO_CLS[linea.estado] || ''}">${escHtml(ESTADO_HIST_LABEL[linea.estado] || linea.estado)}</span>
+                    ${linea.rc_codigo ? `· ${escHtml(linea.rc_codigo)}` : ''}</span>
+                <button type="button" class="btn-panel ${desact ? 'btn-panel-activar' : 'btn-panel-desactivar'}">
+                    ${desact ? '✅ Activar línea' : '⛔ Desactivar línea'}</button>`;
+            caja.querySelector('button').addEventListener('click', async () => {
+                if (!inventarioLineas.some(l => l.id === linea.id)) await cargarLineas();
+                await cambiarEstadoLinea(linea.id, desact);   // pide el motivo y registra en Activaciones
+                window.abrirPanelSIM(numero, imei);           // refresca el panel con el estado nuevo
+            });
+        } catch (e) {
+            caja.innerHTML = `<span class="panel-linea-txt" style="color:#dc2626">No se pudo leer el inventario: ${escHtml(e.message)}</span>`;
+        }
+        return r;
+    };
 }
 
 // ── Enganches ─────────────────────────────────────────────────────
@@ -941,12 +977,10 @@ function cambiarSubtabAltas(cual) {
 function iniciarMejorasUI() {
     prepararFormulariosAlta();
     engancharCargasSesion();
+    engancharPanelSIM();
     prepararTablasInteractivas();
     agregarBotonesLimpiar();
     prepararTablasResponsivas();
-    let sub = 'altas';
-    try { sub = localStorage.getItem('subtabAltas') || 'altas'; } catch { /* sin almacenamiento */ }
-    cambiarSubtabAltas(sub);
     Object.keys(GRUPOS_FILTRO).forEach(prepararGrupoFiltro);
 
     ['aplicarFiltrosConsumo', 'limpiarFiltrosConsumo', 'cargarConsumos', 'aplicarFiltrosLineas', 'limpiarFiltrosLineas',
