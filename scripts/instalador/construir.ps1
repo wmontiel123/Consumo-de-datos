@@ -47,10 +47,10 @@ if (-not (Test-Path "$Trabajo\dist\cargar_reportes.exe")) { throw 'PyInstaller n
 if (Test-Path $Paquete) { Remove-Item $Paquete -Recurse -Force }
 New-Item -ItemType Directory -Force $Paquete | Out-Null
 Copy-Item "$Trabajo\dist\cargar_reportes.exe", "$Scripts\cargar_reportes.py", "$Scripts\importar_consumos.py" $Paquete
-Copy-Item "$Aqui\Instalar.bat", "$Aqui\Desinstalar.bat" $Paquete
+Copy-Item "$Aqui\Instalar.bat", "$Aqui\Desinstalar.bat", "$Aqui\Diagnostico.bat" $Paquete
 # Los .ps1 y el LEEME con BOM: PowerShell 5.1 y el Bloc de notas leen bien los acentos
 $bom = New-Object Text.UTF8Encoding $true
-foreach ($f in 'instalar.ps1', 'desinstalar.ps1', 'LEEME.txt') {
+foreach ($f in 'instalar.ps1', 'desinstalar.ps1', 'diagnostico.ps1', 'LEEME.txt') {
     [IO.File]::WriteAllText((Join-Path $Paquete $f), [IO.File]::ReadAllText((Join-Path $Aqui $f), [Text.Encoding]::UTF8), $bom)
 }
 

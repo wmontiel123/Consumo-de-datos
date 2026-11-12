@@ -12,6 +12,25 @@
   Se puede volver a correr para cambiar la configuración (la clave vacía conserva la actual).
 #>
 $ErrorActionPreference = 'Stop'
+
+# ── Log de la instalación (siempre, aunque falle antes de abrir la ventana) ──
+$ArchivoLog = Join-Path $env:TEMP 'CargaReportes_instalacion.log'
+function LogArchivo($texto) {
+    try { Add-Content -LiteralPath $ArchivoLog -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  $texto" -Encoding UTF8 } catch {}
+}
+trap {
+    LogArchivo "ERROR no controlado: $($_.Exception.Message)  (línea $($_.InvocationInfo.ScriptLineNumber))"
+    try { [Windows.Forms.MessageBox]::Show("El instalador falló:`n$($_.Exception.Message)`n`nDetalle en:`n$ArchivoLog", 'Instalación', 'OK', 'Error') | Out-Null } catch {}
+    exit 1
+}
+LogArchivo "Instalador iniciado desde $PSScriptRoot"
+LogArchivo ("Equipo: $env:COMPUTERNAME · Windows $([Environment]::OSVersion.Version) · PowerShell $($PSVersionTable.PSVersion) · " +
+            "modo de lenguaje: $($ExecutionContext.SessionState.LanguageMode)")
+try { LogArchivo ('Política de ejecución: ' + ((Get-ExecutionPolicy -List | ForEach-Object { "$($_.Scope)=$($_.ExecutionPolicy)" }) -join ', ')) } catch {}
+if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
+    LogArchivo 'PowerShell está restringido (Control de aplicaciones / AppLocker): la ventana del instalador no puede abrirse.'
+}
+
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing, System.Security
 [System.Windows.Forms.Application]::EnableVisualStyles()
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -21,11 +40,12 @@ $NombreTarea  = 'Carga reportes de consumo ANDE'
 $SupabaseUrl  = 'https://rnnsvvujedwcvcjyyajm.supabase.co'
 $Subcarpetas  = @('claro', 'm2m', 'personal', 'tigo')
 $Programa     = @('cargar_reportes.exe', 'cargar_reportes.py', 'importar_consumos.py',
-                  'desinstalar.ps1', 'Desinstalar.bat', 'LEEME.txt')
+                  'desinstalar.ps1', 'Desinstalar.bat', 'diagnostico.ps1', 'Diagnostico.bat', 'LEEME.txt')
 $Entropia     = [Text.Encoding]::UTF8.GetBytes('CargaReportesANDE')   # igual que cargar_reportes.py
 $EsAdmin      = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
                     [Security.Principal.WindowsBuiltInRole]::Administrator)
 $Usuario      = "$env:USERDOMAIN\$env:USERNAME"
+LogArchivo "Usuario: $Usuario · administrador: $(if ($EsAdmin) { 'sí' } else { 'no' })"
 
 # ── Valores iniciales: instalación previa, si existe ─────────────
 $destinoPrevio = $null; $carpetaPrevia = $null; $cadaPrevio = 60; $desdePrevio = '07:00'
@@ -118,7 +138,7 @@ $btnInstalar = Boton 'Instalar' 438 560 90
 $btnCerrar   = Boton 'Cerrar' 538 560 90
 $form.AcceptButton = $btnInstalar; $form.CancelButton = $btnCerrar
 
-function Log($texto) { $txtLog.AppendText("$texto`r`n"); [Windows.Forms.Application]::DoEvents() }
+function Log($texto) { $txtLog.AppendText("$texto`r`n"); LogArchivo $texto; [Windows.Forms.Application]::DoEvents() }
 function MostrarError($texto) { Log "ERROR: $texto"; [Windows.Forms.MessageBox]::Show($form, $texto, 'Instalación', 'OK', 'Error') | Out-Null }
 
 function RevisarSubcarpetas {
@@ -170,7 +190,11 @@ function ProbarPrograma($destino) {
         try {
             $p = Start-Process -FilePath $exe -ArgumentList '--probar' -WorkingDirectory $destino -Wait -PassThru -WindowStyle Hidden
             if ($p.ExitCode -eq 0) { return @{ exe = $exe; args = '' } }
-            Log "  El programa respondió con error (código $($p.ExitCode)). Ver logs\."
+            Log "  El programa respondió con error (código $($p.ExitCode))."
+            $ultimo = Get-ChildItem (Join-Path $destino 'logs') -Filter '*.log' -ErrorAction SilentlyContinue |
+                      Sort-Object LastWriteTime | Select-Object -Last 1
+            if ($ultimo) { Get-Content $ultimo.FullName -Tail 8 -Encoding UTF8 | ForEach-Object { Log "    $_" } }
+            else { Log '  No se generó ningún log: el programa no llegó a arrancar.' }
             return $null
         } catch {
             Log "  Windows no permite ejecutar cargar_reportes.exe ($($_.Exception.Message.Split([char]10)[0]))."
@@ -285,14 +309,31 @@ $btnInstalar.Add_Click({
         if ($chkAhora.Checked) {
             Start-ScheduledTask -TaskName $NombreTarea
             Log 'Carga iniciada. El resultado queda en logs\ (la primera puede tardar varios minutos).'
+            # Comprobar que la tarea arrancó de verdad
+            Start-Sleep -Seconds 5
+            $info = Get-ScheduledTaskInfo -TaskName $NombreTarea -ErrorAction SilentlyContinue
+            $estado = (Get-ScheduledTask -TaskName $NombreTarea -ErrorAction SilentlyContinue).State
+            if ($info) {
+                $res = '0x{0:X}' -f $info.LastTaskResult
+                $texto = switch ($info.LastTaskResult) {
+                    0          { 'terminó bien' }
+                    267009     { 'está corriendo' }
+                    267011     { 'todavía no corrió' }
+                    2147942402 { 'no encuentra el programa' }
+                    2147942405 { 'acceso denegado (Windows no deja ejecutar el programa)' }
+                    default    { 'error' }
+                }
+                Log "  Estado de la tarea: $estado · último resultado $res ($texto)."
+            }
         }
+        Copy-Item -LiteralPath $ArchivoLog -Destination (Join-Path $destino 'instalacion.log') -Force -ErrorAction SilentlyContinue
         Log ''
         Log 'Instalación terminada.'
         $btnCerrar.Text = 'Listo'
         $r = [Windows.Forms.MessageBox]::Show($form, "Instalación terminada.`n`n¿Abrir la carpeta del programa?", 'Instalación', 'YesNo', 'Information')
         if ($r -eq 'Yes') { Start-Process explorer.exe $destino }
     } catch {
-        MostrarError $_.Exception.Message
+        MostrarError "$($_.Exception.Message)`n`nDetalle en: $ArchivoLog"
     } finally {
         $form.Cursor = 'Default'
         $btnInstalar.Enabled = $true

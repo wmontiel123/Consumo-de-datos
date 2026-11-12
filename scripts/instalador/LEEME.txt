@@ -41,6 +41,17 @@ USO
   (el resultado se ve en logs\)
 
 
+SI NO FUNCIONA: DIAGNÓSTICO
+---------------------------
+- El instalador deja su propio registro en %TEMP%\CargaReportes_instalacion.log
+  (y una copia en la carpeta del programa: instalacion.log). Si falla antes de
+  abrir la ventana, ese archivo se abre solo.
+- Diagnostico.bat (en el paquete y en la carpeta del programa) genera en el
+  Escritorio CargaReportes_diagnostico.txt: usuario, permisos, bloqueos de Windows,
+  estado de la tarea, prueba del programa y últimos logs. No incluye la clave.
+- No hace falta ser administrador, salvo para "Correr aunque no haya sesión iniciada".
+
+
 SI WINDOWS BLOQUEA EL PROGRAMA
 ------------------------------
 Algunos equipos (Control de aplicaciones / Smart App Control) no permiten ejecutar
