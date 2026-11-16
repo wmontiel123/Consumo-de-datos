@@ -2220,7 +2220,6 @@ img, canvas, svg { max-width: 100%; }
     #subtab-altas > .alta-card h2 { font-size: 1.25em; }
     #subtab-altas .filter-row { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
     #subtab-altas .filter-group label { white-space: normal; font-size: 13px; }
-    #subtab-altas > .alta-card:not([data-form="rc"]) .filter-row { grid-template-columns: 1fr; }
 }
 .altas-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .altas-barra-tit { font-size: 13px; font-weight: 600; color: #6b7280; margin-right: 2px; }
@@ -2331,3 +2330,17 @@ th.th-filtrada { background: #e2e5f3; }
 .btn-panel-desactivar:hover { background: #fee2e2 !important; }
 .btn-panel-activar { background: #f0fdf4 !important; color: #15803d !important; border: 1.5px solid #bbf7d0 !important; }
 .btn-panel-activar:hover { background: #dcfce7 !important; }
+
+/* Altas: un solo tipo de alta a la vez (selector tipo pestañas) */
+#subtab-altas > .alta-card { flex: 1 1 100% !important; }
+.altas-opcion { display: inline-flex; cursor: pointer; }
+.altas-opcion input { position: absolute; opacity: 0; pointer-events: none; }
+.altas-opcion span { padding: 8px 16px; border: 1.5px solid #c7cae8; border-radius: 999px; font-size: 14px; font-weight: 600;
+    color: #35398C; background: #fff; user-select: none; transition: background .15s, color .15s; }
+.altas-opcion:hover span { background: #f0f2f8; }
+.altas-opcion input:checked + span { background: #35398C; border-color: #35398C; color: #fff; }
+.altas-opcion input:focus-visible + span { outline: 2px solid #35398C; outline-offset: 2px; }
+@media (max-width: 760px) {
+    .altas-barra { flex-direction: column; align-items: stretch; }
+    .altas-opcion span { display: block; text-align: center; }
+}

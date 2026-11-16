@@ -321,13 +321,15 @@ function prepararFormulariosAlta() {
     const tarjetas = [...cont.querySelectorAll(':scope > .filters')];
     const prefs = _prefsAltas();
 
-    // Barra "Mostrar:" para elegir qué formularios ver
+    // Selector del tipo de alta: se ve un solo formulario a la vez
     const barra = document.createElement('div');
     barra.className = 'altas-barra';
-    barra.innerHTML = '<span class="altas-barra-tit">Mostrar:</span>' + FORMULARIOS_ALTA.map(f =>
-        `<label class="rep-chip"><input type="checkbox" data-form="${f.clave}" ${prefs.ocultos?.includes(f.clave) ? '' : 'checked'}>
-         <span>${escHtml(f.titulo)}</span></label>`).join('') +
-        '<span class="altas-vacio" style="display:none">Elegí al menos un formulario para cargar.</span>';
+    barra.setAttribute('role', 'radiogroup');
+    barra.setAttribute('aria-label', 'Tipo de alta');
+    const elegido = FORMULARIOS_ALTA.some(f => f.clave === prefs.elegido) ? prefs.elegido : 'rc';
+    barra.innerHTML = '<span class="altas-barra-tit">Tipo de alta:</span>' + FORMULARIOS_ALTA.map(f =>
+        `<label class="altas-opcion"><input type="radio" name="tipoAlta" value="${f.clave}" ${f.clave === elegido ? 'checked' : ''}>
+         <span>${escHtml(f.titulo)}</span></label>`).join('');
     cont.prepend(barra);
 
     tarjetas.forEach((card, i) => {
@@ -335,32 +337,10 @@ function prepararFormulariosAlta() {
         if (!f) return;
         card.dataset.form = f.clave;
         card.classList.add('alta-card');
-        const h2 = card.querySelector('h2');
-        if (h2) {
-            h2.classList.add('filtros-titulo');
-            h2.setAttribute('role', 'button');
-            h2.setAttribute('tabindex', '0');
-            h2.title = 'Desplegar o plegar';
-            h2.insertAdjacentHTML('beforeend', '<span class="filtros-chevron" aria-hidden="true">▾</span>');
-            const alternar = () => {
-                const p = _prefsAltas();
-                p.plegados = p.plegados || [];
-                const plegar = !card.classList.contains('plegado');
-                card.classList.toggle('plegado', plegar);
-                h2.setAttribute('aria-expanded', String(!plegar));
-                p.plegados = plegar ? [...new Set([...p.plegados, f.clave])] : p.plegados.filter(x => x !== f.clave);
-                _guardarPrefsAltas(p);
-            };
-            h2.addEventListener('click', alternar);
-            h2.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); alternar(); } });
-            const plegado = !!prefs.plegados?.includes(f.clave);
-            card.classList.toggle('plegado', plegado);
-            h2.setAttribute('aria-expanded', String(!plegado));
-        }
     });
 
-    barra.querySelectorAll('[data-form]').forEach(chk => chk.addEventListener('change', aplicarVisibilidadAltas));
-    aplicarVisibilidadAltas();
+    barra.querySelectorAll('input[name="tipoAlta"]').forEach(r => r.addEventListener('change', () => aplicarVisibilidadAltas(true)));
+    aplicarVisibilidadAltas(false);
 
     // Panel con lo cargado en esta sesión, debajo de los formularios
     const panel = document.createElement('div');
@@ -383,16 +363,21 @@ function prepararFormulariosAlta() {
     pintarCargasSesion();
 }
 
-function aplicarVisibilidadAltas() {
+function aplicarVisibilidadAltas(enfocar) {
     const cont = document.getElementById('subtab-altas');
-    const visibles = [...cont.querySelectorAll('.altas-barra [data-form]:checked')].map(c => c.dataset.form);
+    const elegido = cont.querySelector('.altas-barra input[name="tipoAlta"]:checked')?.value || 'rc';
     cont.querySelectorAll(':scope > .alta-card').forEach(card => {
-        card.style.display = visibles.includes(card.dataset.form) ? '' : 'none';
+        card.style.display = card.dataset.form === elegido ? '' : 'none';
     });
-    cont.querySelector('.altas-vacio').style.display = visibles.length ? 'none' : '';
     const p = _prefsAltas();
-    p.ocultos = FORMULARIOS_ALTA.map(f => f.clave).filter(k => !visibles.includes(k));
+    p.elegido = elegido;
     _guardarPrefsAltas(p);
+    // Al cambiar de tipo, el cursor va al primer campo (en el lector, listo para escanear)
+    if (enfocar) {
+        const campo = elegido === 'lector' ? document.getElementById('escaneoIccid')
+                    : cont.querySelector(`.alta-card[data-form="${elegido}"] input:not([type=hidden])`);
+        campo?.focus();
+    }
 }
 
 // Lo cargado se guarda en sessionStorage: sobrevive a recargar la página, no a cerrar la pestaña
