@@ -2207,14 +2207,21 @@ function crearGraficosConsumo(resumen, datos) {
     });
 
     // ── 2. Top 5 líneas por MB ───────────────────────────────────────
-    // clave = numero SIM; buscamos RC en el mapa de dispositivos para mostrar
-    const top5raw = top15raw.slice(0, 5);
-    const clavesLineas  = top5raw.map(r => String(r.clave || ''));
-    const labelsLineas  = top5raw.map(r => {
-        const dev = mapaNumADevice.get(String(r.clave || '').trim());
-        return dev ? (dev.codigo || r.clave) : (r.clave || 'Sin ID');
+    // Total de todo el período (o del rango filtrado) por línea, desde consumo_por_linea
+    // (mismos filtros que la tabla). El top15 del resumen ponía primero las líneas sin dato (NULL).
+    const top5raw = (datosDount || [])
+        .filter(c => parseFloat(c.consumo_mb) > 0)
+        .sort((a, b) => parseFloat(b.consumo_mb) - parseFloat(a.consumo_mb))
+        .slice(0, 5);
+    const clavesLineas  = top5raw.map(c => {
+        const n = String(c.numero || '').trim();
+        return n && !esM2MTexto(n) ? n : normalizarImei(c.imei);
     });
-    const valoresLineas = top5raw.map(r => parseFloat(r.total_mb || 0));
+    const labelsLineas  = top5raw.map((c, i) => {
+        const dev = mapaNumADevice.get(String(c.numero || '').trim()) || mapaImeiADevice.get(normalizarImei(c.imei));
+        return dev?.codigo || clavesLineas[i] || 'Sin ID';
+    });
+    const valoresLineas = top5raw.map(c => parseFloat(c.consumo_mb || 0));
     const coloresLineas = labelsLineas.map((_, i) => COLORES[i % COLORES.length]);
 
     // Acción compartida al pulsar un label (barra o eje-Y)
@@ -2272,7 +2279,9 @@ function crearGraficosConsumo(resumen, datos) {
     }).join('');
 
     const lineasCont = document.getElementById('chartConsumoLineas');
-    lineasCont.innerHTML = `<div class="bars3d-wrap">${rowsHtml}</div>`;
+    lineasCont.innerHTML = rowsHtml
+        ? `<div class="bars3d-wrap">${rowsHtml}</div>`
+        : '<div class="panel-empty">Sin consumo con estos filtros</div>';
 
     // Click simple → panel RC/SIM | Doble click → ir a Dispositivos/filtrar consumo
     let _b3Timer = null, _b3Last = { idx: -1, t: 0 };
