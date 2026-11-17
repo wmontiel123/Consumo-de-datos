@@ -30,7 +30,7 @@ def iccid_limpio(v):
 
 def numero_limpio(v):
     s = str(v or '').strip()
-    return '' if not s or s.lower() == 'm2m' else s
+    return s if s.isdigit() else ''   # 'M2M', 'SATELITAL', etc. no son números
 
 
 def main():
@@ -46,7 +46,14 @@ def main():
             if l['iccid']: existentes['i:' + iccid_limpio(l['iccid'])] = tabla
 
     tel_num, tel_icc = {}, {}
-    for c in ic.obtener_todos('consumo_ultimo', {'select': 'numero,imei,telefonia', 'order': 'id.asc'}):
+    filas_mv, desde = [], 0
+    while True:   # lineas_estado_mv: una fila por línea con su telefonía (no tiene id)
+        r = ic._check(ic.sesion.get(f'{ic.REST}/lineas_estado_mv', params={
+            'select': 'numero,imei,telefonia', 'order': 'linea_key.asc', 'offset': desde, 'limit': 1000}),
+            'GET lineas_estado_mv').json()
+        filas_mv += r; desde += 1000
+        if len(r) < 1000: break
+    for c in filas_mv:
         if not c['telefonia']: continue
         if numero_limpio(c['numero']): tel_num[numero_limpio(c['numero'])] = c['telefonia']
         if c['imei']: tel_icc[iccid_limpio(c['imei'])] = c['telefonia']
