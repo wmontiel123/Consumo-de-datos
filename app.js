@@ -1571,16 +1571,11 @@ function formatearNumero(num) {
 
 function formatearFecha(fecha) {
     if (!fecha) return '-';
-    try {
-        const date = new Date(fecha + 'T00:00:00');
-        return date.toLocaleDateString('es-PY', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-        });
-    } catch (e) {
-        return fecha;
-    }
+    const s = String(fecha).trim();
+    // Solo fecha (AAAA-MM-DD): se toma como día local; con hora (timestamp): se lee tal cual
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s + 'T00:00:00') : new Date(s);
+    if (isNaN(date)) return s;   // nunca mostrar "Invalid Date"
+    return date.toLocaleDateString('es-PY', { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
 // ── CONSUMO SIM ──────────────────────────────────────────────────
@@ -3888,7 +3883,7 @@ async function abrirPanelSIM(numero, imei = null) {
                         return `<tr>
                             <td><span class="badge-estado ${cls}" style="font-size:10px;padding:1px 6px">${lbl}</span></td>
                             <td>${formatearFecha(r.fecha_consumo) || '-'}</td>
-                            <td style="color:#64748b">${formatearFecha(r.fecha_cambio) || '-'}</td>
+                            <td style="color:#64748b;white-space:nowrap">${formatearFechaHora(r.fecha_cambio)}</td>
                         </tr>`;
                     }).join('')}</tbody>
                 </table>
