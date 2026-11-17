@@ -72,6 +72,7 @@ function calcularSimEstadoDetallado(num, imei) {
     const i   = normalizarImei(imei);
     const m2m = n.toLowerCase() === 'm2m';
     if ((!n || m2m) && !i) return 'nulo';
+    if (lineaDesactivadaInv(n, i)) return 'inactivo';
     const cNum  = (!m2m && n) ? mapaNumAConsumo.get(n)  : null;
     const cImei = i            ? mapaImeiAConsumo.get(i) : null;
     if (!cNum && !cImei) return activaSinReporte(n, i) ? 'activo' : 'no_asignado';
@@ -453,6 +454,23 @@ let mapaImeiAConsumo      = new Map();
 // Líneas asignadas en el inventario cuya telefonía no envía reportes de consumo (ej. VOX):
 // sin registros se muestran como activas en vez de "Desactivado". Claves 'n:<numero>' / 'i:<iccid>'.
 let lineasActivasSinReporte = new Set();
+// Líneas marcadas como desactivadas en el inventario ('n:<número>' / 'i:<ICCID>'):
+// cuentan siempre como inactivas, aunque el reporte del operador diga otra cosa.
+let lineasDesactivadasInv = new Set();
+function lineaDesactivadaInv(num, imei) {
+    const n = String(num || '').trim();
+    const i = normalizarImei(imei);
+    return (!!n && n.toLowerCase() !== 'm2m' && lineasDesactivadasInv.has('n:' + n))
+        || (!!i && lineasDesactivadasInv.has('i:' + i));
+}
+function armarLineasDesactivadasInv(lineas) {
+    lineasDesactivadasInv = new Set();
+    (lineas || []).forEach(l => {
+        const n = String(l.numero || '').trim();
+        if (n && n.toLowerCase() !== 'm2m') lineasDesactivadasInv.add('n:' + n);
+        if (l.iccid) lineasDesactivadasInv.add('i:' + normalizarImei(l.iccid));
+    });
+}
 let mapaNumADevice        = new Map();
 let mapaImeiADevice       = new Map();
 let mapaNumAEstadoActual  = new Map(); // numero → estado actual (tabla sim_estados)
@@ -664,16 +682,19 @@ async function cargarDatos() {
         loading.style.display = 'block';
 
         // 3 fetches en paralelo: dispositivos + consumo + estados SIM
-        const [data, consumoData, , lineasAsignadas] = await Promise.all([
+        const [data, consumoData, , lineasAsignadas, lineasDesact] = await Promise.all([
             fetchTodos('dispositivos_ande', '*', 'regional', true, 'id'),
             // Solo la fila más reciente de cada número / IMEI (vista consumo_ultimo)
             fetchTodos('consumo_ultimo', 'numero,imei,observacion,estado_operador,consumo_mb,estado,fecha_consumo,telefonia', 'fecha_consumo', false, 'id')
                 .catch(e => { console.warn('⚠️ No se pudo cargar consumo_ultimo:', e.message); return []; }),
             cargarEstadosSIM(),  // no depende de los otros — va en paralelo
             window.clienteSupabase.from('lineas').select('numero,iccid,telefonia').eq('estado', 'asignada').limit(5000)
-                .then(r => r.error ? [] : (r.data || []), () => [])
+                .then(r => r.error ? [] : (r.data || []), () => []),
+            window.clienteSupabase.from('lineas').select('numero,iccid').eq('estado', 'desactivada').limit(1000)
+                .then(r => r.error ? [] : (r.data || []), () => []),
         ]);
         armarLineasActivasSinReporte(lineasAsignadas, consumoData);
+        armarLineasDesactivadasInv(lineasDesact);
 
         // Construir mapas de consumo (datos vienen DESC → primer aparición = más reciente)
         mapaNumAConsumo  = new Map();
@@ -869,6 +890,7 @@ function simEstado(num, imei) {
     const m2m = n.toLowerCase() === 'm2m';
     if (!n && !i)  return null;  // slot vacío
     if (m2m && !i) return null;  // M2M sin IMEI
+    if (lineaDesactivadaInv(n, i)) return 'desactivado';
     const cNum  = (!m2m && n) ? mapaNumAConsumo.get(n)  : null;
     const cImei = i            ? mapaImeiAConsumo.get(i) : null;
     if (!cNum && !cImei) return activaSinReporte(n, i) ? 'activo' : 'no_asignado';  // configurado pero sin registros
@@ -1627,6 +1649,9 @@ function getEstadoSIM(row) {
 
     const num  = String(row.numero || '').trim();
     const imei = normalizarImei(row.imei);
+
+    // 1b. Desactivada en el inventario de líneas
+    if (lineaDesactivadaInv(num, imei)) return 'desactivado';
 
     // 2. sim_estados (fuente de verdad)
     if (num && num.toLowerCase() !== 'm2m' && mapaNumAEstadoActual.has(num))
@@ -3719,6 +3744,7 @@ async function abrirPanelRC(codigo) {
             const i   = normalizarImei(imei);
             const m2m = n.toLowerCase() === 'm2m';
             if ((!n || m2m) && !i) return 'nulo';
+            if (lineaDesactivadaInv(n, i)) return 'inactivo';
 
             const latestRow = (rows) => {
                 if (!rows.length) return null;
@@ -4585,6 +4611,7 @@ async function recalcularEstadosPostImport(filas) {
         const i   = normalizarImei(imei);
         const m2m = n.toLowerCase() === 'm2m';
         if ((!n || m2m) && !i) return 'nulo';
+        if (lineaDesactivadaInv(n, i)) return 'inactivo';
         const eN = (!m2m && n && estadoNum.has(n))  ? estadoNum.get(n)  : null;
         const eI = (i && estadoImei.has(i))          ? estadoImei.get(i) : null;
         if (!eN && !eI) return activaSinReporte(n, i) ? 'activo' : 'no_asignado';
@@ -5220,7 +5247,45 @@ async function cambiarEstadoLinea(id, activar) {
     const { error } = await window.clienteSupabase.from('lineas').update({ estado: nuevo }).eq('id', id);
     if (error) { alert('❌ Error: ' + error.message); return; }
     await registrarEstado('linea', ref, linea.estado, nuevo, motivo.trim() || null);
+
+    // Reflejarlo en el RC que tiene la línea
+    const claves = [];
+    const n = String(linea.numero || '').trim();
+    if (n && !esM2MTexto(n)) claves.push('n:' + n);
+    if (linea.iccid) claves.push('i:' + normalizarImei(linea.iccid));
+    claves.forEach(k => nuevo === 'desactivada' ? lineasDesactivadasInv.add(k) : lineasDesactivadasInv.delete(k));
+    await actualizarRCDeLinea(linea, ref, nuevo === 'desactivada');
+
     await cargarLineas();
+}
+
+// Recalcula el estado de los RC que tienen esa línea (por número o ICCID, o el RC del inventario)
+// y lo guarda en dispositivos_ande. No toca los RC desactivados a mano (desactivado_manual).
+async function actualizarRCDeLinea(linea, ref, desactivada) {
+    const n = String(linea.numero || '').trim();
+    const i = normalizarImei(linea.iccid);
+    const usa = (num, imei) => (!!n && !esM2MTexto(n) && String(num || '').trim() === n)
+                            || (!!i && normalizarImei(imei) === i);
+    const devs = todosLosDatos.filter(d => usa(d.sim1_num, d.sim1_imei) || usa(d.sim2_num, d.sim2_imei)
+                                        || (linea.rc_codigo && d.codigo === linea.rc_codigo && linea.rc_codigo !== 'Site Survey'));
+    for (const dev of devs) {
+        if ((dev.estado || '').toLowerCase() === 'desactivado_manual') continue;
+        const s1e = calcularSimEstadoDetallado(dev.sim1_num, dev.sim1_imei);
+        const s2e = calcularSimEstadoDetallado(dev.sim2_num, dev.sim2_imei);
+        const estado = rcEstadoDesdeSimEstados(s1e, s2e) ?? dev.estado ?? 'activo';
+        if (estado === dev.estado && s1e === dev.sim1_estado && s2e === dev.sim2_estado) continue;
+        const { error } = await window.clienteSupabase.from('dispositivos_ande')
+            .update({ estado, sim1_estado: s1e, sim2_estado: s2e }).eq('codigo', dev.codigo);
+        if (error) { console.warn('⚠️ No se pudo actualizar el RC', dev.codigo, error.message); continue; }
+        const anterior = dev.estado;
+        Object.assign(dev, { estado, sim1_estado: s1e, sim2_estado: s2e });
+        if (anterior !== estado) {
+            await registrarEstado('rc', dev.codigo, anterior, estado,
+                `Línea ${ref} ${desactivada ? 'desactivada' : 'activada'} en el inventario`);
+        }
+    }
+    if (devs.length && typeof aplicarFiltros === 'function' && todosLosDatos.length) aplicarFiltros();
+    return devs.map(d => d.codigo);
 }
 
 
