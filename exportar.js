@@ -63,10 +63,10 @@ const _enRango = (fecha, f) => (!f.desde || fecha >= f.desde) && (!f.hasta || fe
 const FILTROS = {
     telefonia:  { tipo: 'multi', titulo: 'Telefonía', opciones: () => TELEFONIAS.map(t => [t, t]) },
     regional:   { tipo: 'multi', titulo: 'Regional',  opciones: () => _regionales().map(r => [r, r]) },
-    estadoSim:  { tipo: 'multi', titulo: 'Estado de la línea', opciones: () => [['activo', 'Activado'], ['desactivado', 'Desactivado']] },
+    estadoSim:  { tipo: 'multi', titulo: 'Estado de la línea', opciones: () => [['activo', 'Activo'], ['desactivado', 'Desactivado']] },
     estadoRC:   { tipo: 'multi', titulo: 'Estado del RC', opciones: () => esViewer()
-                    ? [['activo', 'Activado'], ['desactivado', 'Desactivado']]
-                    : [['activo', 'Activado'], ['sin_consumo', 'Sin consumo'], ['desactivado', 'Desactivado']] },
+                    ? [['activo', 'Activo'], ['desactivado', 'Desactivado']]
+                    : [['activo', 'Activo'], ['sin_consumo', 'Sin consumo'], ['desactivado', 'Desactivado']] },
     tipoRC:     { tipo: 'multi', titulo: 'Tipo de RC', opciones: () => Object.entries(TIPO_CONFIG).map(([k, v]) => [k, v.label]) },
     estadoInv:  { tipo: 'multi', titulo: 'Estado en inventario', opciones: () => [['disponible', 'Disponible'], ['asignada', 'Asignada'], ['desactivada', 'Desactivada']] },
     tipoAct:    { tipo: 'multi', titulo: 'Tipo', opciones: () => [['rc', 'RC'], ['linea', 'Líneas']] },
@@ -294,10 +294,12 @@ const REPORTES = {
         soloAdmin: true,
         filtros: ['telefonia', 'estadoInv', 'regional', 'rc', 'buscar'],
         async obtener(f) {
-            if (!inventarioLineas.length) await cargarLineas();
+            const legado = inventarioModo === 'legado';
+            if (legado ? !inventarioLegadoCargado : !inventarioLineas.length) await (legado ? cargarLegado() : cargarLineas());
+            this.titulo = legado ? 'Inventario de legado' : 'Inventario de líneas';
             const rcs = _listaTexto(f.rc);
             const reg = l => l.rc_codigo ? _deviceDeRC(l.rc_codigo)?.regional : '';
-            const filas = inventarioLineas.filter(l =>
+            const filas = inventarioActual().filter(l =>
                 _pasa(l.telefonia, f.telefonia) && _pasa(l.estado, f.estadoInv) &&
                 (!f.regional?.length || _pasa(reg(l), f.regional)) &&
                 (!rcs.length || rcs.some(x => _norm(l.rc_codigo).includes(x))) &&
@@ -409,7 +411,7 @@ function filtrosDePantalla(vista) {
         s.numero   = v('filtroSim');
         s.actDesde = s.actHasta = v('filtroFecha');
         s.estadoRC = uno('filtroEstado', 'estadoRC');
-        s.tipoRC   = esViewer() ? [] : uno('filtroTipo', 'tipoRC');
+        s.tipoRC   = uno('filtroTipo', 'tipoRC');
     } else if (vista === 'historial') {
         s.buscar = v('historialSimBuscar');
     } else if (vista === 'activaciones') {

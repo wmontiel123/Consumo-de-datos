@@ -467,7 +467,7 @@ function engancharCargasSesion() {
                 ref: datos.codigo,
                 iccid: datos.iccid1,
                 telefonia: typeof telefoniaDeIccid === 'function' ? telefoniaDeIccid(limpiarIccid(datos.iccid1)) : '',
-                estado: 'Activado',
+                estado: 'Activo',
                 rc: [datos.regional, datos.sim1 && `SIM 1: ${datos.sim1}`, datos.sim2 && `SIM 2: ${datos.sim2}`].filter(Boolean).join(' · '),
                 origen: 'Nuevo RC',
             });
@@ -915,9 +915,12 @@ async function _lineaInventarioDe(numero, iccid) {
     const n = String(numero || '').trim(), i = normalizarImei(iccid);
     const conds = [...(n && _norm(n) !== 'm2m' ? [`numero.eq.${n}`] : []), ...(i ? [`iccid.eq.${i}`] : [])];
     if (!conds.length) return null;
-    const { data, error } = await window.clienteSupabase.from('lineas').select('*').or(conds.join(',')).limit(1);
-    if (error) throw error;
-    return data?.[0] || null;
+    for (const legado of [false, true]) {
+        const { data, error } = await window.clienteSupabase.from(tablaLineas(legado)).select('*').or(conds.join(',')).limit(1);
+        if (error) { if (legado) continue; throw error; }
+        if (data?.[0]) return Object.assign(data[0], { _legado: legado });
+    }
+    return null;
 }
 
 function engancharPanelSIM() {
@@ -935,20 +938,31 @@ function engancharPanelSIM() {
         try {
             const linea = await _lineaInventarioDe(numero, imei);
             if (!linea) {
-                caja.innerHTML = '<span class="panel-linea-txt">No está en el inventario de líneas.</span>';
+                caja.innerHTML = '<span class="panel-linea-txt">No está en el inventario de líneas ni en el de legado.</span>';
                 return r;
             }
             const desact = linea.estado === 'desactivada';
             caja.innerHTML = `
-                <span class="panel-linea-txt">Inventario:
+                <span class="panel-linea-txt">${linea._legado ? 'Legado' : 'Inventario'}:
                     <span class="badge-estado ${LINEA_ESTADO_CLS[linea.estado] || ''}">${escHtml(ESTADO_HIST_LABEL[linea.estado] || linea.estado)}</span>
                     ${linea.rc_codigo ? `· ${escHtml(linea.rc_codigo)}` : ''}</span>
-                <button type="button" class="btn-panel ${desact ? 'btn-panel-activar' : 'btn-panel-desactivar'}">
-                    ${desact ? '✅ Activar línea' : '⛔ Desactivar línea'}</button>`;
-            caja.querySelector('button').addEventListener('click', async () => {
-                if (!inventarioLineas.some(l => l.id === linea.id)) await cargarLineas();
-                await cambiarEstadoLinea(linea.id, desact);   // pide el motivo y registra en Activaciones
-                window.abrirPanelSIM(numero, imei);           // refresca el panel con el estado nuevo
+                <button type="button" class="btn-panel btn-panel-estado ${desact ? 'btn-panel-activar' : 'btn-panel-desactivar'}">
+                    ${desact ? '✅ Activar línea' : '⛔ Desactivar línea'}</button>
+                <button type="button" class="btn-panel btn-panel-legado">
+                    ${linea._legado ? '↩️ Quitar de legado' : '🏷️ Pasar a legado'}</button>`;
+            const cargarSuLista = async () => {
+                if (linea._legado ? !inventarioLegado.some(l => l.id === linea.id) : !inventarioLineas.some(l => l.id === linea.id))
+                    await (linea._legado ? cargarLegado() : cargarLineas());
+            };
+            caja.querySelector('.btn-panel-estado').addEventListener('click', async () => {
+                await cargarSuLista();
+                await cambiarEstadoLinea(linea.id, desact, linea._legado);   // pide el motivo y registra en Activaciones
+                window.abrirPanelSIM(numero, imei);                          // refresca el panel con el estado nuevo
+            });
+            caja.querySelector('.btn-panel-legado').addEventListener('click', async () => {
+                await cargarSuLista();
+                await moverLineaLegado(linea.id, !linea._legado);
+                window.abrirPanelSIM(numero, imei);
             });
         } catch (e) {
             caja.innerHTML = `<span class="panel-linea-txt" style="color:#dc2626">No se pudo leer el inventario: ${escHtml(e.message)}</span>`;

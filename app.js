@@ -21,7 +21,7 @@ function estadoDisp(device) {
 
 // Config completa para admin en Dispositivos
 const ESTADO_CONFIG_DISP = {
-    activo:      { label: '● Activado',    cls: 'badge-activo' },
+    activo:      { label: '● Activo',    cls: 'badge-activo' },
     sin_consumo: { label: '● Sin Consumo', cls: 'badge-sin-consumo-rc' },
     desactivado: { label: '● Desactivado', cls: 'badge-desactivado' },
 };
@@ -29,7 +29,7 @@ const ESTADO_CONFIG_DISP = {
 // Tipos derivados de fecha_activacion en el import
 const TIPOS_VALIDOS = ['activado', 'legado', 'satelital'];
 const TIPO_CONFIG = {
-    activado:  { label: 'Activado',  cls: 'badge-tipo-activado'  },
+    activado:  { label: 'Activo',  cls: 'badge-tipo-activado'  },
     legado:    { label: 'Legado',    cls: 'badge-tipo-legado'    },
     satelital: { label: 'Satelital', cls: 'badge-tipo-satelital' },
     error:     { label: 'Error',     cls: 'badge-tipo-error'     },
@@ -43,7 +43,7 @@ function getTipoDevice(device) {
 
 // Config simplificada para viewer (solo 2 estados)
 const ESTADO_CONFIG_VIEWER = {
-    activo:      { label: '● Activado',    cls: 'badge-activo' },
+    activo:      { label: '● Activo',    cls: 'badge-activo' },
     desactivado: { label: '● Desactivado', cls: 'badge-desactivado' },
 };
 
@@ -337,16 +337,16 @@ function _activarSesion(usuario, rol) {
 function aplicarRol() {
     if (!esViewer()) return;
 
-    // Filtro estado dispositivos → solo Activado / Desactivado
+    // Filtro estado dispositivos → solo Activo / Desactivado
     document.getElementById('filtroEstado').innerHTML =
         '<option value="">Todos</option>' +
-        '<option value="activo">Activado</option>' +
+        '<option value="activo">Activo</option>' +
         '<option value="desactivado">Desactivado</option>';
 
-    // Filtro estado consumo → solo Activado / Desactivado
+    // Filtro estado consumo → solo Activo / Desactivado
     document.getElementById('filtroEstadoConsumo').innerHTML =
         '<option value="">Todos</option>' +
-        '<option value="activo">Activado</option>' +
+        '<option value="activo">Activo</option>' +
         '<option value="desactivado">Desactivado</option>';
 
     // Ocultar columna Observación (TH) en tabla consumo (TDs se omiten en renderizado)
@@ -355,8 +355,6 @@ function aplicarRol() {
     // Ocultar filtro Observación en Consumo
     document.getElementById('filtroObservacionGroup').style.display = 'none';
 
-    // Ocultar filtro Tipo (solo admin lo ve)
-    document.getElementById('filtroTipoGroup').style.display = 'none';
 
     // Ocultar botones de importación (solo admin puede importar datos)
 
@@ -368,7 +366,7 @@ function aplicarRol() {
     document.getElementById('tabBtnInventario').style.display = 'none';
 
     // Actualizar labels de las tarjetas de estadísticas
-    document.querySelector('.stat-activos h3').textContent      = 'Activados';
+    document.querySelector('.stat-activos h3').textContent      = 'Activos';
     document.querySelector('.stat-desactivados h3').textContent = 'Desactivados';
 }
 
@@ -625,7 +623,7 @@ async function sincronizarEstadosDispositivos(forzarTodos = false) {
     for (const dev of todosLosDatos) {
         const estadoDev = (dev.estado || '').toLowerCase();
         // desactivado_manual: NUNCA se recalcula automáticamente ni con el botón.
-        // Solo se sale de ese estado con "Marcar Activado" desde el panel RC.
+        // Solo se sale de ese estado con "Marcar Activo" desde el panel RC.
         if (estadoDev === 'desactivado_manual') continue;
         // desactivado normal: solo el botón "Actualizar Estados" puede recalcularlo.
         if (!forzarTodos && estadoDev === 'desactivado') continue;
@@ -682,7 +680,7 @@ async function cargarDatos() {
         loading.style.display = 'block';
 
         // 3 fetches en paralelo: dispositivos + consumo + estados SIM
-        const [data, consumoData, , lineasAsignadas, lineasDesact] = await Promise.all([
+        const [data, consumoData, , lineasAsignadas, lineasDesact, legadoDesact] = await Promise.all([
             fetchTodos('dispositivos_ande', '*', 'regional', true, 'id'),
             // Solo la fila más reciente de cada número / IMEI (vista consumo_ultimo)
             fetchTodos('consumo_ultimo', 'numero,imei,observacion,estado_operador,consumo_mb,estado,fecha_consumo,telefonia', 'fecha_consumo', false, 'id')
@@ -692,9 +690,11 @@ async function cargarDatos() {
                 .then(r => r.error ? [] : (r.data || []), () => []),
             window.clienteSupabase.from('lineas').select('numero,iccid').eq('estado', 'desactivada').limit(1000)
                 .then(r => r.error ? [] : (r.data || []), () => []),
+            window.clienteSupabase.from('lineas_legado').select('numero,iccid').eq('estado', 'desactivada').limit(5000)
+                .then(r => r.error ? [] : (r.data || []), () => []),
         ]);
         armarLineasActivasSinReporte(lineasAsignadas, consumoData);
-        armarLineasDesactivadasInv(lineasDesact);
+        armarLineasDesactivadasInv([...lineasDesact, ...legadoDesact]);
 
         // Construir mapas de consumo (datos vienen DESC → primer aparición = más reciente)
         mapaNumAConsumo  = new Map();
@@ -1219,7 +1219,7 @@ function crearGraficos(datos) {
         }
     });
 
-    // Gráfico de Torta — Activados / Sin Consumo / Desactivados (un pase)
+    // Gráfico de Torta — Activos / Sin Consumo / Desactivados (un pase)
     let totalActivos = 0, totalSinCons = 0, totalInactivos = 0;
     datos.forEach(d => {
         const e = estadoDisp(d);
@@ -1233,7 +1233,7 @@ function crearGraficos(datos) {
     chartTorta = new Chart(ctxTorta, {
         type: 'doughnut',
         data: {
-            labels: ['Activado', 'Sin Consumo', 'Desactivado'],
+            labels: ['Activo', 'Sin Consumo', 'Desactivado'],
             datasets: [{
                 data: [totalActivos, totalSinCons, totalInactivos],
                 backgroundColor: ['#16a34a', '#f97316', '#dc2626'],
@@ -1276,7 +1276,7 @@ function aplicarFiltros() {
     const sim      = document.getElementById('filtroSim').value.trim();
     const fecha    = document.getElementById('filtroFecha').value;
     const estado   = document.getElementById('filtroEstado').value;
-    const tipo     = !esViewer() ? document.getElementById('filtroTipo').value : '';
+    const tipo     = document.getElementById('filtroTipo').value;
 
     datosFiltrados = todosLosDatos.filter(item => {
         if (regional && item['regional'] !== regional) return false;
@@ -1306,7 +1306,7 @@ function limpiarFiltros() {
     document.getElementById('filtroSim').value      = '';
     document.getElementById('filtroFecha').value    = '';
     document.getElementById('filtroEstado').value   = '';
-    if (!esViewer()) document.getElementById('filtroTipo').value = '';
+    document.getElementById('filtroTipo').value = '';
 
     datosFiltrados = todosLosDatos;
     mostrarDatos(datosFiltrados);
@@ -1533,7 +1533,7 @@ function parsearCoordenadas(ubicacion) {
 function crearMarker(dev, coords) {
     const est   = estadoMapa(dev);
     const color = est === 'activo' ? '#16a34a' : '#dc2626';
-    const label = est === 'activo' ? 'Activado'  : 'Desactivado';
+    const label = est === 'activo' ? 'Activo'  : 'Desactivado';
 
     const marker = L.circleMarker(coords, {
         radius: 7, fillColor: color, color: '#fff',
@@ -3614,7 +3614,7 @@ function irADispositivosFiltrado(codigo) {
     document.getElementById('filtroSim').value      = '';
     document.getElementById('filtroFecha').value    = '';
     document.getElementById('filtroEstado').value   = '';
-    if (!esViewer()) document.getElementById('filtroTipo').value = '';
+    document.getElementById('filtroTipo').value = '';
     // Asegurar que datosFiltrados esté inicializado
     if (!datosFiltrados.length && todosLosDatos.length) datosFiltrados = todosLosDatos;
     cambiarTab('dispositivos');
@@ -3822,7 +3822,7 @@ async function abrirPanelRC(codigo) {
                     <button class="btn-panel btn-panel-cambiar"    onclick="abrirCambiarSIM('${safeCode}','sim1')">🔄 Solicitar Cambio SIM 1</button>
                     ${hasSim2 ? `<button class="btn-panel btn-panel-cambiar" onclick="abrirCambiarSIM('${safeCode}','sim2')">🔄 Solicitar Cambio SIM 2</button>` : ''}
                 ` : `
-                    <button class="btn-panel btn-panel-activar"    onclick="marcarEstadoRC('${safeCode}','activo')">🟢 Marcar Activado</button>
+                    <button class="btn-panel btn-panel-activar"    onclick="marcarEstadoRC('${safeCode}','activo')">🟢 Marcar Activo</button>
                     <button class="btn-panel btn-panel-desactivar" onclick="marcarEstadoRC('${safeCode}','desactivado')">🔴 Marcar Desactivado</button>
                     <button class="btn-panel btn-panel-cambiar"    onclick="abrirCambiarSIM('${safeCode}','sim1')">🔄 Solicitar Cambio SIM 1</button>
                     ${hasSim2 ? `<button class="btn-panel btn-panel-cambiar" onclick="abrirCambiarSIM('${safeCode}','sim2')">🔄 Solicitar Cambio SIM 2</button>` : ''}
@@ -3905,7 +3905,7 @@ async function abrirPanelSIM(numero, imei = null) {
                     </tr></thead>
                     <tbody>${estadoRows.map(r => {
                         const cls = r.estado === 'desactivado' ? 'badge-desactivado' : 'badge-activo';
-                        const lbl = r.estado === 'desactivado' ? '● Desactivado'     : '● Activado';
+                        const lbl = r.estado === 'desactivado' ? '● Desactivado'     : '● Activo';
                         return `<tr>
                             <td><span class="badge-estado ${cls}" style="font-size:10px;padding:1px 6px">${lbl}</span></td>
                             <td>${formatearFecha(r.fecha_consumo) || '-'}</td>
@@ -4416,33 +4416,39 @@ async function lineasInventarioDelRC(dev) {
         if (i) conds.push(`iccid.eq.${i}`);
     }
     if (!conds.length) return [];
-    const { data, error } = await window.clienteSupabase.from('lineas').select('*').or(conds.join(','));
-    if (error) { console.warn('⚠️ No se pudieron leer las líneas del RC:', error.message); return []; }
-    return data || [];
+    const res = [];
+    for (const legado of [false, true]) {
+        const { data, error } = await window.clienteSupabase.from(tablaLineas(legado)).select('*').or(conds.join(','));
+        if (error) { console.warn('⚠️ No se pudieron leer las líneas del RC:', error.message); continue; }
+        (data || []).forEach(l => res.push(Object.assign(l, { _legado: legado })));
+    }
+    return res;
 }
 
 // Cambia el estado de esas líneas (asignada / desactivada), deja el registro en Activaciones
 // y actualiza lo que usa la página para pintar las SIM. Devuelve cuántas cambió.
 async function cambiarEstadoLineasDeRC(lineas, nuevo, codigo, motivo) {
-    const ids = lineas.map(l => l.id);
-    const cambios = nuevo === 'asignada' ? { estado: 'asignada' } : { estado: nuevo };
-    const { error } = await window.clienteSupabase.from('lineas').update(cambios).in('id', ids);
-    if (error) { alert('❌ No se pudieron cambiar las líneas: ' + error.message); return 0; }
+    for (const legado of [false, true]) {
+        const ids = lineas.filter(l => !!l._legado === legado).map(l => l.id);
+        if (!ids.length) continue;
+        const { error } = await window.clienteSupabase.from(tablaLineas(legado)).update({ estado: nuevo }).in('id', ids);
+        if (error) { alert('❌ No se pudieron cambiar las líneas: ' + error.message); return 0; }
+    }
     for (const l of lineas) {
         await registrarEstado('linea', _refLinea(l), l.estado, nuevo, motivo);
         const n = String(l.numero || '').trim();
         const claves = [...(n && !esM2MTexto(n) ? ['n:' + n] : []), ...(l.iccid ? ['i:' + normalizarImei(l.iccid)] : [])];
         claves.forEach(k => nuevo === 'desactivada' ? lineasDesactivadasInv.add(k) : lineasDesactivadasInv.delete(k));
-        const enMemoria = inventarioLineas.find(x => x.id === l.id);
+        const enMemoria = listaInventario(!!l._legado).find(x => x.id === l.id);
         if (enMemoria) enMemoria.estado = nuevo;
     }
-    if (typeof renderInventarioLineas === 'function' && inventarioLineas.length) renderInventarioLineas();
+    if (typeof renderInventarioLineas === 'function' && inventarioActual().length) renderInventarioLineas();
     return lineas.length;
 }
 
 // ── Marcar estado del RC (activo / desactivado) ────────────────────
 async function marcarEstadoRC(codigo, estado) {
-    const label = estado === 'activo' ? 'Activado' : 'Desactivado';
+    const label = estado === 'activo' ? 'Activo' : 'Desactivado';
     const motivo = prompt(`¿Marcar ${codigo} como ${label}?
 
 Motivo (opcional):`, '');
@@ -4823,14 +4829,16 @@ const ACTIVACIONES_MAX = 200;      // filas visibles
 
 const ESTADO_HIST_LABEL = {
     alta:               'Alta',
-    activo:             'Activado',
-    sin_consumo:        'Activado (sin consumo)',
+    activo:             'Activo',
+    sin_consumo:        'Activo (sin consumo)',
     desactivado:        'Desactivado',
     desactivado_manual: 'Desactivado',
     disponible:         'Disponible',
     asignada:           'Asignada',
     desactivada:        'Desactivada',
     editada:            'Editada',
+    legado:             'Pasada a legado',
+    inventario:         'Vuelta al inventario',
 };
 
 // Registra una alta / activación / desactivación con el usuario logueado.
@@ -5020,6 +5028,55 @@ function renderActivaciones(pagina, desdeControles) {
 // ══════════════════════════════════════════════════════════════════
 
 let inventarioLineas = [];
+// Inventario aparte de las líneas de legado (tabla lineas_legado)
+let inventarioLegado = [];
+let inventarioLegadoCargado = false;
+let inventarioModo = 'lineas';   // 'lineas' | 'legado'
+const tablaLineas      = legado => legado ? 'lineas_legado' : 'lineas';
+const listaInventario  = legado => legado ? inventarioLegado : inventarioLineas;
+const inventarioActual = () => listaInventario(inventarioModo === 'legado');
+
+async function cargarLegado() {
+    try {
+        inventarioLegado = (await traerTodasLasFilas(() => window.clienteSupabase
+            .from('lineas_legado').select('*')
+            .order('rc_codigo', { ascending: true })
+            .order('id',        { ascending: true })))
+            .map(l => Object.assign(l, { _legado: true }));
+        inventarioLegadoCargado = true;
+    } catch (e) {
+        console.warn('⚠️ No se pudo cargar lineas_legado:', e.message);
+        inventarioLegado = [];
+        if (inventarioModo === 'legado') document.getElementById('lineasBody').innerHTML =
+            `<tr><td colspan="9" class="panel-empty">❌ ${escHtml(e.message)}</td></tr>`;
+        return false;
+    }
+    actualizarBotonesInventario();
+    if (inventarioModo === 'legado') renderInventarioLineas();
+    return true;
+}
+
+function actualizarBotonesInventario() {
+    document.querySelectorAll('.inv-modo-btn').forEach(b => {
+        const legado = b.dataset.modo === 'legado';
+        b.classList.toggle('subtab-activa', b.dataset.modo === inventarioModo);
+        const n = listaInventario(legado).length;
+        b.querySelector('.inv-modo-n').textContent = (legado ? inventarioLegadoCargado : n) ? formatearNumero(n) : '';
+    });
+    const t = document.getElementById('tituloInventario');
+    if (t) t.textContent = inventarioModo === 'legado' ? 'Inventario de legado' : 'Inventario de líneas';
+}
+
+async function cambiarInventario(modo) {
+    inventarioModo = modo === 'legado' ? 'legado' : 'lineas';
+    actualizarBotonesInventario();
+    const tbody = document.getElementById('lineasBody');
+    if (inventarioModo === 'legado' && !inventarioLegadoCargado) {
+        tbody.innerHTML = '<tr><td colspan="9" class="panel-empty">Cargando…</td></tr>';
+        if (!(await cargarLegado())) return;
+    }
+    renderInventarioLineas(1);
+}
 
 const LINEA_ESTADO_CLS = {
     disponible:  'badge-sin-consumo',
@@ -5060,7 +5117,9 @@ async function cargarLineas() {
         .filter(l => l.estado === 'disponible')
         .map(l => `<option value="${escHtml(l.numero || l.iccid)}">${escHtml([l.iccid, l.telefonia].filter(Boolean).join(' · '))}</option>`)
         .join('');
-    renderInventarioLineas();
+    actualizarBotonesInventario();
+    if (inventarioModo === 'lineas') renderInventarioLineas();
+    else if (!inventarioLegadoCargado) cargarLegado();
 }
 
 // Líneas del inventario que cumplen los filtros (las usa la tabla y la exportación)
@@ -5068,7 +5127,7 @@ function filasInventario() {
     const q      = (document.getElementById('lineasBuscar')?.value || '').trim().toLowerCase();
     const estado = document.getElementById('lineasEstado')?.value || '';
     const tel    = document.getElementById('lineasTelefonia')?.value || '';
-    return inventarioLineas.filter(l =>
+    return inventarioActual().filter(l =>
         (!estado || l.estado === estado) &&
         (!tel || String(l.telefonia || '').toLowerCase() === tel.toLowerCase()) &&
         (!q || [l.numero, l.iccid, l.rc_codigo].some(v => String(v || '').toLowerCase().includes(q))));
@@ -5081,7 +5140,7 @@ function renderInventarioLineas(pagina, desdeControles) {
     const pag    = paginarLista('inventario', filas, pagina, tbody, 'renderInventarioLineas');
 
     if (!filas.length) {
-        tbody.innerHTML = `<tr><td colspan="9" class="panel-empty">${inventarioLineas.length ? 'Sin líneas que coincidan' : 'Todavía no hay líneas cargadas'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="panel-empty">${inventarioActual().length ? 'Sin líneas que coincidan' : 'Todavía no hay líneas cargadas'}</td></tr>`;
         infoEl.textContent = '';
         return;
     }
@@ -5097,14 +5156,60 @@ function renderInventarioLineas(pagina, desdeControles) {
                     : '-'}</td>
             <td class="td-fecha">${formatearFechaHora(l.creado_en)}</td>
             <td>${escHtml(l.creado_por) || '-'}</td>
-            <td>${l.estado === 'desactivada'
-                    ? `<button class="btn-linea btn-linea-activar" onclick="cambiarEstadoLinea(${l.id}, true)">Activar</button>`
-                    : `<button class="btn-linea btn-linea-desactivar" onclick="cambiarEstadoLinea(${l.id}, false)">Desactivar</button>`}</td>
-            <td class="td-editar">${esViewer() ? '' : `<button class="btn-lapiz" onclick="abrirEditarLinea(${l.id})" title="Editar esta línea" aria-label="Editar la línea ${escHtml(l.numero || l.iccid)}">
+            <td class="td-acciones-linea">${botonesLinea(l)}</td>
+            <td class="td-editar">${esViewer() || l._legado ? '' : `<button class="btn-lapiz" onclick="abrirEditarLinea(${l.id})" title="Editar esta línea" aria-label="Editar la línea ${escHtml(l.numero || l.iccid)}">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>`}</td>
         </tr>`).join('');
     infoEl.innerHTML = `Mostrando <strong>${pag.desde + 1}–${pag.desde + pag.filas.length}</strong> de <strong>${formatearNumero(filas.length)}</strong> líneas`;
     if (desdeControles) _subirATabla(tbody);
+}
+
+// Botones de una línea: activar / desactivar y pasar a legado / volver al inventario
+function botonesLinea(l) {
+    if (esViewer()) return '';
+    const leg = !!l._legado;
+    return (l.estado === 'desactivada'
+            ? `<button class="btn-linea btn-linea-activar" onclick="cambiarEstadoLinea(${l.id}, true, ${leg})">Activar</button>`
+            : `<button class="btn-linea btn-linea-desactivar" onclick="cambiarEstadoLinea(${l.id}, false, ${leg})">Desactivar</button>`)
+        + (leg
+            ? ` <button class="btn-linea btn-linea-legado" onclick="moverLineaLegado(${l.id}, false)" title="Sacarla del inventario de legado">Quitar legado</button>`
+            : ` <button class="btn-linea btn-linea-legado" onclick="moverLineaLegado(${l.id}, true)" title="Pasarla al inventario de legado">Legado</button>`);
+}
+
+// Pasa una línea de un inventario al otro (lineas ⇄ lineas_legado), con el registro en Activaciones
+async function moverLineaLegado(id, aLegado) {
+    if (esViewer()) return;
+    if (!inventarioLegadoCargado) await cargarLegado();
+    if (!inventarioLineas.length) await cargarLineas();
+    const desde = listaInventario(!aLegado);
+    const l = desde.find(x => x.id === id);
+    if (!l) return;
+    const ref = _refLinea(l);
+    const motivo = prompt(aLegado
+        ? `¿Pasar la línea ${ref} al inventario de legado?\n\nMotivo (opcional):`
+        : `¿Sacar la línea ${ref} de legado y volverla al inventario de líneas?\n\nMotivo (opcional):`, '');
+    if (motivo === null) return;
+    const fila = {};
+    ['numero', 'iccid', 'telefonia', 'estado', 'rc_codigo', 'sim_slot', 'observacion', 'creado_por', 'creado_en']
+        .forEach(k => { fila[k] = l[k] ?? null; });
+    const { data, error } = await window.clienteSupabase.from(tablaLineas(aLegado)).insert(fila).select().single();
+    if (error) {
+        alert('❌ No se pudo mover la línea: ' + (error.code === '23505'
+            ? `ya existe en el inventario ${aLegado ? 'de legado' : 'de líneas'}.` : error.message));
+        return;
+    }
+    const { error: eDel } = await window.clienteSupabase.from(tablaLineas(!aLegado)).delete().eq('id', id);
+    if (eDel) {
+        await window.clienteSupabase.from(tablaLineas(aLegado)).delete().eq('id', data.id);   // deshacer
+        alert('❌ No se pudo mover la línea: ' + eDel.message);
+        return;
+    }
+    await registrarEstado('linea', ref, aLegado ? 'inventario' : 'legado', aLegado ? 'legado' : 'inventario', motivo.trim() || null);
+    desde.splice(desde.indexOf(l), 1);
+    listaInventario(aLegado).unshift(Object.assign(data, { _legado: aLegado }));
+    actualizarBotonesInventario();
+    renderInventarioLineas();
+    if (typeof avisoBreve === 'function') avisoBreve(`Línea ${ref} ${aLegado ? 'pasada a legado' : 'vuelta al inventario'}.`);
 }
 
 // Busca una línea del inventario por número (si no es M2M) o por ICCID
@@ -5290,16 +5395,16 @@ async function guardarAltaLinea() {
     }
 }
 
-async function cambiarEstadoLinea(id, activar) {
+async function cambiarEstadoLinea(id, activar, legado = false) {
     if (esViewer()) return;
-    const linea = inventarioLineas.find(l => l.id === id);
+    const linea = listaInventario(legado).find(l => l.id === id);
     if (!linea) return;
     const ref    = (esM2MTexto(linea.numero) ? null : linea.numero) || linea.iccid;
     const nuevo  = activar ? (linea.rc_codigo ? 'asignada' : 'disponible') : 'desactivada';
-    const motivo = prompt(`¿${activar ? 'Activar' : 'Desactivar'} la línea ${ref}?\n\nMotivo (opcional):`, '');
+    const motivo = prompt(`¿${activar ? 'Activar' : 'Desactivar'} la línea${legado ? ' de legado' : ''} ${ref}?\n\nMotivo (opcional):`, '');
     if (motivo === null) return;
 
-    const { error } = await window.clienteSupabase.from('lineas').update({ estado: nuevo }).eq('id', id);
+    const { error } = await window.clienteSupabase.from(tablaLineas(legado)).update({ estado: nuevo }).eq('id', id);
     if (error) { alert('❌ Error: ' + error.message); return; }
     await registrarEstado('linea', ref, linea.estado, nuevo, motivo.trim() || null);
 
@@ -5311,7 +5416,7 @@ async function cambiarEstadoLinea(id, activar) {
     claves.forEach(k => nuevo === 'desactivada' ? lineasDesactivadasInv.add(k) : lineasDesactivadasInv.delete(k));
     await actualizarRCDeLinea(linea, ref, nuevo === 'desactivada');
 
-    await cargarLineas();
+    if (legado) await cargarLegado(); else await cargarLineas();
 }
 
 // Recalcula el estado de los RC que tienen esa línea (por número o ICCID, o el RC del inventario)

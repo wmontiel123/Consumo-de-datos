@@ -2344,3 +2344,12 @@ th.th-filtrada { background: #e2e5f3; }
     .altas-barra { flex-direction: column; align-items: stretch; }
     .altas-opcion span { display: block; text-align: center; }
 }
+
+/* ══ Inventario: Líneas / Legado ══ */
+.inv-modo { margin-bottom: 14px; }
+.inv-modo-n { font-size: 12px; font-weight: 600; color: #6b7280; background: #eef0f8; border-radius: 999px; padding: 1px 8px; }
+.inv-modo-n:empty { display: none; }
+.td-acciones-linea { white-space: nowrap; }
+.btn-linea-legado { background: #fef3c7; color: #92400e; }
+.btn-linea-legado:hover { background: #fde68a; }
+.panel-linea-estado .btn-panel-legado { background: #fef3c7; color: #92400e; }

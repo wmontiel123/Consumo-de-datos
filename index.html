@@ -240,7 +240,7 @@
                     <div class="filter-group">
                         <label>Tipo</label>
                         <select id="altaRcTipo">
-                            <option value="">Activado</option>
+                            <option value="">Activo</option>
                             <option value="Legado">Legado</option>
                             <option value="Satelital">Satelital</option>
                         </select>
@@ -366,8 +366,12 @@
         <div id="tab-inventario" style="display:none">
             <div id="subtab-inventario">
             <div class="table-container">
+                <div class="subtabs inv-modo no-print" role="tablist" aria-label="Inventario">
+                    <button type="button" class="subtab-btn inv-modo-btn subtab-activa" data-modo="lineas" onclick="cambiarInventario('lineas')">Líneas <span class="inv-modo-n"></span></button>
+                    <button type="button" class="subtab-btn inv-modo-btn" data-modo="legado" onclick="cambiarInventario('legado')">Legado <span class="inv-modo-n"></span></button>
+                </div>
                 <div class="table-header-row">
-                    <h2>Inventario de líneas</h2>
+                    <h2 id="tituloInventario">Inventario de líneas</h2>
                     <button class="btn-accion btn-reporte no-print" onclick="abrirReporte('inventario')" title="Generar un reporte en PDF o Excel, con filtros">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
                         Reporte
@@ -481,16 +485,16 @@
                     <label>Estado:</label>
                     <select id="filtroEstado">
                         <option value="">Todos</option>
-                        <option value="activo">Activado</option>
+                        <option value="activo">Activo</option>
                         <option value="sin_consumo">Sin Consumo</option>
                         <option value="desactivado">Desactivado</option>
                     </select>
                 </div>
-                <div class="filter-group" id="filtroTipoGroup" style="display:none">
+                <div class="filter-group" id="filtroTipoGroup">
                     <label>Tipo:</label>
                     <select id="filtroTipo">
                         <option value="">Todos</option>
-                        <option value="activado">Activados</option>
+                        <option value="activado">Activos</option>
                         <option value="legado">Legado</option>
                         <option value="satelital">Satelital</option>
                         <option value="error">Error</option>
@@ -555,7 +559,7 @@
                 <p id="totalRegistros">0</p>
             </div>
             <div class="stat-card stat-activos">
-                <h3>Activados</h3>
+                <h3>Activos</h3>
                 <p id="totalActivos">0</p>
             </div>
             <div class="stat-card stat-sin-consumo">
@@ -595,7 +599,7 @@
                 <div class="mapa-header">
                     <h3>📍 Mapa de Equipos</h3>
                     <div class="mapa-leyenda" id="mapaLeyenda">
-                        <span class="leyenda-item"><span class="leyenda-dot" style="background:#16a34a"></span>Activado</span>
+                        <span class="leyenda-item"><span class="leyenda-dot" style="background:#16a34a"></span>Activo</span>
                         <span class="leyenda-item"><span class="leyenda-dot" style="background:#dc2626"></span>Desactivado</span>
                     </div>
                 </div>
@@ -633,7 +637,7 @@
                         <label>Estado:</label>
                         <select id="filtroEstadoConsumo">
                             <option value="">Todos</option>
-                            <option value="activo">Activado</option>
+                            <option value="activo">Activo</option>
                             <option value="desactivado">Desactivado</option>
                             <option value="error">Error</option>
                             <option value="legado">Legado</option>
@@ -690,7 +694,7 @@
                         <label>Estado:</label>
                         <select id="filtroLineasEstado" onchange="aplicarFiltrosLineas()">
                             <option value="">Todos</option>
-                            <option value="activo">Activado</option>
+                            <option value="activo">Activo</option>
                             <option value="desactivado">Desactivado</option>
                         </select>
                     </div>
