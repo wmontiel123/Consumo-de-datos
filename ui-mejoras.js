@@ -947,9 +947,7 @@ function engancharPanelSIM() {
                     <span class="badge-estado ${LINEA_ESTADO_CLS[linea.estado] || ''}">${escHtml(ESTADO_HIST_LABEL[linea.estado] || linea.estado)}</span>
                     ${linea.rc_codigo ? `· ${escHtml(linea.rc_codigo)}` : ''}</span>
                 <button type="button" class="btn-panel btn-panel-estado ${desact ? 'btn-panel-activar' : 'btn-panel-desactivar'}">
-                    ${desact ? '✅ Activar línea' : '⛔ Desactivar línea'}</button>
-                <button type="button" class="btn-panel btn-panel-legado">
-                    ${linea._legado ? '↩️ Quitar de legado' : '🏷️ Pasar a legado'}</button>`;
+                    ${desact ? '✅ Activar línea' : '⛔ Desactivar línea'}</button>`;
             const cargarSuLista = async () => {
                 if (linea._legado ? !inventarioLegado.some(l => l.id === linea.id) : !inventarioLineas.some(l => l.id === linea.id))
                     await (linea._legado ? cargarLegado() : cargarLineas());
@@ -958,11 +956,6 @@ function engancharPanelSIM() {
                 await cargarSuLista();
                 await cambiarEstadoLinea(linea.id, desact, linea._legado);   // pide el motivo y registra en Activaciones
                 window.abrirPanelSIM(numero, imei);                          // refresca el panel con el estado nuevo
-            });
-            caja.querySelector('.btn-panel-legado').addEventListener('click', async () => {
-                await cargarSuLista();
-                await moverLineaLegado(linea.id, !linea._legado);
-                window.abrirPanelSIM(numero, imei);
             });
         } catch (e) {
             caja.innerHTML = `<span class="panel-linea-txt" style="color:#dc2626">No se pudo leer el inventario: ${escHtml(e.message)}</span>`;

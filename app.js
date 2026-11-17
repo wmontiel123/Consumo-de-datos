@@ -5164,52 +5164,13 @@ function renderInventarioLineas(pagina, desdeControles) {
     if (desdeControles) _subirATabla(tbody);
 }
 
-// Botones de una línea: activar / desactivar y pasar a legado / volver al inventario
+// Botón de una línea: activar / desactivar (sirve para el inventario de líneas y el de legado)
 function botonesLinea(l) {
     if (esViewer()) return '';
     const leg = !!l._legado;
-    return (l.estado === 'desactivada'
-            ? `<button class="btn-linea btn-linea-activar" onclick="cambiarEstadoLinea(${l.id}, true, ${leg})">Activar</button>`
-            : `<button class="btn-linea btn-linea-desactivar" onclick="cambiarEstadoLinea(${l.id}, false, ${leg})">Desactivar</button>`)
-        + (leg
-            ? ` <button class="btn-linea btn-linea-legado" onclick="moverLineaLegado(${l.id}, false)" title="Sacarla del inventario de legado">Quitar legado</button>`
-            : ` <button class="btn-linea btn-linea-legado" onclick="moverLineaLegado(${l.id}, true)" title="Pasarla al inventario de legado">Legado</button>`);
-}
-
-// Pasa una línea de un inventario al otro (lineas ⇄ lineas_legado), con el registro en Activaciones
-async function moverLineaLegado(id, aLegado) {
-    if (esViewer()) return;
-    if (!inventarioLegadoCargado) await cargarLegado();
-    if (!inventarioLineas.length) await cargarLineas();
-    const desde = listaInventario(!aLegado);
-    const l = desde.find(x => x.id === id);
-    if (!l) return;
-    const ref = _refLinea(l);
-    const motivo = prompt(aLegado
-        ? `¿Pasar la línea ${ref} al inventario de legado?\n\nMotivo (opcional):`
-        : `¿Sacar la línea ${ref} de legado y volverla al inventario de líneas?\n\nMotivo (opcional):`, '');
-    if (motivo === null) return;
-    const fila = {};
-    ['numero', 'iccid', 'telefonia', 'estado', 'rc_codigo', 'sim_slot', 'observacion', 'creado_por', 'creado_en']
-        .forEach(k => { fila[k] = l[k] ?? null; });
-    const { data, error } = await window.clienteSupabase.from(tablaLineas(aLegado)).insert(fila).select().single();
-    if (error) {
-        alert('❌ No se pudo mover la línea: ' + (error.code === '23505'
-            ? `ya existe en el inventario ${aLegado ? 'de legado' : 'de líneas'}.` : error.message));
-        return;
-    }
-    const { error: eDel } = await window.clienteSupabase.from(tablaLineas(!aLegado)).delete().eq('id', id);
-    if (eDel) {
-        await window.clienteSupabase.from(tablaLineas(aLegado)).delete().eq('id', data.id);   // deshacer
-        alert('❌ No se pudo mover la línea: ' + eDel.message);
-        return;
-    }
-    await registrarEstado('linea', ref, aLegado ? 'inventario' : 'legado', aLegado ? 'legado' : 'inventario', motivo.trim() || null);
-    desde.splice(desde.indexOf(l), 1);
-    listaInventario(aLegado).unshift(Object.assign(data, { _legado: aLegado }));
-    actualizarBotonesInventario();
-    renderInventarioLineas();
-    if (typeof avisoBreve === 'function') avisoBreve(`Línea ${ref} ${aLegado ? 'pasada a legado' : 'vuelta al inventario'}.`);
+    return l.estado === 'desactivada'
+        ? `<button class="btn-linea btn-linea-activar" onclick="cambiarEstadoLinea(${l.id}, true, ${leg})">Activar</button>`
+        : `<button class="btn-linea btn-linea-desactivar" onclick="cambiarEstadoLinea(${l.id}, false, ${leg})">Desactivar</button>`;
 }
 
 // Busca una línea del inventario por número (si no es M2M) o por ICCID
