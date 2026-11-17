@@ -4404,6 +4404,42 @@ async function ejecutarSolicitudSaldo() {
     }
 }
 
+// ── Líneas del inventario de un RC (por número o ICCID de sus SIM) ──
+const _refLinea = l => ((l.numero && !esM2MTexto(l.numero)) ? l.numero : null) || l.iccid;
+
+async function lineasInventarioDelRC(dev) {
+    const conds = [];
+    for (const s of ['sim1', 'sim2']) {
+        const n = String(dev[s + '_num'] || '').trim();
+        const i = normalizarImei(dev[s + '_imei']);
+        if (n && !esM2MTexto(n)) conds.push(`numero.eq.${n}`);
+        if (i) conds.push(`iccid.eq.${i}`);
+    }
+    if (!conds.length) return [];
+    const { data, error } = await window.clienteSupabase.from('lineas').select('*').or(conds.join(','));
+    if (error) { console.warn('⚠️ No se pudieron leer las líneas del RC:', error.message); return []; }
+    return data || [];
+}
+
+// Cambia el estado de esas líneas (asignada / desactivada), deja el registro en Activaciones
+// y actualiza lo que usa la página para pintar las SIM. Devuelve cuántas cambió.
+async function cambiarEstadoLineasDeRC(lineas, nuevo, codigo, motivo) {
+    const ids = lineas.map(l => l.id);
+    const cambios = nuevo === 'asignada' ? { estado: 'asignada' } : { estado: nuevo };
+    const { error } = await window.clienteSupabase.from('lineas').update(cambios).in('id', ids);
+    if (error) { alert('❌ No se pudieron cambiar las líneas: ' + error.message); return 0; }
+    for (const l of lineas) {
+        await registrarEstado('linea', _refLinea(l), l.estado, nuevo, motivo);
+        const n = String(l.numero || '').trim();
+        const claves = [...(n && !esM2MTexto(n) ? ['n:' + n] : []), ...(l.iccid ? ['i:' + normalizarImei(l.iccid)] : [])];
+        claves.forEach(k => nuevo === 'desactivada' ? lineasDesactivadasInv.add(k) : lineasDesactivadasInv.delete(k));
+        const enMemoria = inventarioLineas.find(x => x.id === l.id);
+        if (enMemoria) enMemoria.estado = nuevo;
+    }
+    if (typeof renderInventarioLineas === 'function' && inventarioLineas.length) renderInventarioLineas();
+    return lineas.length;
+}
+
 // ── Marcar estado del RC (activo / desactivado) ────────────────────
 async function marcarEstadoRC(codigo, estado) {
     const label = estado === 'activo' ? 'Activado' : 'Desactivado';
@@ -4422,9 +4458,15 @@ Motivo (opcional):`, '');
             estadoFinal = 'desactivado_manual';
 
         } else if (estado === 'activo') {
-            // Al activar: recalcular el estado real desde las SIMs
+            // Al activar: ofrecer reactivar sus líneas y recalcular el estado real desde las SIMs
             const dev = todosLosDatos.find(d => d.codigo === codigo);
             if (dev) {
+                const desact = (await lineasInventarioDelRC(dev)).filter(l => l.estado === 'desactivada');
+                if (desact.length && confirm(
+                        `${codigo} tiene ${desact.length} línea(s) desactivada(s) en el inventario:\n` +
+                        desact.map(_refLinea).join(', ') + '\n\n¿Reactivarlas también?')) {
+                    await cambiarEstadoLineasDeRC(desact, 'asignada', codigo, `RC ${codigo} activado` + (motivo.trim() ? ': ' + motivo.trim() : ''));
+                }
                 const s1n = String(dev.sim1_num  || '').trim();
                 const s1i = normalizarImei(dev.sim1_imei);
                 const s2n = String(dev.sim2_num  || '').trim();
@@ -4459,7 +4501,20 @@ Motivo (opcional):`, '');
 
         await registrarEstado('rc', codigo, estadoAnterior, estadoFinal, motivo.trim() || null);
 
-        alert(`✅ ${codigo} marcado como ${label}.`);
+        let extra = '';
+        if (estadoFinal === 'desactivado_manual') {
+            const dev = todosLosDatos.find(d => d.codigo === codigo);
+            const activas = dev ? (await lineasInventarioDelRC(dev)).filter(l => l.estado !== 'desactivada') : [];
+            if (activas.length && confirm(
+                    `¿Desactivar también sus ${activas.length} línea(s) en el inventario?\n` +
+                    activas.map(_refLinea).join(', ') +
+                    '\n\nSe van a ver como desactivadas en Consumo y Líneas. El historial de consumo no cambia.')) {
+                const n = await cambiarEstadoLineasDeRC(activas, 'desactivada', codigo, `RC ${codigo} desactivado` + (motivo.trim() ? ': ' + motivo.trim() : ''));
+                extra = `\n${n} línea(s) desactivada(s) en el inventario.`;
+            }
+        }
+
+        alert(`✅ ${codigo} marcado como ${label}.` + extra);
         cerrarPanel();
         mostrarDatos(datosFiltrados);
     } catch (e) {
