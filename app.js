@@ -768,9 +768,10 @@ function poblarFiltroRegional(datos) {
 
     const selectDisp = document.getElementById('filtroRegional');
     const selectRC   = document.getElementById('filtroRCRegional');
+    const selectMapa = document.getElementById('mapaFiltroRegional');
 
     regionales.forEach(r => {
-        [selectDisp, selectRC].forEach(sel => {
+        [selectDisp, selectRC, selectMapa].forEach(sel => {
             if (!sel) return;
             const opt = document.createElement('option');
             opt.value = r;
@@ -1560,13 +1561,57 @@ function crearMarker(dev, coords) {
 }
 
 // ── Renderiza todos los markers ───────────────────────────────────
+// Devuelve cuántos equipos quedaron dibujados (los que tienen ubicación válida)
 function renderizarMarkers(datos) {
-    if (!mapaLeaflet) return;
+    if (!mapaLeaflet) return 0;
     markersLayer.clearLayers();
+    let n = 0;
     datos.forEach(dev => {
         const coords = parsearCoordenadas(dev.ubicacion);
-        if (coords) markersLayer.addLayer(crearMarker(dev, coords));
+        if (coords) { markersLayer.addLayer(crearMarker(dev, coords)); n++; }
     });
+    return n;
+}
+
+// ── Filtros propios del mapa (se aplican sobre lo que ya filtra la vista de RC) ──
+let mapaDatosBase = [];
+
+function filtrarMapa() {
+    const val = id => document.getElementById(id)?.value || '';
+    const texto    = val('mapaFiltroTexto').trim().toLowerCase();
+    const regional = val('mapaFiltroRegional');
+    const tipo     = val('mapaFiltroTipo');
+    const estado   = val('mapaFiltroEstado');
+    const hayFiltro = !!(texto || regional || tipo || estado);
+
+    const datos = mapaDatosBase.filter(d => {
+        if (regional && d.regional !== regional) return false;
+        if (tipo && getTipoDevice(d) !== tipo) return false;
+        if (estado && estadoMapa(d) !== estado) return false;
+        if (texto && ![d.codigo, d.sim1_num, d.sim2_num, d.sim1_imei, d.sim2_imei]
+                .some(v => String(v || '').toLowerCase().includes(texto))) return false;
+        return true;
+    });
+
+    const dibujados = renderizarMarkers(datos);
+    const cont = document.getElementById('mapaContador');
+    if (cont) {
+        const sinUbic = datos.length - dibujados;
+        cont.textContent = `${formatearNumero(dibujados)} equipo${dibujados === 1 ? '' : 's'} en el mapa`
+            + (sinUbic ? ` · ${formatearNumero(sinUbic)} sin ubicación` : '');
+    }
+    // Con filtro activo, encuadra el mapa en los equipos encontrados
+    if (hayFiltro && dibujados) {
+        const b = L.featureGroup(markersLayer.getLayers()).getBounds();
+        if (b.isValid()) mapaLeaflet.fitBounds(b, { padding: [30, 30], maxZoom: 13 });
+    }
+}
+
+function limpiarFiltrosMapa() {
+    ['mapaFiltroTexto', 'mapaFiltroRegional', 'mapaFiltroTipo', 'mapaFiltroEstado']
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    filtrarMapa();
+    if (mapaLeaflet) mapaLeaflet.setView([-23.4425, -58.4438], 6);
 }
 
 // ── Inicializar mapa ──────────────────────────────────────────────
@@ -1583,7 +1628,8 @@ function iniciarMapa() {
 // ── Punto de entrada principal ────────────────────────────────────
 function actualizarMapa(datos) {
     iniciarMapa();
-    renderizarMarkers(datos);
+    mapaDatosBase = datos || [];
+    filtrarMapa();
 }
 
 // Funciones auxiliares

@@ -604,6 +604,24 @@
                         <span class="leyenda-item"><span class="leyenda-dot" style="background:#dc2626"></span>Desactivado</span>
                     </div>
                 </div>
+                <div class="mapa-filtros no-print">
+                    <input type="text" id="mapaFiltroTexto" placeholder="Buscar RC o número" oninput="filtrarMapa()">
+                    <select id="mapaFiltroRegional" onchange="filtrarMapa()"><option value="">Todas las regionales</option></select>
+                    <select id="mapaFiltroTipo" onchange="filtrarMapa()">
+                        <option value="">Todos los tipos</option>
+                        <option value="activado">Activos</option>
+                        <option value="legado">Legado</option>
+                        <option value="satelital">Satelital</option>
+                        <option value="error">Error</option>
+                    </select>
+                    <select id="mapaFiltroEstado" onchange="filtrarMapa()">
+                        <option value="">Todos los estados</option>
+                        <option value="activo">Activo</option>
+                        <option value="desactivado">Desactivado</option>
+                    </select>
+                    <button type="button" class="btn-secondary" onclick="limpiarFiltrosMapa()">Limpiar</button>
+                    <span class="mapa-contador" id="mapaContador"></span>
+                </div>
                 <div id="mapaParaguay"></div>
             </div>
 
