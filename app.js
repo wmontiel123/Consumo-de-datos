@@ -597,6 +597,7 @@ function togglePassword() {
 async function iniciarApp() {
     try {
         await cargarDatos();
+        if (esAdmin()) cargarSolicitudesLineas();   // contador de solicitudes pendientes en Activaciones
         await cargarConsumos();
     } catch (error) {
         console.error('❌ Error al iniciar:', error);
@@ -3962,6 +3963,8 @@ async function abrirPanelSIM(numero, imei = null) {
             <div class="panel-section">
                 <div class="panel-section-title">Acciones</div>
                 <div class="panel-actions">
+                    <button class="btn-panel btn-panel-activar"    onclick="solicitarEstadoLinea('activar', '${m2m ? '' : n}', '${i}')">🟢 Solicitar Activación</button>
+                    <button class="btn-panel btn-panel-desactivar" onclick="solicitarEstadoLinea('desactivar', '${m2m ? '' : n}', '${i}')">🔴 Solicitar Desactivación</button>
                     <button class="btn-panel btn-panel-saldo" onclick="solicitarCargaSaldo('${id}')">💳 Solicitar Saldo</button>
                     <button class="btn-panel btn-panel-cambiar" onclick="irALineasFiltrado('${id}')">📋 Ver en Líneas</button>
                     <button class="btn-panel btn-panel-cambiar" onclick="irAConsumoFiltrado('${id}')">📊 Ver en Consumo</button>
@@ -4371,6 +4374,116 @@ async function solicitarDesactivacionRC(codigo) {
         btns.forEach(b => { b.disabled = false; });
         alert('Error al enviar la solicitud: ' + e.message);
     }
+}
+
+// Solicita activar / desactivar una línea (desde el panel del número)
+async function solicitarEstadoLinea(accion, numero, iccid) {
+    const ref = numero || iccid;
+    const verbo = accion === 'activar' ? 'activación' : 'desactivación';
+    const motivo = prompt(`¿Solicitar la ${verbo} de la línea ${ref}?\n\nSe enviará una solicitud al administrador.\nMotivo:`, '');
+    if (motivo === null) return;
+    const dev = (numero ? mapaNumADevice.get(numero) : null) || (iccid ? mapaImeiADevice.get(iccid) : null);
+    try {
+        await enviarSolicitud(accion === 'activar' ? 'activar_linea' : 'desactivar_linea', {
+            numero: numero || null, iccid: iccid || null, rc: dev?.codigo || null, motivo: motivo.trim() || null,
+        });
+        if (typeof avisoBreve === 'function') avisoBreve(`✅ Solicitud de ${verbo} enviada`);
+        else alert(`✅ Solicitud de ${verbo} enviada.`);
+        if (esAdmin()) cargarSolicitudesLineas();
+    } catch (e) {
+        alert('Error al enviar la solicitud: ' + e.message);
+    }
+}
+
+// ── Solicitudes pendientes de activar / desactivar líneas (solo admin, pestaña Activaciones) ──
+let solicitudesLineas = [];
+
+async function cargarSolicitudesLineas() {
+    const caja = document.getElementById('solicitudesLineas');
+    if (!caja) return;
+    if (!esAdmin()) { caja.style.display = 'none'; return; }
+    const { data, error } = await window.clienteSupabase.from('solicitudes').select('*')
+        .in('tipo', ['activar_linea', 'desactivar_linea']).eq('estado', 'pendiente')
+        .order('creado_at', { ascending: true });
+    if (error) { console.warn('⚠️ No se pudieron leer las solicitudes:', error.message); caja.style.display = 'none'; return; }
+    solicitudesLineas = data || [];
+    renderSolicitudesLineas();
+}
+
+function renderSolicitudesLineas() {
+    const caja = document.getElementById('solicitudesLineas');
+    if (!caja) return;
+    caja.style.display = solicitudesLineas.length ? '' : 'none';
+    const btn = document.getElementById('tabBtnActivaciones');
+    if (btn) {
+        let b = btn.querySelector('.tab-contador');
+        if (!b) { b = document.createElement('span'); b.className = 'tab-contador'; btn.appendChild(b); }
+        b.textContent = solicitudesLineas.length || '';
+    }
+    if (!solicitudesLineas.length) return;
+    caja.innerHTML = `
+        <div class="table-header-row"><h2>Solicitudes pendientes (${solicitudesLineas.length})</h2></div>
+        <div class="historial-sim-lista">
+        <table class="panel-historial">
+            <thead><tr><th>Fecha</th><th>Pide</th><th>Línea</th><th>RC</th><th>Usuario</th><th>Motivo</th><th>Acción</th></tr></thead>
+            <tbody>${solicitudesLineas.map(s => {
+                const d = s.datos || {};
+                const act = s.tipo === 'activar_linea';
+                return `<tr>
+                    <td class="td-fecha">${formatearFechaHora(s.creado_at)}</td>
+                    <td><span class="badge-estado ${act ? 'badge-activo' : 'badge-desactivado'}">${act ? 'Activar' : 'Desactivar'}</span></td>
+                    <td><span class="link-num" onclick="abrirPanelSIM('${escHtml(d.numero || '')}', '${escHtml(d.iccid || '')}')">${escHtml(d.numero || d.iccid || '-')}</span></td>
+                    <td>${d.rc ? `<span class="link-num" onclick="abrirPanelRC(this.textContent)">${escHtml(d.rc)}</span>` : '-'}</td>
+                    <td>${escHtml(s.usuario)}</td>
+                    <td>${escHtml(d.motivo) || '-'}</td>
+                    <td class="td-acciones-linea">
+                        <button class="btn-linea btn-linea-activar" onclick="resolverSolicitudLinea(${s.id}, true)">Aprobar</button>
+                        <button class="btn-linea btn-linea-desactivar" onclick="resolverSolicitudLinea(${s.id}, false)">Rechazar</button>
+                    </td>
+                </tr>`;
+            }).join('')}</tbody>
+        </table>
+        </div>`;
+}
+
+// Aprobar: cambia el estado de la línea en su inventario (líneas o legado) y marca la solicitud.
+async function resolverSolicitudLinea(id, aprobar) {
+    if (!esAdmin()) return;
+    const s = solicitudesLineas.find(x => x.id === id);
+    if (!s) return;
+    const d = s.datos || {};
+    const ref = d.numero || d.iccid;
+    const activar = s.tipo === 'activar_linea';
+    let estadoSol = 'rechazada';
+    if (aprobar) {
+        let linea;
+        try { linea = await _lineaInventarioDe(d.numero, d.iccid); }
+        catch (e) { alert('❌ No se pudo leer el inventario: ' + e.message); return; }
+        if (!linea) {
+            alert(`La línea ${ref} no está en el inventario de líneas ni en el de legado.\nCargala primero en Altas o rechazá la solicitud.`);
+            return;
+        }
+        const yaEsta = activar ? linea.estado !== 'desactivada' : linea.estado === 'desactivada';
+        if (yaEsta) {
+            if (!confirm(`La línea ${ref} ya está ${activar ? 'activa' : 'desactivada'}.\n¿Marcar la solicitud como aprobada igual?`)) return;
+        } else {
+            const lista = listaInventario(linea._legado);
+            if (!lista.some(l => l.id === linea.id)) await (linea._legado ? cargarLegado() : cargarLineas());
+            const motivo = `Solicitud de ${s.usuario}` + (d.motivo ? ': ' + d.motivo : '');
+            const ok = await cambiarEstadoLinea(linea.id, activar, linea._legado, motivo);
+            if (!ok) return;
+        }
+        estadoSol = 'aprobada';
+    } else if (!confirm(`¿Rechazar la solicitud de ${s.usuario} para ${activar ? 'activar' : 'desactivar'} ${ref}?`)) return;
+
+    const { error } = await window.clienteSupabase.from('solicitudes').update({
+        estado: estadoSol, datos: { ...d, resuelto_por: usuarioSesion(), resuelto_en: new Date().toISOString() },
+    }).eq('id', id);
+    if (error) { alert('❌ No se pudo actualizar la solicitud: ' + error.message); return; }
+    solicitudesLineas = solicitudesLineas.filter(x => x.id !== id);
+    renderSolicitudesLineas();
+    if (aprobar) cargarActivaciones();
+    if (typeof avisoBreve === 'function') avisoBreve(aprobar ? `✅ Solicitud aprobada (${ref})` : `Solicitud rechazada (${ref})`);
 }
 
 // Abre el modal de carga de saldo (viewer y admin)
@@ -4985,6 +5098,7 @@ async function cargarActivaciones() {
         activacionesLista = [];
     }
     renderActivaciones();
+    cargarSolicitudesLineas();
 }
 
 // Registros que cumplen los filtros (los usa la tabla y la exportación).
@@ -5365,17 +5479,17 @@ async function guardarAltaLinea() {
     }
 }
 
-async function cambiarEstadoLinea(id, activar, legado = false) {
-    if (esViewer()) return;
+async function cambiarEstadoLinea(id, activar, legado = false, motivoDado = null) {
+    if (esViewer()) return false;
     const linea = listaInventario(legado).find(l => l.id === id);
-    if (!linea) return;
+    if (!linea) return false;
     const ref    = (esM2MTexto(linea.numero) ? null : linea.numero) || linea.iccid;
     const nuevo  = activar ? (linea.rc_codigo ? 'asignada' : 'disponible') : 'desactivada';
-    const motivo = prompt(`¿${activar ? 'Activar' : 'Desactivar'} la línea${legado ? ' de legado' : ''} ${ref}?\n\nMotivo (opcional):`, '');
-    if (motivo === null) return;
+    const motivo = motivoDado ?? prompt(`¿${activar ? 'Activar' : 'Desactivar'} la línea${legado ? ' de legado' : ''} ${ref}?\n\nMotivo (opcional):`, '');
+    if (motivo === null) return false;
 
     const { error } = await window.clienteSupabase.from(tablaLineas(legado)).update({ estado: nuevo }).eq('id', id);
-    if (error) { alert('❌ Error: ' + error.message); return; }
+    if (error) { alert('❌ Error: ' + error.message); return false; }
     await registrarEstado('linea', ref, linea.estado, nuevo, motivo.trim() || null);
 
     // Reflejarlo en el RC que tiene la línea
@@ -5387,6 +5501,7 @@ async function cambiarEstadoLinea(id, activar, legado = false) {
     await actualizarRCDeLinea(linea, ref, nuevo === 'desactivada');
 
     if (legado) await cargarLegado(); else await cargarLineas();
+    return true;
 }
 
 // Recalcula el estado de los RC que tienen esa línea (por número o ICCID, o el RC del inventario)
