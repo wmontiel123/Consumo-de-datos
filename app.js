@@ -4387,6 +4387,10 @@ async function solicitarEstadoLinea(accion, numero, iccid) {
         await enviarSolicitud(accion === 'activar' ? 'activar_linea' : 'desactivar_linea', {
             numero: numero || null, iccid: iccid || null, rc: dev?.codigo || null, motivo: motivo.trim() || null,
         });
+        // Aviso por mail a los aprobadores (si falla, la solicitud igual queda guardada)
+        window.clienteSupabase.functions.invoke('solicitud-usuario', { body: { accion: 'aviso_solicitud_linea' } })
+            .then(({ error }) => { if (error) console.warn('⚠️ No se pudo enviar el aviso por mail:', error.message); })
+            .catch(e => console.warn('⚠️ No se pudo enviar el aviso por mail:', e.message));
         if (typeof avisoBreve === 'function') avisoBreve(`✅ Solicitud de ${verbo} enviada`);
         else alert(`✅ Solicitud de ${verbo} enviada.`);
         if (esAdmin()) cargarSolicitudesLineas();

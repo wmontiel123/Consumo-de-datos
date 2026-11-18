@@ -10,6 +10,7 @@
 //   solicitar_reseteo : el login (tras una contraseña incorrecta) pide restablecerla
 //   resolver_reseteo  : un aprobador aprueba o rechaza → mail con el enlace al usuario
 //   resetear          : el usuario crea su contraseña nueva
+//   aviso_solicitud_linea : mail a los aprobadores cuando alguien pide activar / desactivar una línea
 //
 // Secretos (Supabase → Edge Functions → Secrets):
 //   SMTP_USER       (obligatorio) cuenta de Zoho que envía, ej. soporte@inovasi.com.py
@@ -365,6 +366,42 @@ async function activar(req: Request, b: Record<string, unknown>): Promise<Respon
     return json(req, 200, { ok: true, ...(data as object) });
 }
 
+// ── Aviso de solicitud de activar / desactivar una línea ─────────
+// La app la llama justo después de guardar la fila en "solicitudes" (el viewer no puede leer
+// esa tabla, por eso no pasa el id). Avisa las solicitudes de línea pendientes de los últimos
+// 10 minutos que todavía no se avisaron: no sirve para mandar correos arbitrarios ni repetidos.
+async function avisoSolicitudLinea(req: Request): Promise<Response> {
+    const desde = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const { data, error } = await db.from('solicitudes').select('*')
+        .in('tipo', ['activar_linea', 'desactivar_linea']).eq('estado', 'pendiente')
+        .gte('creado_at', desde).order('id').limit(20);
+    if (error) return errorDb(req, error);
+    let enviados = 0;
+    for (const s of data ?? []) {
+        if ((s.datos ?? {}).mail_enviado) continue;
+        if (await mailSolicitudLinea(s)) enviados++;
+    }
+    return json(req, 200, { ok: true, enviados });
+}
+
+async function mailSolicitudLinea(s: Record<string, any>): Promise<boolean> {
+    const d = (s.datos ?? {}) as Record<string, unknown>;
+    const activar = s.tipo === 'activar_linea';
+    const accion  = activar ? 'activación' : 'desactivación';
+    const linea   = String(d.numero || d.iccid || '-');
+    const fila = (k: string, v: unknown) => v ? `<tr><td style="padding:3px 12px 3px 0;color:#64748b;vertical-align:top">${k}</td><td>${esc(v)}</td></tr>` : '';
+    const ok = await enviarMail(APROBADORES, `Solicitud de ${accion}: ${linea}`, marco(`Solicitud de ${accion} de línea`, `
+      <p><b>${esc(s.usuario)}</b> pidió la <b style="color:${activar ? '#16a34a' : '#dc2626'}">${accion}</b> de una línea:</p>
+      <table style="border-collapse:collapse;margin:8px 0 16px">
+        ${fila('Número', d.numero)}${fila('ICCID', d.iccid)}${fila('RC', d.rc)}${fila('Motivo', d.motivo)}
+        ${fila('Fecha', new Date(s.creado_at).toLocaleString('es-PY', { timeZone: 'America/Asuncion' }))}
+      </table>
+      <p>${boton(APP_URL, 'Abrir la aplicación', '#35398C')}</p>
+      <p style="color:#64748b;font-size:12px">Se aprueba o rechaza en la pestaña Activaciones → Solicitudes pendientes.</p>`));
+    if (ok) await db.from('solicitudes').update({ datos: { ...d, mail_enviado: true } }).eq('id', s.id);
+    return ok;
+}
+
 Deno.serve(async (req: Request) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: cors(req) });
     if (req.method !== 'POST') return json(req, 405, { error: 'Método no permitido' });
@@ -386,6 +423,7 @@ Deno.serve(async (req: Request) => {
             case 'solicitar_reseteo': return await solicitarReseteo(req, b);
             case 'resolver_reseteo':  return await resolverReseteo(req, b);
             case 'resetear':          return await resetear(req, b);
+            case 'aviso_solicitud_linea': return await avisoSolicitudLinea(req);
             default:          return json(req, 400, { error: 'Acción no válida' });
         }
     } catch (e) {

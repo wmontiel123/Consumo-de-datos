@@ -2356,3 +2356,15 @@ th.th-filtrada { background: #e2e5f3; }
 .tab-contador { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 6px; border-radius: 999px;
     background: #dc2626; color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
 .tab-contador:empty { display: none; }
+
+/* ══ Filtros: campos más separados ══ */
+.filters:not(.alta-card) .filter-row, .filter-section .filter-row {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px 22px; margin-bottom: 6px;
+}
+.filters:not(.alta-card) .filter-group label, .filter-section .filter-group label { margin-bottom: 6px; }
+.filter-section .filter-row .filter-group[style*="flex:2"] { grid-column: span 2; }
+.filters:not(.alta-card) .filter-buttons, .filter-section .filter-buttons { margin-top: 16px; gap: 10px; }
+@media (max-width: 760px) {
+    .filters:not(.alta-card) .filter-row, .filter-section .filter-row { grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+    .filter-section .filter-row .filter-group[style*="flex:2"] { grid-column: 1 / -1; }
+}
