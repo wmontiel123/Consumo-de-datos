@@ -2431,3 +2431,7 @@ th.th-filtrada { background: #e2e5f3; }
 #asigRCGuardar.btn-crear-rc { background: #16a34a; }
 #asigRCGuardar.btn-crear-rc:hover { background: #15803d; }
 #asigRCGuardar:disabled { opacity: .5; cursor: default; }
+
+/* ══ Inventario: línea con consumo y sin RC ══ */
+.badge-sin-rc { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; white-space: nowrap; cursor: help; }

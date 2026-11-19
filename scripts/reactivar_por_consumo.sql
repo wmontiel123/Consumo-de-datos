@@ -4,9 +4,11 @@
 -- Cuando una SIM vuelve a figurar ACTIVA (con MB > 0) en el último reporte
 -- del operador, y ese consumo es de un día posterior a su desactivación:
 --   - la línea del inventario (lineas o lineas_legado) pasa de 'desactivada'
---     a 'asignada' (si tiene RC) o 'disponible' (si no tiene);
+--     a 'asignada' (aunque no tenga RC: está en uso);
 --   - el RC que la usa pasa de 'desactivado' / 'desactivado_manual' a 'activo'
 --     (la app recalcula después el estado de cada SIM del RC).
+-- Además, una línea 'disponible' sin RC que tiene consumo pasa a 'asignada'
+-- (en la app se ve con la etiqueta "Sin RC asignado").
 -- Cada cambio queda en historial_estados con usuario 'sistema'.
 --
 -- Corre sola dentro de refresh_lineas_estado(), que llama el cargador diario
@@ -25,6 +27,8 @@ declare
     n_lineas int := 0;
     n_legado int := 0;
     n_rc     int := 0;
+    n_sin_rc int := 0;
+    k        int := 0;
 begin
     -- Líneas activas hoy: consumo > 0 y estado 'activo' (lo pone la importación
     -- solo a las que tienen consumo en su último reporte). Se miran 7 días para
@@ -63,7 +67,7 @@ begin
                        coalesce(nullif(case when lower(trim(coalesce(l.numero, ''))) = 'm2m' then '' else trim(coalesce(l.numero, '')) end, ''),
                                 trim(l.iccid))                           as ref,
                        greatest(an.f, ai.f)                              as f,
-                       case when coalesce(trim(l.rc_codigo), '') <> '' then 'asignada' else 'disponible' end as nuevo
+                       'asignada'::text                                  as nuevo
                   from %1$I l
                   left join _act an on an.key = trim(l.numero) and lower(trim(coalesce(l.numero, ''))) <> 'm2m'
                   left join _act ai on ai.key = trim(l.iccid)
@@ -87,6 +91,35 @@ begin
              case i when 1 then '' else ' (legado)' end);
         if i = 1 then get diagnostics n_lineas = row_count;
         else          get diagnostics n_legado = row_count; end if;
+    end loop;
+
+    -- ── Líneas disponibles sin RC que tienen consumo: están en uso → asignada ──
+    for i in 1..2 loop
+        execute format($f$
+            with ok as (
+                select l.id,
+                       coalesce(nullif(case when lower(trim(coalesce(l.numero, ''))) = 'm2m' then '' else trim(coalesce(l.numero, '')) end, ''),
+                                trim(l.iccid))  as ref,
+                       greatest(an.f, ai.f)     as f
+                  from %1$I l
+                  left join _act an on an.key = trim(l.numero) and lower(trim(coalesce(l.numero, ''))) <> 'm2m'
+                  left join _act ai on ai.key = trim(l.iccid)
+                 where l.estado = 'disponible'
+                   and coalesce(trim(l.rc_codigo), '') = ''
+                   and (an.key is not null or ai.key is not null)
+            ), upd as (
+                update %1$I l set estado = 'asignada'
+                  from ok where l.id = ok.id
+                returning ok.ref, ok.f
+            )
+            insert into historial_estados (tipo, referencia, estado_anterior, estado_nuevo, motivo, usuario)
+            select 'linea', ref, 'disponible', 'asignada',
+                   'En uso sin RC asignado%2$s: consumo en el reporte del ' || to_char(f, 'DD/MM/YYYY'), 'sistema'
+              from upd
+        $f$, case i when 1 then 'lineas' else 'lineas_legado' end,
+             case i when 1 then '' else ' (legado)' end);
+        get diagnostics k = row_count;
+        n_sin_rc := n_sin_rc + k;
     end loop;
 
     -- ── RC desactivados con alguna SIM que volvió a consumir ──
@@ -115,7 +148,7 @@ begin
       from upd;
     get diagnostics n_rc = row_count;
 
-    return jsonb_build_object('lineas', n_lineas, 'legado', n_legado, 'rc', n_rc);
+    return jsonb_build_object('lineas', n_lineas, 'legado', n_legado, 'sin_rc', n_sin_rc, 'rc', n_rc);
 end;
 $$;
 

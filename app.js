@@ -5333,7 +5333,9 @@ function filasInventario() {
     const estado = document.getElementById('lineasEstado')?.value || '';
     const tel    = document.getElementById('lineasTelefonia')?.value || '';
     return inventarioActual().filter(l =>
-        (!estado || (estado === 'activas' ? l.estado !== 'desactivada' : l.estado === estado)) &&
+        (!estado || (estado === 'activas' ? l.estado !== 'desactivada'
+                   : estado === 'sin_rc' ? lineaSinRCConConsumo(l)
+                   : l.estado === estado)) &&
         (!tel || String(l.telefonia || '').toLowerCase() === tel.toLowerCase()) &&
         (!q || [l.numero, l.iccid, l.rc_codigo].some(v => String(v || '').toLowerCase().includes(q))));
 }
@@ -5358,7 +5360,9 @@ function renderInventarioLineas(pagina, desdeControles) {
             <td><span class="badge-estado ${LINEA_ESTADO_CLS[l.estado] || ''}">${escHtml(ESTADO_HIST_LABEL[l.estado] || l.estado)}</span></td>
             <td>${l.rc_codigo
                     ? `<span class="link-num" onclick="abrirPanelRC(this.textContent)">${escHtml(l.rc_codigo)}</span>${l.sim_slot ? ` (${l.sim_slot === 'sim1' ? 'SIM 1' : 'SIM 2'})` : ''}`
-                    : '-'}</td>
+                    : lineaSinRCConConsumo(l)
+                        ? `<span class="badge-sin-rc" title="Tiene consumo pero no tiene un RC asignado en el inventario: actualizá la asignación">Sin RC asignado · actualizar</span>`
+                        : '-'}</td>
             <td class="td-fecha">${formatearFechaHora(l.creado_en)}</td>
             <td>${escHtml(l.creado_por) || '-'}</td>
             <td class="td-acciones-linea">${botonesLinea(l)}${botonAsignarRC(l)}</td>
@@ -5377,6 +5381,15 @@ function botonesLinea(l) {
         ? `<button class="btn-linea btn-linea-activar" onclick="cambiarEstadoLinea(${l.id}, true, ${leg})">Activar</button>`
         : `<button class="btn-linea btn-linea-desactivar" onclick="cambiarEstadoLinea(${l.id}, false, ${leg})">Desactivar</button>`;
 }
+
+// Línea en uso (con consumo en su último reporte) que no tiene RC en el inventario
+function lineaConConsumo(l) {
+    const n = String(l.numero || '').trim();
+    const i = normalizarImei(l.iccid);
+    const c = (n && !esM2MTexto(n) ? mapaNumAConsumo.get(n) : null) || (i ? mapaImeiAConsumo.get(i) : null);
+    return !!c && (parseFloat(c.consumo_mb) || 0) > 0 && String(c.estado || '').toLowerCase() !== 'desactivado';
+}
+const lineaSinRCConConsumo = l => !String(l.rc_codigo || '').trim() && l.estado !== 'desactivada' && lineaConConsumo(l);
 
 // Botón para asignar / cambiar el RC de una línea del inventario (no en las desactivadas)
 function botonAsignarRC(l) {
