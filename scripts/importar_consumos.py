@@ -12,6 +12,8 @@ ejecutarImportConsumo / recalcularEstadosPostImport):
   - Después del insert recalcula estados (consumo_sim, sim_estados) y refresca
     consumo_consolidado. El estado de dispositivos_ande lo sincroniza la app sola
     al abrirse (o con el botón "Actualizar estados").
+  - refresh_lineas_estado() además reactiva las líneas del inventario y los RC
+    desactivados cuya SIM vuelve a consumir (scripts/reactivar_por_consumo.sql).
 
 Duplicado = misma telefonía + misma línea + misma fecha_consumo, donde la línea es
 el número (o el IMEI/ICCID si el número es "M2M" o está vacío). Se controla contra
