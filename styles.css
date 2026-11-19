@@ -2399,3 +2399,35 @@ th.th-filtrada { background: #e2e5f3; }
 .inv-total-activas { background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); }
 .inv-total-desact  { background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); }
 @media (max-width: 760px) { .inv-totales { grid-template-columns: 1fr; } .inv-total-n { font-size: 18px; } }
+
+/* ══ Carga rápida: borrar una lectura ══ */
+.escaneo-detalle { display: inline-flex; align-items: center; gap: 10px; }
+.btn-escaneo-borrar { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+    padding: 0; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #b91c1c; cursor: pointer; }
+.btn-escaneo-borrar:hover { background: #fee2e2; border-color: #fecaca; }
+.btn-escaneo-borrar:disabled { opacity: .4; cursor: default; }
+.escaneo-lista li.escaneo-borrada { background: #f3f4f6; color: #6b7280; }
+.escaneo-borrada strong { text-decoration: line-through; }
+
+/* ══ Inventario: asignar RC ══ */
+.btn-linea.btn-linea-rc { background: #eef0fb; color: #35398C; border: 1px solid #c7cae8; margin-left: 4px; }
+.btn-linea.btn-linea-rc:hover { background: #dfe2f7; }
+.asig-rc-nota { margin: 4px 0 10px; font-size: 12px; color: #6b7280; }
+
+/* ══ Asignar RC: buscador con desplegable ══ */
+.combo-rc { position: relative; }
+.combo-rc-lista { position: absolute; left: 0; right: 0; top: 100%; z-index: 10; margin: 4px 0 0; padding: 4px;
+    list-style: none; max-height: 260px; overflow-y: auto; background: #fff; border: 1px solid #cfd2e6;
+    border-radius: 8px; box-shadow: 0 8px 24px rgba(26, 26, 46, .15); }
+.combo-rc-op { display: flex; flex-direction: column; gap: 2px; padding: 7px 10px; border-radius: 6px; cursor: pointer; }
+.combo-rc-op:hover, .combo-rc-op.activa { background: #eef0fb; }
+.combo-rc-cod { font-weight: 600; color: #1A1A2E; }
+.combo-rc-det { font-size: 12px; color: #6b7280; }
+.combo-rc-crear { flex-direction: row; gap: 4px; color: #15803d; border-top: 1px solid #e5e7eb; margin-top: 2px; }
+.combo-rc-vacio { padding: 8px 10px; color: #9ca3af; font-size: 13px; }
+.asig-rc-nuevo { margin: 6px 0 4px; padding: 10px 12px; border-radius: 8px; background: #f0fdf4; border: 1px solid #bbf7d0; }
+.asig-rc-nuevo-tit { margin: 0 0 8px; font-size: 13px; color: #166534; }
+.asig-rc-nuevo[hidden], #asigRCSlotGrupo[hidden], .asig-rc-nota[hidden], .combo-rc-lista[hidden] { display: none; }
+#asigRCGuardar.btn-crear-rc { background: #16a34a; }
+#asigRCGuardar.btn-crear-rc:hover { background: #15803d; }
+#asigRCGuardar:disabled { opacity: .5; cursor: default; }

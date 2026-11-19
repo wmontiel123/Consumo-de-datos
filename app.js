@@ -5361,7 +5361,7 @@ function renderInventarioLineas(pagina, desdeControles) {
                     : '-'}</td>
             <td class="td-fecha">${formatearFechaHora(l.creado_en)}</td>
             <td>${escHtml(l.creado_por) || '-'}</td>
-            <td class="td-acciones-linea">${botonesLinea(l)}</td>
+            <td class="td-acciones-linea">${botonesLinea(l)}${botonAsignarRC(l)}</td>
             <td class="td-editar">${esViewer() || l._legado ? '' : `<button class="btn-lapiz" onclick="abrirEditarLinea(${l.id})" title="Editar esta línea" aria-label="Editar la línea ${escHtml(l.numero || l.iccid)}">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>`}</td>
         </tr>`).join('');
@@ -5376,6 +5376,287 @@ function botonesLinea(l) {
     return l.estado === 'desactivada'
         ? `<button class="btn-linea btn-linea-activar" onclick="cambiarEstadoLinea(${l.id}, true, ${leg})">Activar</button>`
         : `<button class="btn-linea btn-linea-desactivar" onclick="cambiarEstadoLinea(${l.id}, false, ${leg})">Desactivar</button>`;
+}
+
+// Botón para asignar / cambiar el RC de una línea del inventario (no en las desactivadas)
+function botonAsignarRC(l) {
+    if (esViewer() || l.estado === 'desactivada') return '';
+    return ` <button class="btn-linea btn-linea-rc" onclick="abrirAsignarRC(${l.id}, ${!!l._legado})"
+        title="${l.rc_codigo ? 'Cambiar o quitar el RC de esta línea' : 'Asignar esta línea a un RC'}">${l.rc_codigo ? 'Cambiar RC' : 'Asignar RC'}</button>`;
+}
+
+// ── Asignar una línea del inventario a un RC (solo cambia el inventario) ──
+// El RC se elige de una lista con buscador; si no existe, se puede crear ahí mismo
+// (con esta línea como SIM 1).
+let _lineaAsignando = null;
+let _asigRCOpciones = [];      // opciones visibles del desplegable
+let _asigRCActiva = -1;        // opción resaltada con el teclado
+
+function abrirAsignarRC(id, legado = false) {
+    if (esViewer()) return;
+    const l = listaInventario(legado).find(x => x.id === id);
+    if (!l) return;
+    _lineaAsignando = l;
+    let modal = document.getElementById('modalAsignarRC');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modalAsignarRC';
+        modal.className = 'import-modal-overlay';
+        modal.style.cssText = 'display:none;z-index:2600';
+        modal.onclick = e => { if (e.target === modal) cerrarAsignarRC(); };
+        modal.innerHTML = `
+            <div class="import-modal-card" style="max-width:460px">
+                <div class="import-modal-header">
+                    <h3 id="asigRCTitulo">Asignar RC</h3>
+                    <button class="import-close" onclick="cerrarAsignarRC()">✕</button>
+                </div>
+                <div class="import-modal-body">
+                    <div class="filter-group combo-rc"><label for="asigRCCodigo">RC</label>
+                        <input type="text" id="asigRCCodigo" placeholder="Buscá por código o regional" autocomplete="off"
+                               role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="asigRCLista">
+                        <ul id="asigRCLista" class="combo-rc-lista" role="listbox" hidden></ul>
+                    </div>
+                    <div id="asigRCNuevo" class="asig-rc-nuevo" hidden>
+                        <p class="asig-rc-nuevo-tit">El RC <strong id="asigRCNuevoCod"></strong> no existe. Se va a crear con esta línea como SIM 1.</p>
+                        <div class="filter-group"><label for="asigRCRegional">Regional *</label>
+                            <input type="text" id="asigRCRegional" list="dlRegionales" placeholder="Elegí o escribí" autocomplete="off"></div>
+                        <div class="filter-group"><label for="asigRCTipo">Tipo</label>
+                            <select id="asigRCTipo"><option value="">Activo</option><option value="Legado">Legado</option><option value="Satelital">Satelital</option></select></div>
+                    </div>
+                    <div class="filter-group" id="asigRCSlotGrupo"><label for="asigRCSlot">Posición</label>
+                        <select id="asigRCSlot"><option value="sim1">SIM 1</option><option value="sim2">SIM 2</option></select></div>
+                    <p class="asig-rc-nota" id="asigRCNota">Solo cambia el inventario. Para cambiar la SIM que figura en el RC usá "Cambio de SIM" en el panel del RC.</p>
+                    <div id="asigRCStatus" class="alta-status"></div>
+                    <div class="filter-buttons">
+                        <button id="asigRCGuardar" onclick="guardarAsignarRC()">Guardar</button>
+                        <button id="asigRCQuitar" class="btn-secondary" onclick="quitarAsignacionRC()">Quitar RC</button>
+                        <button class="btn-secondary" onclick="cerrarAsignarRC()">Cancelar</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+
+        const cod = document.getElementById('asigRCCodigo');
+        cod.addEventListener('input', () => { _asigRCActiva = -1; pintarListaRC(true); actualizarModoAsignar(); });
+        cod.addEventListener('focus', () => pintarListaRC(true));
+        cod.addEventListener('blur', () => setTimeout(() => pintarListaRC(false), 150));
+        cod.addEventListener('keydown', e => {
+            const abierta = !document.getElementById('asigRCLista').hidden;
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (!abierta) pintarListaRC(true);
+                const n = _asigRCOpciones.length;
+                if (!n) return;
+                _asigRCActiva = e.key === 'ArrowDown' ? (_asigRCActiva + 1) % n : (_asigRCActiva - 1 + n) % n;
+                pintarListaRC(true);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (abierta && _asigRCActiva >= 0) elegirOpcionRC(_asigRCActiva);
+                else guardarAsignarRC();
+            } else if (e.key === 'Escape' && abierta) {
+                e.stopPropagation();
+                pintarListaRC(false);
+            }
+        });
+    }
+    // Regionales para el alta rápida
+    const dlReg = document.getElementById('dlRegionales');
+    if (dlReg && !dlReg.options.length)
+        dlReg.innerHTML = [...new Set(todosLosDatos.map(d => d.regional).filter(Boolean))].sort()
+            .map(r => `<option value="${escHtml(r)}">`).join('');
+
+    document.getElementById('asigRCTitulo').textContent = `${l.rc_codigo ? 'Cambiar RC' : 'Asignar RC'} · ${refLinea(l)}`;
+    document.getElementById('asigRCCodigo').value = l.rc_codigo || '';
+    document.getElementById('asigRCSlot').value = l.sim_slot || slotSugeridoRC(l.rc_codigo, l);
+    document.getElementById('asigRCRegional').value = '';
+    document.getElementById('asigRCTipo').value = '';
+    document.getElementById('asigRCQuitar').style.display = l.rc_codigo ? '' : 'none';
+    const st = document.getElementById('asigRCStatus');
+    st.className = 'alta-status';
+    st.textContent = '';
+    actualizarModoAsignar();
+    modal.style.display = 'flex';
+    const cod = document.getElementById('asigRCCodigo');
+    cod.focus();
+    cod.select();
+}
+
+const _rcPorCodigo = codigo => todosLosDatos.find(d => String(d.codigo || '').toLowerCase() === String(codigo || '').trim().toLowerCase());
+
+// Texto corto de las SIM de un RC para mostrar en la lista
+function _simsRC(d) {
+    const s = (num, imei) => String(num || '').trim() || (normalizarImei(imei) ? 'ICCID' : '');
+    const s1 = s(d.sim1_num, d.sim1_imei), s2 = s(d.sim2_num, d.sim2_imei);
+    return `SIM 1: ${s1 || 'libre'} · SIM 2: ${s2 || 'libre'}`;
+}
+
+// Dibuja el desplegable con los RC que coinciden (código o regional) y, si no hay uno igual, "Crear RC"
+function pintarListaRC(abrir) {
+    const cod = document.getElementById('asigRCCodigo');
+    const ul = document.getElementById('asigRCLista');
+    if (!cod || !ul) return;
+    if (!abrir) { ul.hidden = true; cod.setAttribute('aria-expanded', 'false'); return; }
+    const q = cod.value.trim().toLowerCase();
+    const coinciden = todosLosDatos
+        .filter(d => d.codigo && (!q || String(d.codigo).toLowerCase().includes(q) || String(d.regional || '').toLowerCase().includes(q)))
+        .sort((a, b) => {
+            // primero los que empiezan con lo escrito
+            const pa = String(a.codigo).toLowerCase().startsWith(q) ? 0 : 1;
+            const pb = String(b.codigo).toLowerCase().startsWith(q) ? 0 : 1;
+            return pa - pb || String(a.codigo).localeCompare(String(b.codigo), 'es', { numeric: true });
+        })
+        .slice(0, 30);
+    _asigRCOpciones = coinciden.map(d => ({ tipo: 'rc', codigo: d.codigo, dev: d }));
+    // "Crear RC" solo si lo escrito parece un código (tiene algún número), no una búsqueda por regional
+    if (q && /\d/.test(q) && !_rcPorCodigo(q)) _asigRCOpciones.push({ tipo: 'nuevo', codigo: cod.value.trim() });
+    if (_asigRCActiva >= _asigRCOpciones.length) _asigRCActiva = _asigRCOpciones.length - 1;
+
+    ul.innerHTML = _asigRCOpciones.map((o, i) => o.tipo === 'nuevo'
+        ? `<li role="option" class="combo-rc-op combo-rc-crear ${i === _asigRCActiva ? 'activa' : ''}" data-i="${i}">
+               ➕ Crear RC <strong>${escHtml(o.codigo)}</strong></li>`
+        : `<li role="option" class="combo-rc-op ${i === _asigRCActiva ? 'activa' : ''}" data-i="${i}">
+               <span class="combo-rc-cod">${escHtml(o.codigo)}</span>
+               <span class="combo-rc-det">${escHtml(o.dev.regional || '-')} · ${escHtml(_simsRC(o.dev))}</span></li>`).join('')
+        || '<li class="combo-rc-vacio">Escribí el código del RC</li>';
+    ul.querySelectorAll('.combo-rc-op').forEach(li =>
+        li.addEventListener('mousedown', e => { e.preventDefault(); elegirOpcionRC(+li.dataset.i); }));
+    ul.hidden = false;
+    cod.setAttribute('aria-expanded', 'true');
+    ul.querySelector('.activa')?.scrollIntoView({ block: 'nearest' });
+}
+
+function elegirOpcionRC(i) {
+    const o = _asigRCOpciones[i];
+    if (!o) return;
+    const cod = document.getElementById('asigRCCodigo');
+    cod.value = o.codigo;
+    _asigRCActiva = -1;
+    pintarListaRC(false);
+    if (o.tipo === 'rc') document.getElementById('asigRCSlot').value = slotSugeridoRC(o.codigo, _lineaAsignando);
+    actualizarModoAsignar();
+    if (o.tipo === 'nuevo') document.getElementById('asigRCRegional').focus();
+}
+
+// Si el código escrito no existe, muestra los datos para crear el RC
+function actualizarModoAsignar() {
+    const txt = document.getElementById('asigRCCodigo').value.trim();
+    const nuevo = !!txt && /\d/.test(txt) && !_rcPorCodigo(txt);
+    document.getElementById('asigRCNuevo').hidden = !nuevo;
+    document.getElementById('asigRCNuevoCod').textContent = txt;
+    document.getElementById('asigRCSlotGrupo').hidden = nuevo;
+    document.getElementById('asigRCNota').hidden = nuevo;
+    // El botón dice qué va a pasar: crear el RC y asignar, o solo asignar a uno que ya existe
+    const dev = _rcPorCodigo(txt);
+    const btn = document.getElementById('asigRCGuardar');
+    btn.textContent = nuevo ? `➕ Crear ${txt} y asignar`
+                    : dev   ? `Asignar a ${dev.codigo}`
+                    :         'Asignar';
+    btn.classList.toggle('btn-crear-rc', nuevo);
+    btn.disabled = !nuevo && !dev;
+}
+
+// SIM 1 o 2: la posición del RC que ya tiene esta línea; si no, la primera libre
+function slotSugeridoRC(codigo, l) {
+    const dev = _rcPorCodigo(codigo);
+    if (!dev || !l) return 'sim1';
+    const n = String(l.numero || '').trim(), i = normalizarImei(l.iccid);
+    const es = (num, imei) => (n && !esM2MTexto(n) && String(num || '').trim() === n) || (i && normalizarImei(imei) === i);
+    if (es(dev.sim1_num, dev.sim1_imei)) return 'sim1';
+    if (es(dev.sim2_num, dev.sim2_imei)) return 'sim2';
+    if (!String(dev.sim1_num || '').trim() && !normalizarImei(dev.sim1_imei)) return 'sim1';
+    return 'sim2';
+}
+
+function cerrarAsignarRC() {
+    const modal = document.getElementById('modalAsignarRC');
+    if (modal) modal.style.display = 'none';
+    pintarListaRC(false);
+    _lineaAsignando = null;
+}
+
+// Crea un RC nuevo con la línea como SIM 1 (mismo alta que la pestaña Altas)
+async function crearRCDesdeLinea(codigo, l) {
+    const regional = document.getElementById('asigRCRegional').value.trim();
+    if (!regional) throw new Error('Elegí la regional del RC nuevo.');
+    if (!/^[\w.-]+$/.test(codigo)) throw new Error('El código del RC solo puede tener letras, números, "_", "-" y ".".');
+    const usado = rcQueUsa(l.numero, l.iccid);
+    if (usado) throw new Error(`Esta línea ya figura en ${usado}.`);
+    const tipo = document.getElementById('asigRCTipo').value;
+    const { data, error } = await window.clienteSupabase.from('dispositivos_ande').insert({
+        codigo, regional,
+        tipo:      tipo || null,
+        sim1_num:  l.numero || null,
+        sim1_imei: l.iccid || null,
+        estado:    'activo',
+    }).select();
+    if (error) throw new Error(error.code === '23505' ? `Ya existe un RC con el código ${codigo}.` : error.message);
+    await registrarEstado('rc', codigo, null, 'alta', `Creado desde el inventario con la línea ${refLinea(l)}`);
+    const dev = data?.[0];
+    if (dev) {
+        todosLosDatos.push(dev);
+        construirMapasDevice(todosLosDatos);
+        poblarFiltroRegional([dev]);
+        aplicarFiltros();
+    }
+    return dev || { codigo };
+}
+
+async function guardarAsignarRC() {
+    if (esViewer() || !_lineaAsignando) return;
+    const l = _lineaAsignando;
+    const legado = !!l._legado;
+    const codigo = document.getElementById('asigRCCodigo').value.trim();
+    const fallo = msg => mostrarEstadoAlta('asigRCStatus', false, '❌ ' + msg);
+    if (!codigo) return fallo('Elegí un RC de la lista o escribí su código.');
+    pintarListaRC(false);
+
+    let dev = _rcPorCodigo(codigo);
+    let slot = document.getElementById('asigRCSlot').value;
+    let creado = false;
+    if (!dev) {
+        mostrarEstadoAlta('asigRCStatus', true, '⏳ Creando el RC…');
+        try { dev = await crearRCDesdeLinea(codigo, l); }
+        catch (e) { return fallo(e.message); }
+        slot = 'sim1';
+        creado = true;
+    }
+    if (l.rc_codigo === dev.codigo && l.sim_slot === slot && l.estado === 'asignada') { cerrarAsignarRC(); return; }
+
+    // ¿Otra línea del inventario (normal o legado) ocupa ya esa posición del RC?
+    const ocupa = creado ? null : [...inventarioLineas, ...inventarioLegado].find(x =>
+        !(x.id === l.id && !!x._legado === legado) &&
+        x.rc_codigo === dev.codigo && x.sim_slot === slot && x.estado === 'asignada');
+    if (ocupa && !confirm(`La ${slot === 'sim1' ? 'SIM 1' : 'SIM 2'} de ${dev.codigo} ya tiene la línea ${refLinea(ocupa)} en el inventario.\n¿Liberarla y poner esta en su lugar?`)) return;
+
+    mostrarEstadoAlta('asigRCStatus', true, '⏳ Guardando…');
+    if (ocupa) {
+        const { error: e1 } = await window.clienteSupabase.from(tablaLineas(!!ocupa._legado))
+            .update({ estado: 'disponible', rc_codigo: null, sim_slot: null }).eq('id', ocupa.id);
+        if (e1) return fallo('No se pudo liberar la otra línea: ' + e1.message);
+        await registrarEstado('linea', refLinea(ocupa), ocupa.estado, 'disponible', `Reemplazada en ${dev.codigo} por ${refLinea(l)}`);
+    }
+    const { error: e2 } = await window.clienteSupabase.from(tablaLineas(legado))
+        .update({ estado: 'asignada', rc_codigo: dev.codigo, sim_slot: slot }).eq('id', l.id);
+    if (e2) return fallo(e2.message);
+    await registrarEstado('linea', refLinea(l), l.estado, 'asignada',
+        `Asignada a ${dev.codigo} (${slot === 'sim1' ? 'SIM 1' : 'SIM 2'}) desde el inventario`);
+    cerrarAsignarRC();
+    await (legado ? cargarLegado() : cargarLineas());
+    if (ocupa && !!ocupa._legado !== legado) await (ocupa._legado ? cargarLegado() : cargarLineas());
+    if (typeof avisoBreve === 'function')
+        avisoBreve(creado ? `✅ RC ${dev.codigo} creado y ${refLinea(l)} asignada` : `✅ ${refLinea(l)} asignada a ${dev.codigo}`);
+}
+
+async function quitarAsignacionRC() {
+    if (esViewer() || !_lineaAsignando) return;
+    const l = _lineaAsignando;
+    if (!confirm(`¿Quitar la línea ${refLinea(l)} de ${l.rc_codigo}? Queda disponible en el inventario.`)) return;
+    const { error } = await window.clienteSupabase.from(tablaLineas(!!l._legado))
+        .update({ estado: 'disponible', rc_codigo: null, sim_slot: null }).eq('id', l.id);
+    if (error) { alert('❌ ' + error.message); return; }
+    await registrarEstado('linea', refLinea(l), l.estado, 'disponible', `Quitada de ${l.rc_codigo} desde el inventario`);
+    cerrarAsignarRC();
+    await (l._legado ? cargarLegado() : cargarLineas());
 }
 
 // Busca una línea del inventario por número (si no es M2M) o por ICCID
@@ -5805,7 +6086,7 @@ async function guardarEscaneo(iccid, numero) {
     cancelarEscaneoPendiente();
     try {
         const fila = await crearLineaInventario({ numero, iccid, telefonia });
-        resultadoEscaneo(iccid, true, [numero, telefonia, fila?.rc_codigo ? `ya en ${fila.rc_codigo}` : 'disponible'].filter(Boolean).join(' · '));
+        resultadoEscaneo(iccid, true, [numero, telefonia, fila?.rc_codigo ? `ya en ${fila.rc_codigo}` : 'disponible'].filter(Boolean).join(' · '), fila);
     } catch (e) {
         resultadoEscaneo(iccid, false, e.message);
     }
@@ -5817,17 +6098,50 @@ function cancelarEscaneoPendiente() {
     document.getElementById('escaneoIccid').focus();
 }
 
-function resultadoEscaneo(iccid, ok, texto) {
+function resultadoEscaneo(iccid, ok, texto, fila = null) {
     sonidoLector(ok);
     _escaneoTotales[ok ? 'ok' : 'mal']++;
     const lista = document.getElementById('escaneoLista');
     const li = document.createElement('li');
     li.className = ok ? 'escaneo-ok' : 'escaneo-mal';
-    li.innerHTML = `<span>${ok ? '✅' : '⚠️'} <strong>${escHtml(iccid) || '(vacío)'}</strong></span><span>${escHtml(texto)}</span>`;
+    li.innerHTML = `<span>${ok ? '✅' : '⚠️'} <strong>${escHtml(iccid) || '(vacío)'}</strong></span>
+        <span class="escaneo-detalle"><span class="escaneo-texto">${escHtml(texto)}</span>${fila?.id
+            ? `<button type="button" class="btn-escaneo-borrar" title="Borrar esta línea del inventario" aria-label="Borrar la línea ${escHtml(iccid)}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>`
+            : ''}</span>`;
+    if (fila?.id) li.querySelector('.btn-escaneo-borrar').addEventListener('click', () => borrarEscaneo(fila, li));
     lista.prepend(li);
     while (lista.children.length > 30) lista.lastChild.remove();
+    actualizarResumenEscaneo();
+    document.getElementById('escaneoIccid').focus();
+}
+
+function actualizarResumenEscaneo() {
     document.getElementById('escaneoResumen').textContent =
         `${_escaneoTotales.ok} agregada(s) · ${_escaneoTotales.mal} con problema`;
+}
+
+// Borra del inventario una línea recién cargada con el lector
+async function borrarEscaneo(fila, li) {
+    if (esViewer()) return;
+    const ref = refLinea(fila);
+    if (!confirm(`¿Borrar la línea ${ref} del inventario?`)) { document.getElementById('escaneoIccid').focus(); return; }
+    const btn = li.querySelector('.btn-escaneo-borrar');
+    if (btn) btn.disabled = true;
+    const { error } = await window.clienteSupabase.from('lineas').delete().eq('id', fila.id);
+    if (error) {
+        alert('❌ No se pudo borrar: ' + error.message);
+        if (btn) btn.disabled = false;
+        return;
+    }
+    await registrarEstado('linea', ref, fila.estado, 'eliminada', 'Borrada desde la carga rápida');
+    inventarioLineas = inventarioLineas.filter(l => l.id !== fila.id);
+    renderInventarioLineas();
+    actualizarBotonesInventario();
+    _escaneoTotales.ok = Math.max(0, _escaneoTotales.ok - 1);
+    li.className = 'escaneo-borrada';
+    li.querySelector('.escaneo-texto').textContent = 'Borrada del inventario';
+    btn?.remove();
+    actualizarResumenEscaneo();
     document.getElementById('escaneoIccid').focus();
 }
 
