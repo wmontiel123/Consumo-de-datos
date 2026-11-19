@@ -366,6 +366,7 @@
         <!-- Tab: Inventario de líneas (solo admin) -->
         <div id="tab-inventario" style="display:none">
             <div id="subtab-inventario">
+            <div class="inv-totales" id="invTotales"></div>
             <div class="table-container">
                 <div class="subtabs inv-modo no-print" role="tablist" aria-label="Inventario">
                     <button type="button" class="subtab-btn inv-modo-btn subtab-activa" data-modo="lineas" onclick="cambiarInventario('lineas')">Líneas <span class="inv-modo-n"></span></button>
@@ -383,6 +384,7 @@
                            oninput="renderInventarioLineas(1)">
                     <select id="lineasEstado" onchange="renderInventarioLineas(1)">
                         <option value="">Todos los estados</option>
+                        <option value="activas">Activas (no desactivadas)</option>
                         <option value="disponible">Disponible</option>
                         <option value="asignada">Asignada</option>
                         <option value="desactivada">Desactivada</option>

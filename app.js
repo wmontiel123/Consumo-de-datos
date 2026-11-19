@@ -5238,6 +5238,38 @@ function actualizarBotonesInventario() {
     });
     const t = document.getElementById('tituloInventario');
     if (t) t.textContent = inventarioModo === 'legado' ? 'Inventario de legado' : 'Inventario de líneas';
+    renderTotalesInventario();
+}
+
+// Tarjetas con totales de activas / desactivadas de los dos inventarios (líneas y legado)
+function renderTotalesInventario() {
+    const caja = document.getElementById('invTotales');
+    if (!caja) return;
+    const grupo = (legado, titulo, cargado) => {
+        const lista = listaInventario(legado);
+        const desact = lista.filter(l => l.estado === 'desactivada').length;
+        const num = n => cargado ? formatearNumero(n) : '…';
+        const modo = legado ? 'legado' : 'lineas';
+        const tarjeta = (cls, label, n, estado) =>
+            `<button type="button" class="inv-total ${cls}" onclick="verTotalInventario('${modo}', '${estado}')" title="Ver ${label.toLowerCase()} de ${titulo.toLowerCase()}">
+                <span class="inv-total-label">${label}</span><span class="inv-total-n">${num(n)}</span></button>`;
+        return `<div class="inv-totales-grupo ${inventarioModo === modo ? 'inv-totales-actual' : ''}">
+            <h3>${titulo}</h3>
+            <div class="inv-totales-fila">
+                ${tarjeta('inv-total-todas', 'Total', lista.length, '')}
+                ${tarjeta('inv-total-activas', 'Activas', lista.length - desact, 'activas')}
+                ${tarjeta('inv-total-desact', 'Desactivadas', desact, 'desactivada')}
+            </div></div>`;
+    };
+    caja.innerHTML = grupo(false, 'Líneas', inventarioLineas.length > 0 || inventarioModo === 'lineas')
+                   + grupo(true, 'Legado', inventarioLegadoCargado);
+}
+
+// Click en una tarjeta: abre ese inventario filtrado por el estado elegido
+async function verTotalInventario(modo, estado) {
+    const sel = document.getElementById('lineasEstado');
+    if (sel) sel.value = estado;
+    await cambiarInventario(modo);
 }
 
 async function cambiarInventario(modo) {
@@ -5292,7 +5324,7 @@ async function cargarLineas() {
         .join('');
     actualizarBotonesInventario();
     if (inventarioModo === 'lineas') renderInventarioLineas();
-    else if (!inventarioLegadoCargado) cargarLegado();
+    if (!inventarioLegadoCargado) cargarLegado();
 }
 
 // Líneas del inventario que cumplen los filtros (las usa la tabla y la exportación)
@@ -5301,7 +5333,7 @@ function filasInventario() {
     const estado = document.getElementById('lineasEstado')?.value || '';
     const tel    = document.getElementById('lineasTelefonia')?.value || '';
     return inventarioActual().filter(l =>
-        (!estado || l.estado === estado) &&
+        (!estado || (estado === 'activas' ? l.estado !== 'desactivada' : l.estado === estado)) &&
         (!tel || String(l.telefonia || '').toLowerCase() === tel.toLowerCase()) &&
         (!q || [l.numero, l.iccid, l.rc_codigo].some(v => String(v || '').toLowerCase().includes(q))));
 }

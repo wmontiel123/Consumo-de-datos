@@ -420,7 +420,7 @@ function filtrosDePantalla(vista) {
         s.automaticas = !document.getElementById('activacionesOcultarSistema')?.checked;
     } else if (vista === 'inventario') {
         s.buscar    = v('lineasBuscar');
-        s.estadoInv = uno('lineasEstado', 'estadoInv');
+        s.estadoInv = v('lineasEstado') === 'activas' ? ['disponible', 'asignada'] : uno('lineasEstado', 'estadoInv');
         s.telefonia = uno('lineasTelefonia', 'telefonia');
     }
     if (s.desde === undefined) { s.desde = ''; s.hasta = ''; }

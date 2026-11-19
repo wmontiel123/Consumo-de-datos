@@ -2381,3 +2381,21 @@ th.th-filtrada { background: #e2e5f3; }
     .mapa-filtros input, .mapa-filtros select { flex: 1 1 100%; min-width: 0; }
     .mapa-contador { margin-left: 0; }
 }
+
+/* ══ Tarjetas de totales del inventario ══ */
+.inv-totales { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 18px; }
+.inv-totales:empty { display: none; }
+.inv-totales-grupo { background: #fff; border: 1px solid #e2e4f0; border-radius: 12px; padding: 14px 16px; }
+.inv-totales-grupo.inv-totales-actual { border-color: #35398C; box-shadow: 0 0 0 1px #35398C inset; }
+.inv-totales-grupo h3 { margin: 0 0 10px; font-size: 14px; color: #35398C; }
+.inv-totales-fila { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.inv-total { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 12px;
+    border: none; border-radius: 10px; cursor: pointer; text-align: left; font: inherit; color: #fff;
+    transition: transform .12s, box-shadow .12s; }
+.inv-total:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.12); }
+.inv-total-label { font-size: 12px; opacity: .92; }
+.inv-total-n { font-size: 22px; font-weight: 700; line-height: 1.1; }
+.inv-total-todas   { background: linear-gradient(135deg, #35398C 0%, #644087 100%); }
+.inv-total-activas { background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); }
+.inv-total-desact  { background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); }
+@media (max-width: 760px) { .inv-totales { grid-template-columns: 1fr; } .inv-total-n { font-size: 18px; } }
