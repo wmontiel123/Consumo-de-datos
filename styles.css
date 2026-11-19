@@ -2435,3 +2435,8 @@ th.th-filtrada { background: #e2e5f3; }
 /* ══ Inventario: línea con consumo y sin RC ══ */
 .badge-sin-rc { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600;
     background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; white-space: nowrap; cursor: help; }
+
+/* El desplegable de RC no tapa los botones: ocupa su lugar y empuja el resto */
+.combo-rc-lista { position: static; margin-top: 6px; max-height: 210px; box-shadow: 0 4px 12px rgba(26, 26, 46, .08); }
+.badge-sin-rc { cursor: pointer; }
+.badge-sin-rc:hover { background: #ffedd5; }

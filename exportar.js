@@ -68,7 +68,7 @@ const FILTROS = {
                     ? [['activo', 'Activo'], ['desactivado', 'Desactivado']]
                     : [['activo', 'Activo'], ['sin_consumo', 'Sin consumo'], ['desactivado', 'Desactivado']] },
     tipoRC:     { tipo: 'multi', titulo: 'Tipo de RC', opciones: () => Object.entries(TIPO_CONFIG).map(([k, v]) => [k, v.label]) },
-    estadoInv:  { tipo: 'multi', titulo: 'Estado en inventario', opciones: () => [['disponible', 'Disponible'], ['asignada', 'Asignada'], ['desactivada', 'Desactivada']] },
+    estadoInv:  { tipo: 'multi', titulo: 'Estado en inventario', opciones: () => [['disponible', 'Disponible'], ['asignada', 'Asignada'], ['desactivada', 'Desactivada'], ['sin_rc', 'Sin RC asignado · actualizar']] },
     tipoAct:    { tipo: 'multi', titulo: 'Tipo', opciones: () => [['rc', 'RC'], ['linea', 'Líneas']] },
     rc:         { tipo: 'texto', titulo: 'RC (uno o varios, separados por coma)', etiqueta: 'RC', lista: true, placeholder: 'Ej: RC_55591, RC_10243' },
     numero:     { tipo: 'texto', titulo: 'Número / ICCID (uno o varios, separados por coma)', etiqueta: 'Número / ICCID', lista: true, placeholder: 'Ej: 976989482, 8959502…' },
@@ -299,15 +299,22 @@ const REPORTES = {
             this.titulo = legado ? 'Inventario de legado' : 'Inventario de líneas';
             const rcs = _listaTexto(f.rc);
             const reg = l => l.rc_codigo ? _deviceDeRC(l.rc_codigo)?.regional : '';
+            // "Sin RC asignado" no es un estado: se suma a los estados elegidos
+            const estados = (f.estadoInv || []).filter(e => e !== 'sin_rc');
+            const sinRC = (f.estadoInv || []).includes('sin_rc');
+            const pasaEstado = l => !(f.estadoInv || []).length
+                || (estados.length && _pasa(l.estado, estados))
+                || (sinRC && lineaSinRCConConsumo(l));
             const filas = inventarioActual().filter(l =>
-                _pasa(l.telefonia, f.telefonia) && _pasa(l.estado, f.estadoInv) &&
+                _pasa(l.telefonia, f.telefonia) && pasaEstado(l) &&
                 (!f.regional?.length || _pasa(reg(l), f.regional)) &&
                 (!rcs.length || rcs.some(x => _norm(l.rc_codigo).includes(x))) &&
                 _contiene(f.buscar, l.numero, l.iccid, l.rc_codigo));
             return {
                 columnas: ['Número', 'ICCID', 'Telefonía', 'Estado', 'RC', 'Slot', 'Regional', 'Cargada', 'Por', 'Observación'],
                 filas: filas.map(l => [_txt(l.numero), _txt(l.iccid), _txt(l.telefonia),
-                    ESTADO_HIST_LABEL[l.estado] || l.estado, _txt(l.rc_codigo),
+                    ESTADO_HIST_LABEL[l.estado] || l.estado,
+                    l.rc_codigo ? _txt(l.rc_codigo) : (lineaSinRCConConsumo(l) ? 'Sin RC asignado' : ''),
                     l.sim_slot ? (l.sim_slot === 'sim1' ? 'SIM 1' : 'SIM 2') : '', _txt(reg(l)),
                     formatearFechaHora(l.creado_en), _txt(l.creado_por), _txt(l.observacion)]),
                 resumenes: [

@@ -5361,7 +5361,8 @@ function renderInventarioLineas(pagina, desdeControles) {
             <td>${l.rc_codigo
                     ? `<span class="link-num" onclick="abrirPanelRC(this.textContent)">${escHtml(l.rc_codigo)}</span>${l.sim_slot ? ` (${l.sim_slot === 'sim1' ? 'SIM 1' : 'SIM 2'})` : ''}`
                     : lineaSinRCConConsumo(l)
-                        ? `<span class="badge-sin-rc" title="Tiene consumo pero no tiene un RC asignado en el inventario: actualizá la asignación">Sin RC asignado · actualizar</span>`
+                        ? `<span class="badge-sin-rc" role="button" tabindex="0" onclick="filtrarSinRC()" onkeydown="if(event.key==='Enter')filtrarSinRC()"
+                               title="Tiene consumo pero no tiene un RC asignado en el inventario. Clic para ver solo estas líneas.">Sin RC asignado · actualizar</span>`
                         : '-'}</td>
             <td class="td-fecha">${formatearFechaHora(l.creado_en)}</td>
             <td>${escHtml(l.creado_por) || '-'}</td>
@@ -5380,6 +5381,14 @@ function botonesLinea(l) {
     return l.estado === 'desactivada'
         ? `<button class="btn-linea btn-linea-activar" onclick="cambiarEstadoLinea(${l.id}, true, ${leg})">Activar</button>`
         : `<button class="btn-linea btn-linea-desactivar" onclick="cambiarEstadoLinea(${l.id}, false, ${leg})">Desactivar</button>`;
+}
+
+// Clic en la etiqueta "Sin RC asignado": muestra solo esas líneas (otro clic lo saca)
+function filtrarSinRC() {
+    const sel = document.getElementById('lineasEstado');
+    if (!sel) return;
+    sel.value = sel.value === 'sin_rc' ? '' : 'sin_rc';
+    renderInventarioLineas(1, true);
 }
 
 // Línea en uso (con consumo en su último reporte) que no tiene RC en el inventario
