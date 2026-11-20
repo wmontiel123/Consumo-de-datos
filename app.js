@@ -73,6 +73,7 @@ function calcularSimEstadoDetallado(num, imei) {
     const m2m = n.toLowerCase() === 'm2m';
     if ((!n || m2m) && !i) return 'nulo';
     if (lineaDesactivadaInv(n, i)) return 'inactivo';
+    if (activaManualVigente(n, i)) return 'activo';
     const cNum  = (!m2m && n) ? mapaNumAConsumo.get(n)  : null;
     const cImei = i            ? mapaImeiAConsumo.get(i) : null;
     if (!cNum && !cImei) return activaSinReporte(n, i) ? 'activo' : 'no_asignado';
@@ -456,6 +457,30 @@ let lineasActivasSinReporte = new Set();
 // Líneas marcadas como desactivadas en el inventario ('n:<número>' / 'i:<ICCID>'):
 // cuentan siempre como inactivas, aunque el reporte del operador diga otra cosa.
 let lineasDesactivadasInv = new Set();
+// Líneas marcadas activas a mano (botón Activar): 'n:<número>' / 'i:<ICCID>' → 'AAAA-MM-DD'.
+// Cuentan como activas mientras no haya un reporte de un día posterior a la marca.
+let lineasActivaManual = new Map();
+function armarLineasActivaManual(lineas) {
+    lineasActivaManual = new Map();
+    (lineas || []).forEach(l => {
+        if (!l.activa_manual || l.estado === 'desactivada') return;
+        const f = String(l.activa_manual).slice(0, 10);
+        const n = String(l.numero || '').trim();
+        if (n && n.toLowerCase() !== 'm2m') lineasActivaManual.set('n:' + n, f);
+        const i = claveIccid(l.iccid);
+        if (i) lineasActivaManual.set('i:' + i, f);
+    });
+}
+function activaManualVigente(num, imei) {
+    const n = String(num || '').trim();
+    const i = claveIccid(imei);
+    const f = (n && n.toLowerCase() !== 'm2m' ? lineasActivaManual.get('n:' + n) : null)
+           || (i ? lineasActivaManual.get('i:' + i) : null);
+    if (!f) return false;
+    const recs = [n && n.toLowerCase() !== 'm2m' ? mapaNumAConsumo.get(n) : null, i ? mapaImeiAConsumo.get(i) : null];
+    const ult = recs.filter(Boolean).map(r => String(r.fecha_consumo || '').slice(0, 10)).sort().pop() || '';
+    return ult <= f;
+}
 function lineaDesactivadaInv(num, imei) {
     const n = String(num || '').trim();
     const i = claveIccid(imei);
@@ -690,7 +715,7 @@ async function cargarDatos() {
         loading.style.display = 'block';
 
         // 3 fetches en paralelo: dispositivos + consumo + estados SIM
-        const [data, consumoData, , lineasAsignadas, lineasDesact, legadoDesact] = await Promise.all([
+        const [data, consumoData, , lineasAsignadas, lineasDesact, legadoDesact, manuales] = await Promise.all([
             fetchTodos('dispositivos_ande', '*', 'regional', true, 'id'),
             // Solo la fila más reciente de cada número / IMEI (vista consumo_ultimo)
             fetchTodos('consumo_ultimo', 'numero,imei,observacion,estado_operador,consumo_mb,estado,fecha_consumo,telefonia', 'fecha_consumo', false, 'id')
@@ -704,7 +729,13 @@ async function cargarDatos() {
                 .then(r => r.error ? [] : (r.data || []), () => []),
             window.clienteSupabase.from('lineas_legado').select('numero,iccid').eq('estado', 'desactivada').limit(5000)
                 .then(r => r.error ? [] : (r.data || []), () => []),
+            // Marcas "activa a mano" (si la columna todavía no existe, se ignora)
+            Promise.all(['lineas', 'lineas_legado'].map(t => window.clienteSupabase.from(t)
+                    .select('numero,iccid,estado,activa_manual').not('activa_manual', 'is', null).limit(1000)
+                    .then(r => r.error ? [] : (r.data || []), () => [])))
+                .then(x => x.flat()),
         ]);
+        armarLineasActivaManual(manuales);
         armarLineasActivasSinReporte(lineasAsignadas, consumoData);
         armarLineasDesactivadasInv([...lineasDesact, ...legadoDesact]);
 
@@ -904,6 +935,7 @@ function simEstado(num, imei) {
     if (!n && !i)  return null;  // slot vacío
     if (m2m && !i) return null;  // M2M sin IMEI
     if (lineaDesactivadaInv(n, i)) return 'desactivado';
+    if (activaManualVigente(n, i)) return 'activo';
     const cNum  = (!m2m && n) ? mapaNumAConsumo.get(n)  : null;
     const cImei = i            ? mapaImeiAConsumo.get(i) : null;
     if (!cNum && !cImei) return activaSinReporte(n, i) ? 'activo' : 'no_asignado';  // configurado pero sin registros
@@ -3812,6 +3844,7 @@ async function abrirPanelRC(codigo) {
             const m2m = n.toLowerCase() === 'm2m';
             if ((!n || m2m) && !i) return 'nulo';
             if (lineaDesactivadaInv(n, i)) return 'inactivo';
+            if (activaManualVigente(n, i)) return 'activo';
 
             const latestRow = (rows) => {
                 if (!rows.length) return null;
@@ -4856,6 +4889,7 @@ async function recalcularEstadosPostImport(filas) {
         const m2m = n.toLowerCase() === 'm2m';
         if ((!n || m2m) && !i) return 'nulo';
         if (lineaDesactivadaInv(n, i)) return 'inactivo';
+        if (activaManualVigente(n, i)) return 'activo';
         const eN = (!m2m && n && estadoNum.has(n))  ? estadoNum.get(n)  : null;
         const eI = (i && estadoImei.has(i))          ? estadoImei.get(i) : null;
         if (!eN && !eI) return activaSinReporte(n, i) ? 'activo' : 'no_asignado';
@@ -5411,7 +5445,7 @@ function renderInventarioLineas(pagina, desdeControles) {
 function botonesLinea(l) {
     if (esViewer()) return '';
     const leg = !!l._legado;
-    return l.estado === 'desactivada'
+    return (l.estado === 'desactivada' || estadoOperativoLinea(l) === 'desactivado')
         ? `<button class="btn-linea btn-linea-activar" onclick="cambiarEstadoLinea(${l.id}, true, ${leg})">Activar</button>`
         : `<button class="btn-linea btn-linea-desactivar" onclick="cambiarEstadoLinea(${l.id}, false, ${leg})">Desactivar</button>`;
 }
@@ -5433,9 +5467,21 @@ function estadoOperativoLinea(l) {
     if (l.estado === 'desactivada') return 'desactivado';
     const n = String(l.numero || '').trim();
     const i = claveIccid(l.iccid);
+    if (l.activa_manual && marcaManualVigente(l)) return 'activo';
     const c = (n && !esM2MTexto(n) ? mapaNumAConsumo.get(n) : null) || (i ? mapaImeiAConsumo.get(i) : null);
     if (!c) return activaSinReporte(n, i) ? 'activo' : 'desactivado';
     return String(c.estado || '').toLowerCase() === 'desactivado' ? 'desactivado' : 'activo';
+}
+
+// La marca manual de la fila vale si no hay un reporte de un día posterior
+function marcaManualVigente(l) {
+    if (!l.activa_manual) return false;
+    const f = String(l.activa_manual).slice(0, 10);
+    const n = String(l.numero || '').trim();
+    const i = claveIccid(l.iccid);
+    const recs = [n && !esM2MTexto(n) ? mapaNumAConsumo.get(n) : null, i ? mapaImeiAConsumo.get(i) : null];
+    const ult = recs.filter(Boolean).map(r => String(r.fecha_consumo || '').slice(0, 10)).sort().pop() || '';
+    return ult <= f;
 }
 
 function badgeEstadoOperativo(l) {
@@ -5444,6 +5490,7 @@ function badgeEstadoOperativo(l) {
     const i = claveIccid(l.iccid);
     const sinReporte = !((n && !esM2MTexto(n) && mapaNumAConsumo.has(n)) || (i && mapaImeiAConsumo.has(i)));
     const titulo = l.estado === 'desactivada' ? 'Desactivada en el inventario'
+                 : (est === 'activo' && marcaManualVigente(l)) ? `Activada a mano el ${formatearFecha(String(l.activa_manual).slice(0, 10))}`
                  : sinReporte ? (est === 'activo' ? 'Su telefonía no manda reportes' : 'No figura en los reportes del operador')
                  : est === 'activo' ? 'Figura activa en el último reporte' : 'El último reporte la da de baja';
     return `<span class="badge-estado ${est === 'activo' ? 'badge-activo' : 'badge-desactivado'}" title="${titulo}">${est === 'activo' ? 'Activo' : 'Desactivado'}</span>`;
@@ -5927,13 +5974,26 @@ async function cambiarEstadoLinea(id, activar, legado = false, motivoDado = null
     const linea = listaInventario(legado).find(l => l.id === id);
     if (!linea) return false;
     const ref    = (esM2MTexto(linea.numero) ? null : linea.numero) || linea.iccid;
-    const nuevo  = activar ? (linea.rc_codigo ? 'asignada' : 'disponible') : 'desactivada';
+    const nuevo  = activar ? ((linea.rc_codigo || linea.estado === 'asignada') ? 'asignada' : 'disponible') : 'desactivada';
     const motivo = motivoDado ?? prompt(`¿${activar ? 'Activar' : 'Desactivar'} la línea${legado ? ' de legado' : ''} ${ref}?\n\nMotivo (opcional):`, '');
     if (motivo === null) return false;
 
-    const { error } = await window.clienteSupabase.from(tablaLineas(legado)).update({ estado: nuevo }).eq('id', id);
+    // Activar deja la marca "activa a mano" (la columna Línea la muestra activa hasta un reporte posterior);
+    // desactivar la borra
+    const marca = activar ? new Date().toISOString() : null;
+    let { error } = await window.clienteSupabase.from(tablaLineas(legado)).update({ estado: nuevo, activa_manual: marca }).eq('id', id);
+    if (error && /activa_manual/.test(error.message || '')) {
+        // La columna todavía no existe en la base: se cambia solo el estado
+        ({ error } = await window.clienteSupabase.from(tablaLineas(legado)).update({ estado: nuevo }).eq('id', id));
+    }
     if (error) { alert('❌ Error: ' + error.message); return false; }
-    await registrarEstado('linea', ref, linea.estado, nuevo, motivo.trim() || null);
+    await registrarEstado('linea', ref, linea.estado, nuevo, (activar ? 'Activada a mano' : 'Desactivada') + (motivo.trim() ? ': ' + motivo.trim() : ''));
+    linea.activa_manual = marca;
+    {
+        const n0 = String(linea.numero || '').trim(), i0 = claveIccid(linea.iccid);
+        [n0 && !esM2MTexto(n0) ? 'n:' + n0 : null, i0 ? 'i:' + i0 : null].filter(Boolean)
+            .forEach(k => marca ? lineasActivaManual.set(k, marca.slice(0, 10)) : lineasActivaManual.delete(k));
+    }
     // Tabla y tarjetas al instante (la recarga completa va al final, por detrás)
     linea.estado = nuevo;
     actualizarBotonesInventario();

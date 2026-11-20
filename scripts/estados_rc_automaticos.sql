@@ -2,6 +2,8 @@
 -- Estados de los RC calculados en la base, después de cada importación
 --
 -- Estado de cada SIM del RC (igual que la app):
+--   activo (manual) la línea se marcó activa a mano en el inventario y no hay un
+--                reporte de un día posterior a la marca
 --   nulo         sin número ni ICCID
 --   inactivo     la línea está desactivada en el inventario (líneas o legado),
 --                o el último reporte la da como desactivada
@@ -40,6 +42,7 @@ begin
     drop table if exists _desinv;
     drop table if exists _sinrep;
     drop table if exists _rc_calc;
+    drop table if exists _man;
 
     -- Estado actual de cada línea según su último reporte (consumo_sim.estado lo
     -- mantiene la importación: activo / sin_consumo / desactivado). Clave por
@@ -60,7 +63,7 @@ begin
         union all
         select clave_iccid(imei), ultima_fecha, estado from ult where imei <> ''
     )
-    select distinct on (key) key, lower(coalesce(estado, '')) as estado
+    select distinct on (key) key, lower(coalesce(estado, '')) as estado, ultima_fecha as fecha
       from claves
      order by key, ultima_fecha desc nulls last;
     create index on _est (key);
@@ -90,6 +93,17 @@ begin
          where trim(coalesce(iccid, '')) <> '' and lower(trim(coalesce(telefonia, ''))) not in (select t from tel)
     ) x;
 
+    -- Líneas marcadas activas a mano (botón Activar del inventario): cuentan como
+    -- activas mientras no haya un reporte de un día posterior a la marca
+    create temp table _man on commit drop as
+    select key, max(f) as f from (
+        select trim(numero) as key, activa_manual::date as f from lineas        where activa_manual is not null and estado <> 'desactivada' and upper(trim(coalesce(numero, ''))) not in ('', 'M2M')
+        union all select clave_iccid(iccid), activa_manual::date from lineas        where activa_manual is not null and estado <> 'desactivada' and trim(coalesce(iccid, '')) <> ''
+        union all select trim(numero),       activa_manual::date from lineas_legado where activa_manual is not null and estado <> 'desactivada' and upper(trim(coalesce(numero, ''))) not in ('', 'M2M')
+        union all select clave_iccid(iccid), activa_manual::date from lineas_legado where activa_manual is not null and estado <> 'desactivada' and trim(coalesce(iccid, '')) <> ''
+    ) x group by key;
+    create index on _man (key);
+
     -- Estado calculado de cada SIM y del RC
     create temp table _rc_calc on commit drop as
     with s as (
@@ -107,6 +121,8 @@ begin
                case
                    when s.num is null and s.ic is null                                    then 'nulo'
                    when exists (select 1 from _desinv x where x.key in (s.num, s.ic))     then 'inactivo'
+                   when exists (select 1 from _man m where m.key in (s.num, s.ic)
+                                  and coalesce(greatest(en.fecha, ei.fecha), '-infinity'::date) <= m.f) then 'activo'
                    when en.estado is null and ei.estado is null then
                         case when exists (select 1 from _sinrep x where x.key in (s.num, s.ic)) then 'activo' else 'no_asignado' end
                    when en.estado = 'desactivado' or ei.estado = 'desactivado'            then 'inactivo'

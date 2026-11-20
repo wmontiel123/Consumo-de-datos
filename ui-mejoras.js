@@ -943,7 +943,7 @@ function engancharPanelSIM() {
                 caja.innerHTML = '<span class="panel-linea-txt">No está en el inventario de líneas ni en el de legado.</span>';
                 return r;
             }
-            const desact = linea.estado === 'desactivada';
+            const desact = linea.estado === 'desactivada' || estadoOperativoLinea(linea) === 'desactivado';
             caja.innerHTML = `
                 <span class="panel-linea-txt">${linea._legado ? 'Legado' : 'Inventario'}:
                     <span class="badge-estado ${LINEA_ESTADO_CLS[linea.estado] || ''}">${escHtml(ESTADO_HIST_LABEL[linea.estado] || linea.estado)}</span>
