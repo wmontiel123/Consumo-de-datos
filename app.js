@@ -5294,10 +5294,10 @@ function renderTotalesInventario() {
     if (!caja) return;
     const grupo = (legado, titulo, cargado) => {
         const lista = listaInventario(legado);
-        // Activas / desactivadas según la columna "Línea" (reportes del operador)
+        // Activas / desactivadas según la columna "Línea" (estado del inventario)
         const activas = lista.filter(l => estadoOperativoLinea(l) === 'activo').length;
         const desact  = lista.length - activas;
-        // Asignadas en el inventario y activas según los reportes del operador
+        // Asignadas y activas en el inventario
         const asigActivas = lista.filter(l => l.estado === 'asignada' && estadoOperativoLinea(l) === 'activo').length;
         const disponibles = lista.filter(l => l.estado === 'disponible').length;
         const num = n => cargado ? formatearNumero(n) : '…';
@@ -5460,19 +5460,12 @@ function filtrarSinRC() {
     renderInventarioLineas(1, true);
 }
 
-// Estado de la línea según los reportes del operador (aparte del estado del inventario):
-//   desactivado → desactivada en el inventario, el último reporte la da de baja,
-//                 o no figura en ningún reporte
-//   activo      → figura en el último reporte (con o sin consumo), o es una línea
-//                 asignada de una telefonía que no manda reportes (ej. VOX)
+// Estado de la columna "Línea": sigue al inventario, no a los reportes del operador
+// (los reportes no cambian el estado de las líneas; se activan / desactivan a mano):
+//   desactivado → desactivada en el inventario
+//   activo      → asignada o disponible
 function estadoOperativoLinea(l) {
-    if (l.estado === 'desactivada') return 'desactivado';
-    const n = String(l.numero || '').trim();
-    const i = claveIccid(l.iccid);
-    if (l.activa_manual && marcaManualVigente(l)) return 'activo';
-    const c = (n && !esM2MTexto(n) ? mapaNumAConsumo.get(n) : null) || (i ? mapaImeiAConsumo.get(i) : null);
-    if (!c) return activaSinReporte(n, i) ? 'activo' : 'desactivado';
-    return String(c.estado || '').toLowerCase() === 'desactivado' ? 'desactivado' : 'activo';
+    return l.estado === 'desactivada' ? 'desactivado' : 'activo';
 }
 
 // La marca manual de la fila vale si no hay un reporte de un día posterior
@@ -5488,13 +5481,7 @@ function marcaManualVigente(l) {
 
 function badgeEstadoOperativo(l) {
     const est = estadoOperativoLinea(l);
-    const n = String(l.numero || '').trim();
-    const i = claveIccid(l.iccid);
-    const sinReporte = !((n && !esM2MTexto(n) && mapaNumAConsumo.has(n)) || (i && mapaImeiAConsumo.has(i)));
-    const titulo = l.estado === 'desactivada' ? 'Desactivada en el inventario'
-                 : (est === 'activo' && marcaManualVigente(l)) ? `Activada a mano el ${formatearFecha(String(l.activa_manual).slice(0, 10))}`
-                 : sinReporte ? (est === 'activo' ? 'Su telefonía no manda reportes' : 'No figura en los reportes del operador')
-                 : est === 'activo' ? 'Figura activa en el último reporte' : 'El último reporte la da de baja';
+    const titulo = est === 'activo' ? 'Activa en el inventario' : 'Desactivada en el inventario';
     return `<span class="badge-estado ${est === 'activo' ? 'badge-activo' : 'badge-desactivado'}" title="${titulo}">${est === 'activo' ? 'Activo' : 'Desactivado'}</span>`;
 }
 
