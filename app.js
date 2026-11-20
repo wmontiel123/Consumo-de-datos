@@ -705,6 +705,38 @@ async function sincronizarEstadosDispositivos(forzarTodos = false) {
     console.log(`🔄 Sync estados: ${total} dispositivos actualizados`);
 }
 
+// Listas del inventario que usa el cálculo de estados de las SIM de los RC
+// (todas las filas, sin el tope de 1000 por consulta)
+async function traerListasInventario() {
+    const [lineasAsignadas, lineasDesact, legadoDesact, manuales] = await Promise.all([
+            traerTodasEnParalelo(o => window.clienteSupabase.from('lineas')
+                    .select('numero,iccid,telefonia', o?.head ? { count: 'exact', head: true } : undefined)
+                    .eq('estado', 'asignada').order('id', { ascending: true }))
+                .catch(() => []),
+            // Líneas desactivadas en el inventario: todas, sin el tope de 1000 filas por consulta
+            traerTodasEnParalelo(o => window.clienteSupabase.from('lineas')
+                    .select('numero,iccid', o?.head ? { count: 'exact', head: true } : undefined)
+                    .eq('estado', 'desactivada').order('id', { ascending: true }))
+                .catch(() => []),
+            traerTodasEnParalelo(o => window.clienteSupabase.from('lineas_legado')
+                    .select('numero,iccid', o?.head ? { count: 'exact', head: true } : undefined)
+                    .eq('estado', 'desactivada').order('id', { ascending: true }))
+                .catch(() => []),
+            // Marcas "activa a mano" (si la columna todavía no existe, se ignora)
+            Promise.all(['lineas', 'lineas_legado'].map(t => traerTodasEnParalelo(o => window.clienteSupabase.from(t)
+                    .select('numero,iccid,estado,activa_manual', o?.head ? { count: 'exact', head: true } : undefined)
+                    .not('activa_manual', 'is', null).order('id', { ascending: true }))
+                    .catch(() => [])))
+                .then(x => x.flat()),
+    ]);
+    return { lineasAsignadas, lineasDesact, legadoDesact, manuales };
+}
+function aplicarListasInventario(l, consumoData) {
+    armarLineasActivaManual(l.manuales);
+    armarLineasActivasSinReporte(l.lineasAsignadas, consumoData);
+    armarLineasDesactivadasInv([...l.lineasDesact, ...l.legadoDesact]);
+}
+
 // Cargar datos de Supabase (dispositivos + consumos en paralelo)
 async function cargarDatos() {
     const loading = document.getElementById('loading');
@@ -715,29 +747,15 @@ async function cargarDatos() {
         loading.style.display = 'block';
 
         // 3 fetches en paralelo: dispositivos + consumo + estados SIM
-        const [data, consumoData, , lineasAsignadas, lineasDesact, legadoDesact, manuales] = await Promise.all([
+        const [data, consumoData, , listasInv] = await Promise.all([
             fetchTodos('dispositivos_ande', '*', 'regional', true, 'id'),
             // Solo la fila más reciente de cada número / IMEI (vista consumo_ultimo)
             fetchTodos('consumo_ultimo', 'numero,imei,observacion,estado_operador,consumo_mb,estado,fecha_consumo,telefonia', 'fecha_consumo', false, 'id')
                 .catch(e => { console.warn('⚠️ No se pudo cargar consumo_ultimo:', e.message); return []; }),
             cargarEstadosSIM(),  // no depende de los otros — va en paralelo
-            traerTodasEnParalelo(o => window.clienteSupabase.from('lineas')
-                    .select('numero,iccid,telefonia', o?.head ? { count: 'exact', head: true } : undefined)
-                    .eq('estado', 'asignada').order('id', { ascending: true }))
-                .catch(() => []),
-            window.clienteSupabase.from('lineas').select('numero,iccid').eq('estado', 'desactivada').limit(1000)
-                .then(r => r.error ? [] : (r.data || []), () => []),
-            window.clienteSupabase.from('lineas_legado').select('numero,iccid').eq('estado', 'desactivada').limit(5000)
-                .then(r => r.error ? [] : (r.data || []), () => []),
-            // Marcas "activa a mano" (si la columna todavía no existe, se ignora)
-            Promise.all(['lineas', 'lineas_legado'].map(t => window.clienteSupabase.from(t)
-                    .select('numero,iccid,estado,activa_manual').not('activa_manual', 'is', null).limit(1000)
-                    .then(r => r.error ? [] : (r.data || []), () => [])))
-                .then(x => x.flat()),
+            traerListasInventario(),
         ]);
-        armarLineasActivaManual(manuales);
-        armarLineasActivasSinReporte(lineasAsignadas, consumoData);
-        armarLineasDesactivadasInv([...lineasDesact, ...legadoDesact]);
+        aplicarListasInventario(listasInv, consumoData);
 
         // Construir mapas de consumo (datos vienen DESC → primer aparición = más reciente)
         mapaNumAConsumo  = new Map();
@@ -4755,13 +4773,17 @@ async function actualizarEstados() {
     const original = btn ? btn.innerHTML : '';
     if (btn) { btn.disabled = true; btn.textContent = 'Actualizando…'; }
     try {
-        // 1. Recalcular y guardar en BD (respeta desactivados manuales)
+        // 1. Volver a leer el inventario (líneas desactivadas, marcas a mano) por si cambió
+        //    desde otra pantalla o desde la base
+        const consumoActual = [...new Set([...mapaNumAConsumo.values(), ...mapaImeiAConsumo.values()])];
+        aplicarListasInventario(await traerListasInventario(), consumoActual);
+        // 2. Recalcular y guardar en BD (respeta desactivados manuales)
         await sincronizarEstadosDispositivos(false);
-        // 2. Recargar desde BD para mostrar exactamente lo que quedó guardado
+        // 3. Recargar desde BD para mostrar exactamente lo que quedó guardado
         const freshData = await fetchTodos('dispositivos_ande', '*', 'regional', true, 'id');
         todosLosDatos = freshData;
         construirMapasDevice(freshData);
-        // 3. Re-aplicar filtros y renderizar desde datos frescos
+        // 4. Re-aplicar filtros y renderizar desde datos frescos
         aplicarFiltros();
     } catch (e) {
         alert('❌ Error al actualizar: ' + e.message);
