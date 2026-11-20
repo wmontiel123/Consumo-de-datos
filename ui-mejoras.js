@@ -621,7 +621,7 @@ const TABLAS_INTERACTIVAS = {
     },
     inventario: {
         sel: '#subtab-inventario .panel-historial',
-        acc: [l => l.numero, l => l.iccid, l => l.telefonia, l => l.estado, l => estadoOperativoLinea(l) === 'activo' ? 'Activo' : 'Desactivado',
+        acc: [l => l.numero, l => l.iccid, l => l.telefonia, l => l.estado, l => etiquetaLinea(l),
               l => l.rc_codigo, l => l.creado_en, l => l.creado_por, null],
         rehacer: () => renderInventarioLineas(1),
         dbl: {
@@ -630,7 +630,7 @@ const TABLAS_INTERACTIVAS = {
             RC:          v => _ponerValor('lineasBuscar', v),
             'Telefonía': v => _elegirOpcion('lineasTelefonia', v),
             Estado:      v => _elegirOpcion('lineasEstado', v),
-            'Línea':     v => _elegirOpcion('lineasOperativo', _norm(v).startsWith('act') ? 'activo' : 'desactivado'),
+            'Línea':     v => _elegirOpcion('lineasOperativo', _norm(v).startsWith('act') ? 'activo' : _norm(v).startsWith('back') ? 'backup' : 'desactivado'),
         },
         aplicar: () => renderInventarioLineas(1),
     },

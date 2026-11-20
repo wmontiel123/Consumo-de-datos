@@ -5318,7 +5318,8 @@ function renderTotalesInventario() {
         const lista = listaInventario(legado);
         // Activas / desactivadas según la columna "Línea" (estado del inventario)
         const activas = lista.filter(l => estadoOperativoLinea(l) === 'activo').length;
-        const desact  = lista.length - activas;
+        const desact  = lista.filter(l => estadoOperativoLinea(l) === 'desactivado').length;
+        const backups = lista.filter(l => estadoOperativoLinea(l) === 'backup').length;
         // Asignadas y activas en el inventario
         const asigActivas = lista.filter(l => l.estado === 'asignada' && estadoOperativoLinea(l) === 'activo').length;
         const disponibles = lista.filter(l => l.estado === 'disponible').length;
@@ -5335,6 +5336,7 @@ function renderTotalesInventario() {
                 ${tarjeta('inv-total-desact', 'Desactivadas', desact, '', 'desactivado')}
                 ${tarjeta('inv-total-asig-act', 'Asignadas y activas', asigActivas, 'asignada', 'activo')}
                 ${legado ? '' : tarjeta('inv-total-disp', 'Disponibles', disponibles, 'disponible')}
+                ${legado && !backups ? '' : tarjeta('inv-total-backup', 'Backup', backups, '', 'backup')}
             </div></div>`;
     };
     caja.innerHTML = grupo(false, 'Líneas', inventarioLineas.length > 0 || inventarioModo === 'lineas')
@@ -5485,10 +5487,14 @@ function filtrarSinRC() {
 // Estado de la columna "Línea": sigue al inventario, no a los reportes del operador
 // (los reportes no cambian el estado de las líneas; se activan / desactivan a mano):
 //   desactivado → desactivada en el inventario
+//   backup      → marcada como backup (y no desactivada)
 //   activo      → asignada o disponible
 function estadoOperativoLinea(l) {
-    return l.estado === 'desactivada' ? 'desactivado' : 'activo';
+    if (l.estado === 'desactivada') return 'desactivado';
+    return l.backup ? 'backup' : 'activo';
 }
+const ETIQUETA_LINEA = { activo: 'Activo', desactivado: 'Desactivado', backup: 'Backup' };
+const etiquetaLinea = l => ETIQUETA_LINEA[estadoOperativoLinea(l)];
 
 // La marca manual de la fila vale si no hay un reporte de un día posterior
 function marcaManualVigente(l) {
@@ -5503,8 +5509,8 @@ function marcaManualVigente(l) {
 
 function badgeEstadoOperativo(l) {
     const est = estadoOperativoLinea(l);
-    const titulo = est === 'activo' ? 'Activa en el inventario' : 'Desactivada en el inventario';
-    return `<span class="badge-estado ${est === 'activo' ? 'badge-activo' : 'badge-desactivado'}" title="${titulo}">${est === 'activo' ? 'Activo' : 'Desactivado'}</span>`;
+    const titulo = { activo: 'Activa en el inventario', desactivado: 'Desactivada en el inventario', backup: 'Línea de backup' }[est];
+    return `<span class="badge-estado badge-${est === 'activo' ? 'activo' : est === 'backup' ? 'backup' : 'desactivado'}" title="${titulo}">${ETIQUETA_LINEA[est]}</span>`;
 }
 
 // Línea en uso (con consumo en su último reporte) que no tiene RC en el inventario
