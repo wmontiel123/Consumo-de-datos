@@ -53,7 +53,7 @@ const SIM_EST_COLOR = {
     activo:      '#16a34a', // verde   (tiene registros, activo y con consumo > 0)
     inactivo:    '#dc2626', // rojo    (tiene registros pero desactivado)
     nulo:        '#dc2626', // rojo    (slot vacío, sin número ni IMEI)
-    no_asignado: '#f97316', // naranja (tiene num/IMEI pero sin registros en consumo)
+    no_asignado: '#dc2626', // rojo    (tiene num/IMEI pero no figura en ningún reporte → desactivada)
     sin_consumo: '#f97316', // naranja (tiene registros activos pero consumo_mb = 0)
 };
 const SIM_EST_LABEL = {
@@ -87,19 +87,14 @@ function calcularSimEstadoDetallado(num, imei) {
 }
 
 // Reglas RC desde estados de slots:
-// activo          → activo
-// 2 rojos         → desactivado
-// 2 naranjas      → sin_consumo (RC naranja)
-// 1 rojo+1 naranja→ sin_consumo (RC naranja)
-// resto           → null (sin cambio forzado)
+//   alguna SIM activa (con consumo)        → activo
+//   alguna SIM sin consumo (y ninguna activa) → sin_consumo
+//   las dos desactivadas / vacías / sin reporte → desactivado
+// (una SIM que no figura en ningún reporte cuenta como desactivada)
 function rcEstadoDesdeSimEstados(s1e, s2e) {
-    if (s1e === 'activo' || s2e === 'activo') return 'activo';
-    const isRojo    = e => e === 'inactivo' || e === 'nulo';
-    const isNaranja = e => e === 'no_asignado' || e === 'sin_consumo';
-    if ([s1e, s2e].filter(isRojo).length >= 2)                             return 'desactivado';
-    if ([s1e, s2e].filter(isNaranja).length >= 2)                          return 'sin_consumo';
-    if ([s1e, s2e].some(isRojo) && [s1e, s2e].some(isNaranja))            return 'sin_consumo';
-    return null;
+    if (s1e === 'activo' || s2e === 'activo')           return 'activo';
+    if (s1e === 'sin_consumo' || s2e === 'sin_consumo') return 'sin_consumo';
+    return 'desactivado';
 }
 
 function cerrarSesion() {
@@ -900,7 +895,7 @@ function badgeEstado(device) {
 
 // Estado de un slot SIM (num+imei como conjunto).
 // null = slot vacío; 'activo' = verde; 'desactivado' = rojo;
-// 'no_asignado' = naranja; 'sin_consumo' = naranja.
+// 'no_asignado' = rojo (no figura en reportes); 'sin_consumo' = naranja.
 function simEstado(num, imei) {
     let n = String(num || '').trim();
     if (n === '-') n = '';  // '-' es equivalente a vacío
@@ -923,13 +918,13 @@ function simEstado(num, imei) {
 }
 
 function _simDotColor(est) {
-    if (est === 'desactivado') return '#dc2626';
-    if (est === 'no_asignado' || est === 'sin_consumo') return '#f97316';
+    if (est === 'desactivado' || est === 'no_asignado') return '#dc2626';
+    if (est === 'sin_consumo') return '#f97316';
     return '#16a34a';
 }
 function _simTextStyle(est) {
-    if (est === 'desactivado') return 'color:#dc2626;';
-    if (est === 'no_asignado' || est === 'sin_consumo') return 'color:#f97316;';
+    if (est === 'desactivado' || est === 'no_asignado') return 'color:#dc2626;';
+    if (est === 'sin_consumo') return 'color:#f97316;';
     return '';
 }
 
@@ -3846,7 +3841,7 @@ async function abrirPanelRC(codigo) {
         const sim1Est = getSimEst(sim1n, sim1i);
         const sim2Est = getSimEst(sim2n, sim2i);
 
-        // Mostrar tarjeta SIM siempre (nulo=rojo slot vacío, no_asignado=naranja sin registros)
+        // Mostrar tarjeta SIM siempre (nulo=rojo slot vacío, no_asignado=rojo sin registros)
         const sim1Card = renderPanelSimCard(sim1n, sim1i, sim1MB, 'sim1', sim1Est);
         const sim2Card = renderPanelSimCard(sim2n, sim2i, sim2MB, 'sim2', sim2Est);
 
@@ -4049,8 +4044,8 @@ function renderPanelSimCard(num, imei, totalMB, slot, estado) {
     const slotLabel = slot === 'sim1' ? 'SIM Principal' : 'SIM Respaldo';
 
     const dotColor = SIM_EST_COLOR[estado] || '#9ca3af';
-    const isNaranja = estado === 'no_asignado' || estado === 'sin_consumo';
-    const txtColor  = (estado === 'inactivo' || estado === 'nulo') ? '#dc2626'
+    const isNaranja = estado === 'sin_consumo';
+    const txtColor  = (estado === 'inactivo' || estado === 'nulo' || estado === 'no_asignado') ? '#dc2626'
                     : isNaranja                                     ? '#f97316'
                     : '';
     const estLabel = SIM_EST_LABEL[estado] || '';

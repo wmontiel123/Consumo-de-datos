@@ -8,13 +8,12 @@
 --   activo       el último reporte tiene consumo; o es una línea asignada de una
 --                telefonía que no manda reportes (ej. VOX)
 --   sin_consumo  el último reporte la trae con 0 MB
---   no_asignado  no aparece en ningún reporte
+--   no_asignado  no aparece en ningún reporte (cuenta como desactivada)
 --
 -- Estado del RC:
 --   activo       si al menos una SIM está activa (con consumo)
---   desactivado  si las dos están desactivadas / vacías
---   sin_consumo  en cualquier otro caso (las dos sin consumo, o una sin consumo
---                y la otra desactivada)
+--   sin_consumo  si alguna SIM está sin consumo (y ninguna activa)
+--   desactivado  si las dos están desactivadas, vacías o sin reporte
 --
 -- No toca los RC "desactivado_manual" (desactivados a mano desde el panel):
 -- esos solo vuelven a activo con reactivar_por_consumo() cuando una SIM consume
@@ -128,9 +127,9 @@ begin
     )
     select r.*,
            case
-               when 'activo' in (s1, s2)                                           then 'activo'
-               when s1 in ('inactivo', 'nulo') and s2 in ('inactivo', 'nulo')      then 'desactivado'
-               else 'sin_consumo'
+               when 'activo' in (s1, s2)       then 'activo'
+               when 'sin_consumo' in (s1, s2)  then 'sin_consumo'
+               else 'desactivado'
            end as estado_nuevo
       from r
      where lower(coalesce(estado_ant, '')) <> 'desactivado_manual';
