@@ -18,7 +18,7 @@
 //   SMTP_HOST       por defecto "smtppro.zoho.com" (cuentas de organización; personales: smtp.zoho.com)
 //   SMTP_PORT       por defecto 465 (SSL). Supabase bloquea 25 y 587.
 //   MAIL_FROM       por defecto "Gestión ANDE <SMTP_USER>" (debe ser SMTP_USER o un alias suyo en Zoho)
-//   APROBADORES     por defecto "soporte@inovasi.com.py,wmontiel@inovasi.com.py"
+//   APROBADORES     por defecto "soporte@inovasi.com.py,wmontiel@inovasi.com.py,sinsaurralde@inovasi.com.py"
 //   APP_URL         por defecto "https://gcnoc.inovasi.com.py"
 // SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY los provee Supabase automáticamente.
 // ════════════════════════════════════════════════════════════════
@@ -33,7 +33,7 @@ const SMTP_USER      = Deno.env.get('SMTP_USER') ?? '';
 const SMTP_PASS      = Deno.env.get('SMTP_PASS') ?? '';
 const MAIL_FROM      = Deno.env.get('MAIL_FROM') ?? `Gestión ANDE <${SMTP_USER}>`;
 const APP_URL        = (Deno.env.get('APP_URL') ?? 'https://gcnoc.inovasi.com.py').replace(/\/$/, '');
-const APROBADORES    = (Deno.env.get('APROBADORES') ?? 'soporte@inovasi.com.py,wmontiel@inovasi.com.py')
+const APROBADORES    = (Deno.env.get('APROBADORES') ?? 'soporte@inovasi.com.py,wmontiel@inovasi.com.py,sinsaurralde@inovasi.com.py')
     .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 const ORIGENES = [APP_URL, 'http://localhost:8765'];   // localhost: pruebas locales
 

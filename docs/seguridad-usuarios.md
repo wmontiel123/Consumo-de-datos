@@ -4,7 +4,7 @@
 
 1. **Solicitud** — En el login, "Solicitar acceso": nombre, correo, usuario deseado y motivo.
 2. **Aviso a los aprobadores** — La Edge Function `solicitud-usuario` guarda la solicitud y envía un mail a
-   `soporte@inovasi.com.py` y `wmontiel@inovasi.com.py`, con botones *Aprobar como Viewer*, *Aprobar como Admin* y *Rechazar*.
+   `soporte@inovasi.com.py`, `wmontiel@inovasi.com.py` y `sinsaurralde@inovasi.com.py`, con botones *Aprobar como Viewer*, *Aprobar como Admin* y *Rechazar*.
 3. **Aprobación** — El botón abre `cuenta.html`, que pide confirmar. El primero que confirma resuelve la solicitud:
    el enlace del otro aprobador queda sin efecto y ambos reciben un aviso de cómo se resolvió.
 4. **Activación** — Si se aprueba, el usuario se crea **inactivo y sin contraseña**. El solicitante recibe un enlace
