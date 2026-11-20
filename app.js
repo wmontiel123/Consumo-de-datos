@@ -5262,10 +5262,12 @@ function renderTotalesInventario() {
     const grupo = (legado, titulo, cargado) => {
         const lista = listaInventario(legado);
         const desact = lista.filter(l => l.estado === 'desactivada').length;
+        // Asignadas en el inventario y activas según los reportes del operador
+        const asigActivas = lista.filter(l => l.estado === 'asignada' && estadoOperativoLinea(l) === 'activo').length;
         const num = n => cargado ? formatearNumero(n) : '…';
         const modo = legado ? 'legado' : 'lineas';
-        const tarjeta = (cls, label, n, estado) =>
-            `<button type="button" class="inv-total ${cls}" onclick="verTotalInventario('${modo}', '${estado}')" title="Ver ${label.toLowerCase()} de ${titulo.toLowerCase()}">
+        const tarjeta = (cls, label, n, estado, operativo = '') =>
+            `<button type="button" class="inv-total ${cls}" onclick="verTotalInventario('${modo}', '${estado}', '${operativo}')" title="Ver ${label.toLowerCase()} de ${titulo.toLowerCase()}">
                 <span class="inv-total-label">${label}</span><span class="inv-total-n">${num(n)}</span></button>`;
         return `<div class="inv-totales-grupo ${inventarioModo === modo ? 'inv-totales-actual' : ''}">
             <h3>${titulo}</h3>
@@ -5273,6 +5275,7 @@ function renderTotalesInventario() {
                 ${tarjeta('inv-total-todas', 'Total', lista.length, '')}
                 ${tarjeta('inv-total-activas', 'Activas', lista.length - desact, 'activas')}
                 ${tarjeta('inv-total-desact', 'Desactivadas', desact, 'desactivada')}
+                ${tarjeta('inv-total-asig-act', 'Asignadas y activas', asigActivas, 'asignada', 'activo')}
             </div></div>`;
     };
     caja.innerHTML = grupo(false, 'Líneas', inventarioLineas.length > 0 || inventarioModo === 'lineas')
@@ -5280,9 +5283,11 @@ function renderTotalesInventario() {
 }
 
 // Click en una tarjeta: abre ese inventario filtrado por el estado elegido
-async function verTotalInventario(modo, estado) {
+async function verTotalInventario(modo, estado, operativo = '') {
     const sel = document.getElementById('lineasEstado');
     if (sel) sel.value = estado;
+    const op = document.getElementById('lineasOperativo');
+    if (op) op.value = operativo;
     await cambiarInventario(modo);
 }
 

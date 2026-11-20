@@ -2440,3 +2440,10 @@ th.th-filtrada { background: #e2e5f3; }
 .combo-rc-lista { position: static; margin-top: 6px; max-height: 210px; box-shadow: 0 4px 12px rgba(26, 26, 46, .08); }
 .badge-sin-rc { cursor: pointer; }
 .badge-sin-rc:hover { background: #ffedd5; }
+
+/* Tarjeta "Asignadas y activas" del inventario */
+.inv-totales-fila { grid-template-columns: repeat(4, 1fr); }
+.inv-total-asig-act { background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%); }
+@media (max-width: 760px) { .inv-totales-fila { grid-template-columns: repeat(2, 1fr); } }
+.inv-totales { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+@media (max-width: 760px) { .inv-totales { grid-template-columns: 1fr; } }
