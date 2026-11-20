@@ -5486,11 +5486,12 @@ function filtrarSinRC() {
 
 // Estado de la columna "Línea": sigue al inventario, no a los reportes del operador
 // (los reportes no cambian el estado de las líneas; se activan / desactivan a mano):
-//   desactivado → desactivada en el inventario
+//   desactivado → desactivada en el inventario, o marcada como línea inactiva
+//                 (disponible / asignada pero sin activar)
 //   backup      → marcada como backup (y no desactivada)
 //   activo      → asignada o disponible
 function estadoOperativoLinea(l) {
-    if (l.estado === 'desactivada') return 'desactivado';
+    if (l.estado === 'desactivada' || l.linea_inactiva) return 'desactivado';
     return l.backup ? 'backup' : 'activo';
 }
 const ETIQUETA_LINEA = { activo: 'Activo', desactivado: 'Desactivado', backup: 'Backup' };
@@ -5509,7 +5510,8 @@ function marcaManualVigente(l) {
 
 function badgeEstadoOperativo(l) {
     const est = estadoOperativoLinea(l);
-    const titulo = { activo: 'Activa en el inventario', desactivado: 'Desactivada en el inventario', backup: 'Línea de backup' }[est];
+    const titulo = l.estado !== 'desactivada' && l.linea_inactiva ? `${l.estado === 'disponible' ? 'Disponible' : 'Asignada'} pero la línea no está activa`
+                 : { activo: 'Activa en el inventario', desactivado: 'Desactivada en el inventario', backup: 'Línea de backup' }[est];
     return `<span class="badge-estado badge-${est === 'activo' ? 'activo' : est === 'backup' ? 'backup' : 'desactivado'}" title="${titulo}">${ETIQUETA_LINEA[est]}</span>`;
 }
 
@@ -5998,14 +6000,16 @@ async function cambiarEstadoLinea(id, activar, legado = false, motivoDado = null
     // Activar deja la marca "activa a mano" (la columna Línea la muestra activa hasta un reporte posterior);
     // desactivar la borra
     const marca = activar ? new Date().toISOString() : null;
-    let { error } = await window.clienteSupabase.from(tablaLineas(legado)).update({ estado: nuevo, activa_manual: marca }).eq('id', id);
-    if (error && /activa_manual/.test(error.message || '')) {
+    let { error } = await window.clienteSupabase.from(tablaLineas(legado))
+        .update(activar ? { estado: nuevo, activa_manual: marca, linea_inactiva: false } : { estado: nuevo, activa_manual: marca }).eq('id', id);
+    if (error && /activa_manual|linea_inactiva/.test(error.message || '')) {
         // La columna todavía no existe en la base: se cambia solo el estado
         ({ error } = await window.clienteSupabase.from(tablaLineas(legado)).update({ estado: nuevo }).eq('id', id));
     }
     if (error) { alert('❌ Error: ' + error.message); return false; }
     await registrarEstado('linea', ref, linea.estado, nuevo, (activar ? 'Activada a mano' : 'Desactivada') + (motivo.trim() ? ': ' + motivo.trim() : ''));
     linea.activa_manual = marca;
+    if (activar) linea.linea_inactiva = false;
     {
         const n0 = String(linea.numero || '').trim(), i0 = claveIccid(linea.iccid);
         [n0 && !esM2MTexto(n0) ? 'n:' + n0 : null, i0 ? 'i:' + i0 : null].filter(Boolean)
