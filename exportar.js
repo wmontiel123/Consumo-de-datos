@@ -431,7 +431,7 @@ function filtrosDePantalla(vista) {
     } else if (vista === 'inventario') {
         s.buscar    = v('lineasBuscar');
         s.estadoLinea = uno('lineasOperativo', 'estadoLinea');
-        s.estadoInv = v('lineasEstado') === 'activas' ? ['disponible', 'asignada'] : uno('lineasEstado', 'estadoInv');
+        s.estadoInv = uno('lineasEstado', 'estadoInv');
         s.telefonia = uno('lineasTelefonia', 'telefonia');
     }
     if (s.desde === undefined) { s.desde = ''; s.hasta = ''; }

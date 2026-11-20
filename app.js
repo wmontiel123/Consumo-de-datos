@@ -5261,7 +5261,9 @@ function renderTotalesInventario() {
     if (!caja) return;
     const grupo = (legado, titulo, cargado) => {
         const lista = listaInventario(legado);
-        const desact = lista.filter(l => l.estado === 'desactivada').length;
+        // Activas / desactivadas según la columna "Línea" (reportes del operador)
+        const activas = lista.filter(l => estadoOperativoLinea(l) === 'activo').length;
+        const desact  = lista.length - activas;
         // Asignadas en el inventario y activas según los reportes del operador
         const asigActivas = lista.filter(l => l.estado === 'asignada' && estadoOperativoLinea(l) === 'activo').length;
         const num = n => cargado ? formatearNumero(n) : '…';
@@ -5273,8 +5275,8 @@ function renderTotalesInventario() {
             <h3>${titulo}</h3>
             <div class="inv-totales-fila">
                 ${tarjeta('inv-total-todas', 'Total', lista.length, '')}
-                ${tarjeta('inv-total-activas', 'Activas', lista.length - desact, 'activas')}
-                ${tarjeta('inv-total-desact', 'Desactivadas', desact, 'desactivada')}
+                ${tarjeta('inv-total-activas', 'Activas', activas, '', 'activo')}
+                ${tarjeta('inv-total-desact', 'Desactivadas', desact, '', 'desactivado')}
                 ${tarjeta('inv-total-asig-act', 'Asignadas y activas', asigActivas, 'asignada', 'activo')}
             </div></div>`;
     };
@@ -5354,8 +5356,7 @@ function filasInventario() {
     const oper   = document.getElementById('lineasOperativo')?.value || '';
     return inventarioActual().filter(l =>
         (!oper || estadoOperativoLinea(l) === oper) &&
-        (!estado || (estado === 'activas' ? l.estado !== 'desactivada'
-                   : estado === 'sin_rc' ? lineaSinRCConConsumo(l)
+        (!estado || (estado === 'sin_rc' ? lineaSinRCConConsumo(l)
                    : l.estado === estado)) &&
         (!tel || String(l.telefonia || '').toLowerCase() === tel.toLowerCase()) &&
         (!q || [l.numero, l.iccid, l.rc_codigo].some(v => String(v || '').toLowerCase().includes(q))));
