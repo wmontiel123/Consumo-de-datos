@@ -48,7 +48,7 @@ async function traerTodasEnParalelo(armarQuery, alAvanzar) {
 const TELEFONIAS = ['Claro', 'Personal', 'Tigo', 'Vox'];
 const _regionales = () => [...new Set(todosLosDatos.map(d => _txt(d.regional)).filter(Boolean))].sort();
 const _deviceDe = (numero, iccid) => {
-    const n = String(numero || '').trim(), i = normalizarImei(iccid);
+    const n = String(numero || '').trim(), i = claveIccid(iccid);
     return (n && n.toLowerCase() !== 'm2m' && mapaNumADevice.get(n)) || (i && mapaImeiADevice.get(i)) || null;
 };
 const _deviceDeRC = codigo => todosLosDatos.find(d => d.codigo === codigo) || null;

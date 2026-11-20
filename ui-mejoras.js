@@ -912,7 +912,7 @@ function irATabla(tab) {
 // Usa el mismo estado del inventario de líneas (disponible / asignada / desactivada).
 
 async function _lineaInventarioDe(numero, iccid) {
-    const n = String(numero || '').trim(), i = normalizarImei(iccid);
+    const n = String(numero || '').trim(), i = claveIccid(iccid);
     const conds = [...(n && _norm(n) !== 'm2m' ? [`numero.eq.${n}`] : []), ...(i ? [`iccid.eq.${i}`] : [])];
     if (!conds.length) return null;
     for (const legado of [false, true]) {

@@ -11,11 +11,23 @@
 -- (en la app se ve con la etiqueta "Sin RC asignado").
 -- Cada cambio queda en historial_estados con usuario 'sistema'.
 --
+-- Los ICCID se comparan con clave_iccid(): Tigo los informa con 19 dígitos (sin el
+-- dígito verificador) y el inventario / los RC pueden tenerlos con 20.
+--
 -- Corre sola dentro de refresh_lineas_estado(), que llama el cargador diario
 -- de reportes después de cada importación (no hace falta reinstalarlo).
 -- Para correrla a mano:   select reactivar_por_consumo();
 -- Ejecutar todo junto en el SQL Editor de Supabase.
 -- ════════════════════════════════════════════════════════════════
+
+-- Clave para comparar ICCID: uno de 20 dígitos (89…) se compara por sus primeros 19
+create or replace function clave_iccid(v text)
+returns text
+language sql
+immutable
+as $$
+    select case when trim(coalesce(v, '')) ~ '^89[0-9]{18}$' then left(trim(v), 19) else trim(coalesce(v, '')) end
+$$;
 
 create or replace function reactivar_por_consumo()
 returns jsonb
@@ -43,7 +55,7 @@ begin
          where estado = 'activo' and consumo_mb > 0 and fecha_consumo >= current_date - 7
            and upper(trim(coalesce(numero, ''))) not in ('', 'M2M')
         union all
-        select trim(imei), fecha_consumo
+        select clave_iccid(imei), fecha_consumo
           from consumo_sim
          where estado = 'activo' and consumo_mb > 0 and fecha_consumo >= current_date - 7
            and trim(coalesce(imei, '')) <> ''
@@ -70,7 +82,7 @@ begin
                        'asignada'::text                                  as nuevo
                   from %1$I l
                   left join _act an on an.key = trim(l.numero) and lower(trim(coalesce(l.numero, ''))) <> 'm2m'
-                  left join _act ai on ai.key = trim(l.iccid)
+                  left join _act ai on ai.key = clave_iccid(l.iccid) and trim(coalesce(l.iccid, '')) <> ''
                  where l.estado = 'desactivada'
                    and (an.key is not null or ai.key is not null)
             ), ok as (
@@ -103,7 +115,7 @@ begin
                        greatest(an.f, ai.f)     as f
                   from %1$I l
                   left join _act an on an.key = trim(l.numero) and lower(trim(coalesce(l.numero, ''))) <> 'm2m'
-                  left join _act ai on ai.key = trim(l.iccid)
+                  left join _act ai on ai.key = clave_iccid(l.iccid) and trim(coalesce(l.iccid, '')) <> ''
                  where l.estado = 'disponible'
                    and coalesce(trim(l.rc_codigo), '') = ''
                    and (an.key is not null or ai.key is not null)
@@ -129,8 +141,8 @@ begin
           from dispositivos_ande d
           left join _act a1 on a1.key = trim(d.sim1_num)  and upper(trim(coalesce(d.sim1_num, ''))) <> 'M2M'
           left join _act a2 on a2.key = trim(d.sim2_num)  and upper(trim(coalesce(d.sim2_num, ''))) <> 'M2M'
-          left join _act a3 on a3.key = trim(d.sim1_imei)
-          left join _act a4 on a4.key = trim(d.sim2_imei)
+          left join _act a3 on a3.key = clave_iccid(d.sim1_imei) and trim(coalesce(d.sim1_imei, '')) <> ''
+          left join _act a4 on a4.key = clave_iccid(d.sim2_imei) and trim(coalesce(d.sim2_imei, '')) <> ''
          where lower(coalesce(d.estado, '')) in ('desactivado', 'desactivado_manual')
            and coalesce(a1.f, a2.f, a3.f, a4.f) is not null
     ), ok as (
@@ -152,6 +164,7 @@ begin
 end;
 $$;
 
+grant execute on function clave_iccid(text) to authenticated, service_role;
 revoke execute on function reactivar_por_consumo() from public, anon;
 grant  execute on function reactivar_por_consumo() to authenticated, service_role;
 

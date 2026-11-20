@@ -69,7 +69,7 @@ const SIM_EST_LABEL = {
 //         cualquiera desactivado → inactivo; todos con 0 MB → sin_consumo; else → activo.
 function calcularSimEstadoDetallado(num, imei) {
     const n   = String(num  || '').trim();
-    const i   = normalizarImei(imei);
+    const i   = claveIccid(imei);
     const m2m = n.toLowerCase() === 'm2m';
     if ((!n || m2m) && !i) return 'nulo';
     if (lineaDesactivadaInv(n, i)) return 'inactivo';
@@ -106,7 +106,12 @@ function cerrarSesion() {
     _sesionActiva = false;
     usuarioActual = '';
     sessionStorage.removeItem('session');
-    window.clienteSupabase?.auth.signOut().catch(() => {});   // revoca el refresh token
+    // Revoca el refresh token y recarga la página: así lo que se ocultó para un viewer
+    // (pestañas, botones, filtros) no queda oculto si después entra un admin en la misma pestaña.
+    const recargar = () => location.reload();
+    const salida = window.clienteSupabase?.auth.signOut();
+    if (salida) { salida.then(recargar, recargar); setTimeout(recargar, 3000); }
+    else setTimeout(recargar, 0);
     // Resetear estado
     rolActual = 'viewer';
     todosLosDatos = []; datosFiltrados = [];
@@ -458,7 +463,7 @@ let lineasActivasSinReporte = new Set();
 let lineasDesactivadasInv = new Set();
 function lineaDesactivadaInv(num, imei) {
     const n = String(num || '').trim();
-    const i = normalizarImei(imei);
+    const i = claveIccid(imei);
     return (!!n && n.toLowerCase() !== 'm2m' && lineasDesactivadasInv.has('n:' + n))
         || (!!i && lineasDesactivadasInv.has('i:' + i));
 }
@@ -467,7 +472,7 @@ function armarLineasDesactivadasInv(lineas) {
     (lineas || []).forEach(l => {
         const n = String(l.numero || '').trim();
         if (n && n.toLowerCase() !== 'm2m') lineasDesactivadasInv.add('n:' + n);
-        if (l.iccid) lineasDesactivadasInv.add('i:' + normalizarImei(l.iccid));
+        if (l.iccid) lineasDesactivadasInv.add('i:' + claveIccid(l.iccid));
     });
 }
 let mapaNumADevice        = new Map();
@@ -543,7 +548,7 @@ function parsearFechaTexto(texto) {
 // true si el slot es una línea asignada de una telefonía sin reportes (ver lineasActivasSinReporte)
 function activaSinReporte(num, imei) {
     const n = String(num || '').trim();
-    const i = normalizarImei(imei);
+    const i = claveIccid(imei);
     return (!!n && n.toLowerCase() !== 'm2m' && lineasActivasSinReporte.has('n:' + n))
         || (!!i && lineasActivasSinReporte.has('i:' + i));
 }
@@ -555,7 +560,7 @@ function armarLineasActivasSinReporte(lineas, consumoData) {
     (lineas || []).forEach(l => {
         if (conReporte.has(String(l.telefonia || '').trim().toLowerCase())) return;
         const n = String(l.numero || '').trim();
-        const i = normalizarImei(l.iccid);
+        const i = claveIccid(l.iccid);
         if (n && n.toLowerCase() !== 'm2m') lineasActivasSinReporte.add('n:' + n);
         if (i) lineasActivasSinReporte.add('i:' + i);
     });
@@ -570,6 +575,14 @@ function normalizarImei(val) {
         if (!isNaN(n) && isFinite(n)) return Math.round(n).toString();
     }
     return s;
+}
+
+// Clave para COMPARAR ICCID: Tigo informa el ICCID con 19 dígitos (sin el dígito
+// verificador final) y el inventario o los RC pueden tenerlo con 20. Un ICCID de 20
+// dígitos (89…) se compara por sus primeros 19. No usar para mostrar ni guardar.
+function claveIccid(val) {
+    const s = normalizarImei(val);
+    return /^89\d{18}$/.test(s) ? s.slice(0, 19) : s;
 }
 
 // Estado del dispositivo: viene directo de la DB (activo / sin_consumo / desactivado / desactivado_manual)
@@ -631,9 +644,9 @@ async function sincronizarEstadosDispositivos(forzarTodos = false) {
         if (!forzarTodos && estadoDev === 'desactivado') continue;
 
         const s1n = String(dev.sim1_num  || '').trim();
-        const s1i = normalizarImei(dev.sim1_imei);
+        const s1i = claveIccid(dev.sim1_imei);
         const s2n = String(dev.sim2_num  || '').trim();
-        const s2i = normalizarImei(dev.sim2_imei);
+        const s2i = claveIccid(dev.sim2_imei);
 
         const s1e = calcularSimEstadoDetallado(s1n, s1i);
         const s2e = calcularSimEstadoDetallado(s2n, s2i);
@@ -703,7 +716,7 @@ async function cargarDatos() {
         mapaImeiAConsumo = new Map();
         consumoData.forEach(c => {
             const num  = String(c.numero || '').trim();
-            const imei = normalizarImei(c.imei);
+            const imei = claveIccid(c.imei);
             if (num  && !mapaNumAConsumo.has(num))   mapaNumAConsumo.set(num, c);
             if (imei && !mapaImeiAConsumo.has(imei)) mapaImeiAConsumo.set(imei, c);
         });
@@ -889,7 +902,7 @@ function badgeEstado(device) {
 function simEstado(num, imei) {
     let n = String(num || '').trim();
     if (n === '-') n = '';  // '-' es equivalente a vacío
-    const i   = normalizarImei(imei);
+    const i   = claveIccid(imei);
     const m2m = n.toLowerCase() === 'm2m';
     if (!n && !i)  return null;  // slot vacío
     if (m2m && !i) return null;  // M2M sin IMEI
@@ -928,7 +941,7 @@ function simDot(num, imei) {
 // Punto + número coloreado (y clicable) para la columna Num
 function simNumDisplay(num, imei) {
     const n    = String(num || '').trim();
-    const i    = normalizarImei(imei);
+    const i    = claveIccid(imei);
     const est  = simEstado(n, i);
     const m2m  = n.toLowerCase() === 'm2m';
     const label = n || '-';
@@ -956,7 +969,7 @@ function iccidVisual(v) {
 
 // Punto + IMEI coloreado (y clicable) para la columna IMEI
 function simImeiDisplay(num, imei) {
-    const i = normalizarImei(imei);
+    const i = claveIccid(imei);
     if (!i) return '-';
     const est    = simEstado(num, imei);
     const dotClr = est ? _simDotColor(est) : null;
@@ -1666,9 +1679,9 @@ function construirMapasDevice(dispositivos) {
     mapaImeiADevice = new Map();
     dispositivos.forEach(d => {
         const s1n = String(d.sim1_num  || '').trim();
-        const s1i = normalizarImei(d.sim1_imei);
+        const s1i = claveIccid(d.sim1_imei);
         const s2n = String(d.sim2_num  || '').trim();
-        const s2i = normalizarImei(d.sim2_imei);
+        const s2i = claveIccid(d.sim2_imei);
         if (s1n && s1n.toLowerCase() !== 'm2m') mapaNumADevice.set(s1n, d);
         if (s1i) mapaImeiADevice.set(s1i, d);
         if (s2n && s2n.toLowerCase() !== 'm2m') mapaNumADevice.set(s2n, d);
@@ -1679,7 +1692,7 @@ function construirMapasDevice(dispositivos) {
 // Busca el código RC de un consumo en la tabla de dispositivos
 function encontrarRC(consumo) {
     const num    = String(consumo.numero || '').trim();
-    const imei   = normalizarImei(consumo.imei);
+    const imei   = claveIccid(consumo.imei);
     const device = mapaNumADevice.get(num) || mapaImeiADevice.get(imei) || null;
     return device ? (device.codigo || '-') : '-';
 }
@@ -1696,7 +1709,7 @@ function getEstadoSIM(row) {
         String(row.observacion || '').toLowerCase().includes('backup')) return 'desactivado';
 
     const num  = String(row.numero || '').trim();
-    const imei = normalizarImei(row.imei);
+    const imei = claveIccid(row.imei);
 
     // 1b. Desactivada en el inventario de líneas
     if (lineaDesactivadaInv(num, imei)) return 'desactivado';
@@ -1727,7 +1740,7 @@ function estadoConsDisplay(consumo) {
     // Fallback legacy: el registro más reciente del número puede tener un estado
     // distinto al de la fila histórica (p.ej. el registro fue re-importado después).
     const num  = String(consumo.numero || '').trim();
-    const imei = normalizarImei(consumo.imei);
+    const imei = claveIccid(consumo.imei);
     const latest = (num && num.toLowerCase() !== 'm2m' ? mapaNumAConsumo.get(num) : null)
                 || (imei ? mapaImeiAConsumo.get(imei) : null);
     if (latest && latest !== consumo) {
@@ -1844,8 +1857,8 @@ function resolverFiltros() {
         devs.forEach(d => {
             if (d.sim1_num  && d.sim1_num.toLowerCase()  !== 'm2m') nums.add(d.sim1_num.trim());
             if (d.sim2_num  && d.sim2_num.toLowerCase()  !== 'm2m') nums.add(d.sim2_num.trim());
-            if (d.sim1_imei) ims.add(normalizarImei(d.sim1_imei));
-            if (d.sim2_imei) ims.add(normalizarImei(d.sim2_imei));
+            if (d.sim1_imei) ims.add(claveIccid(d.sim1_imei));
+            if (d.sim2_imei) ims.add(claveIccid(d.sim2_imei));
         });
         numeros = [...nums].filter(Boolean);
         imeis   = [...ims].filter(Boolean);
@@ -2268,7 +2281,7 @@ function crearGraficosConsumo(resumen, datos) {
         return n && !esM2MTexto(n) ? n : normalizarImei(c.imei);
     });
     const labelsLineas  = top5raw.map((c, i) => {
-        const dev = mapaNumADevice.get(String(c.numero || '').trim()) || mapaImeiADevice.get(normalizarImei(c.imei));
+        const dev = mapaNumADevice.get(String(c.numero || '').trim()) || mapaImeiADevice.get(claveIccid(c.imei));
         return dev?.codigo || clavesLineas[i] || 'Sin ID';
     });
     const valoresLineas = top5raw.map(c => parseFloat(c.consumo_mb || 0));
@@ -2436,7 +2449,7 @@ async function completarHistoricoTop5(chart, top5rc, rcDe) {
     const nums = new Set(), imeis = new Set();
     top5rc.forEach(([, info]) => info.lineas.forEach(c => {
         const n = String(c.numero || '').trim();
-        const i = normalizarImei(c.imei);
+        const i = claveIccid(c.imei);
         if (n && n.toLowerCase() !== 'm2m') nums.add(n);
         if (i) imeis.add(i);
     }));
@@ -2503,7 +2516,7 @@ function crearGraficosEquipo(datos) {
     // datos viene sumado por línea (consumo_por_linea), así que acá solo hay totales
     const porRC    = new Map();  // rc → { totalMB, lineas }
     const rcDe = c => {
-        const dev = mapaNumADevice.get(String(c.numero || '').trim()) || mapaImeiADevice.get(normalizarImei(c.imei)) || null;
+        const dev = mapaNumADevice.get(String(c.numero || '').trim()) || mapaImeiADevice.get(claveIccid(c.imei)) || null;
         return { rc: dev ? (dev.codigo || '-') : '-', dev };
     };
 
@@ -2601,7 +2614,7 @@ function crearGraficosEquipo(datos) {
     const porRegional = new Map();
     datos.forEach(c => {
         const num  = String(c.numero || '').trim();
-        const imei = normalizarImei(c.imei);
+        const imei = claveIccid(c.imei);
         const dev  = mapaNumADevice.get(num) || mapaImeiADevice.get(imei) || null;
         const reg  = dev?.regional || 'Sin Regional';
         const mb   = parseFloat(c.consumo_mb) || 0;
@@ -3156,7 +3169,7 @@ async function aplicarFiltroRC() {
         datos = consumosFiltrados.filter(c => {
             const rc  = encontrarRC(c);
             const num = String(c.numero || '').trim();
-            const imi = normalizarImei(c.imei);
+            const imi = claveIccid(c.imei);
             const dev = mapaNumADevice.get(num) || mapaImeiADevice.get(imi) || null;
             const reg = dev?.regional || '';
             return (!rcText   || rc.toLowerCase().includes(rcText))
@@ -3209,26 +3222,26 @@ function buildConsolidado(datos) {
         let device = null;
         for (const c of consumos) {
             const num  = String(c.numero || '').trim();
-            const imei = normalizarImei(c.imei);
+            const imei = claveIccid(c.imei);
             device = mapaNumADevice.get(num) || mapaImeiADevice.get(imei) || null;
             if (device) break;
         }
 
         const sim1Num  = device ? String(device.sim1_num  || '').trim() : '';
         const sim2Num  = device ? String(device.sim2_num  || '').trim() : '';
-        const sim1Imei = device ? normalizarImei(device.sim1_imei) : '';
-        const sim2Imei = device ? normalizarImei(device.sim2_imei) : '';
+        const sim1Imei = device ? claveIccid(device.sim1_imei) : '';
+        const sim2Imei = device ? claveIccid(device.sim2_imei) : '';
         const sim1M2M  = sim1Num.toLowerCase() === 'm2m';
         const sim2M2M  = sim2Num.toLowerCase() === 'm2m';
 
         const sim1Rows = consumos.filter(c => {
             const n = String(c.numero || '').trim();
-            const i = normalizarImei(c.imei);
+            const i = claveIccid(c.imei);
             return sim1M2M ? i === sim1Imei : (n === sim1Num || i === sim1Imei);
         });
         const sim2Rows = consumos.filter(c => {
             const n = String(c.numero || '').trim();
-            const i = normalizarImei(c.imei);
+            const i = claveIccid(c.imei);
             return sim2M2M ? i === sim2Imei : (n === sim2Num || i === sim2Imei);
         });
 
@@ -3735,9 +3748,9 @@ async function abrirPanelRC(codigo) {
 
     try {
         const sim1n = device ? String(device.sim1_num  || '').trim() : '';
-        const sim1i = device ? normalizarImei(device.sim1_imei)      : '';
+        const sim1i = device ? claveIccid(device.sim1_imei)      : '';
         const sim2n = device ? String(device.sim2_num  || '').trim() : '';
-        const sim2i = device ? normalizarImei(device.sim2_imei)      : '';
+        const sim2i = device ? claveIccid(device.sim2_imei)      : '';
 
         const orParts = [
             ...([sim1n, sim2n].filter(n => n && n.toLowerCase() !== 'm2m').map(n => `numero.eq.${n}`)),
@@ -3765,7 +3778,7 @@ async function abrirPanelRC(codigo) {
         const calcSimMB = (n, i) => consumoData
             .filter(c => {
                 const cn = String(c.numero || '').trim();
-                const ci = normalizarImei(c.imei);
+                const ci = claveIccid(c.imei);
                 return (n && cn === n) || (i && ci === i);
             })
             .reduce((s, c) => s + (parseFloat(c.consumo_mb) || 0), 0);
@@ -3800,7 +3813,7 @@ async function abrirPanelRC(codigo) {
         // Estado detallado (5 estados) de un slot (num+imei como conjunto)
         const getSimEst = (num, imei) => {
             const n   = String(num  || '').trim();
-            const i   = normalizarImei(imei);
+            const i   = claveIccid(imei);
             const m2m = n.toLowerCase() === 'm2m';
             if ((!n || m2m) && !i) return 'nulo';
             if (lineaDesactivadaInv(n, i)) return 'inactivo';
@@ -3814,7 +3827,7 @@ async function abrirPanelRC(codigo) {
                 ? consumoData.filter(c => String(c.numero || '').trim() === n)
                 : [];
             const rowsI = i
-                ? consumoData.filter(c => normalizarImei(c.imei) === i)
+                ? consumoData.filter(c => claveIccid(c.imei) === i)
                 : [];
 
             if (!rowsN.length && !rowsI.length) return activaSinReporte(n, i) ? 'activo' : 'no_asignado';
@@ -3935,7 +3948,7 @@ async function abrirPanelSIM(numero, imei = null) {
             .order('fecha_consumo', { ascending: true })
             .limit(500);
         if (!m2m && n) q = q.eq('numero', n);
-        else if (i)    q = q.eq('imei', i);
+        else if (i)    q = /^89\d{18}$/.test(i) ? q.in('imei', [i, i.slice(0, 19)]) : q.eq('imei', i);
 
         const [{ data: rows, error }, { data: histEstados }] = await Promise.all([
             q,
@@ -4102,7 +4115,7 @@ function crearChartPanelRC(consumoData, sim1n, sim1i, sim2n, sim2i) {
         if (!f) return;
         fechasSet.add(f);
         const cn = String(c.numero || '').trim();
-        const ci = normalizarImei(c.imei);
+        const ci = claveIccid(c.imei);
         const mb = parseFloat(c.consumo_mb) || 0;
         if ((sim1n && cn === sim1n) || (sim1i && ci === sim1i)) sim1Data[f] = (sim1Data[f] || 0) + mb;
         if ((sim2n && cn === sim2n) || (sim2i && ci === sim2i)) sim2Data[f] = (sim2Data[f] || 0) + mb;
@@ -4612,7 +4625,7 @@ async function cambiarEstadoLineasDeRC(lineas, nuevo, codigo, motivo) {
     for (const l of lineas) {
         await registrarEstado('linea', _refLinea(l), l.estado, nuevo, motivo);
         const n = String(l.numero || '').trim();
-        const claves = [...(n && !esM2MTexto(n) ? ['n:' + n] : []), ...(l.iccid ? ['i:' + normalizarImei(l.iccid)] : [])];
+        const claves = [...(n && !esM2MTexto(n) ? ['n:' + n] : []), ...(l.iccid ? ['i:' + claveIccid(l.iccid)] : [])];
         claves.forEach(k => nuevo === 'desactivada' ? lineasDesactivadasInv.add(k) : lineasDesactivadasInv.delete(k));
         const enMemoria = listaInventario(!!l._legado).find(x => x.id === l.id);
         if (enMemoria) enMemoria.estado = nuevo;
@@ -4649,9 +4662,9 @@ Motivo (opcional):`, '');
                     await cambiarEstadoLineasDeRC(desact, 'asignada', codigo, `RC ${codigo} activado` + (motivo.trim() ? ': ' + motivo.trim() : ''));
                 }
                 const s1n = String(dev.sim1_num  || '').trim();
-                const s1i = normalizarImei(dev.sim1_imei);
+                const s1i = claveIccid(dev.sim1_imei);
                 const s2n = String(dev.sim2_num  || '').trim();
-                const s2i = normalizarImei(dev.sim2_imei);
+                const s2i = claveIccid(dev.sim2_imei);
                 sim1_estado = calcularSimEstadoDetallado(s1n, s1i);
                 sim2_estado = calcularSimEstadoDetallado(s2n, s2i);
                 estadoFinal = rcEstadoDesdeSimEstados(sim1_estado, sim2_estado) ?? 'activo';
@@ -4748,7 +4761,7 @@ async function recalcularEstadosPostImport(filas) {
 
     filas.forEach(r => {
         const n   = String(r.numero || '').trim();
-        const i   = normalizarImei(r.imei);
+        const i   = claveIccid(r.imei);
         const f   = r.fecha_consumo || '';
         const bk  = r.telefonia === 'Personal' &&
                     String(r.observacion || '').toLowerCase().includes('backup');
@@ -4784,7 +4797,7 @@ async function recalcularEstadosPostImport(filas) {
             if (error || !data?.length) break;
             data.forEach(r => {
                 const n = String(r.numero || '').trim();
-                const i = normalizarImei(r.imei);
+                const i = claveIccid(r.imei);
                 if (n && !estadoNum.has(n))  estadoNum.set(n,  'desactivado');
                 if (i && !estadoImei.has(i)) estadoImei.set(i, 'desactivado');
             });
@@ -4844,7 +4857,7 @@ async function recalcularEstadosPostImport(filas) {
 
     const getSimEstImport = (num, imei) => {
         const n   = String(num || '').trim();
-        const i   = normalizarImei(imei);
+        const i   = claveIccid(imei);
         const m2m = n.toLowerCase() === 'm2m';
         if ((!n || m2m) && !i) return 'nulo';
         if (lineaDesactivadaInv(n, i)) return 'inactivo';
@@ -4860,9 +4873,9 @@ async function recalcularEstadosPostImport(filas) {
     for (const dev of devices) {
         if ((dev.estado || '').toLowerCase() === 'desactivado_manual') continue;
         const s1n = String(dev.sim1_num || '').trim();
-        const s1i = normalizarImei(dev.sim1_imei);
+        const s1i = claveIccid(dev.sim1_imei);
         const s2n = String(dev.sim2_num || '').trim();
-        const s2i = normalizarImei(dev.sim2_imei);
+        const s2i = claveIccid(dev.sim2_imei);
         const s1e = getSimEstImport(s1n, s1i);
         const s2e = getSimEstImport(s2n, s2i);
         const rcNuevo     = rcEstadoDesdeSimEstados(s1e, s2e);
@@ -5112,7 +5125,7 @@ async function guardarEditarLinea() {
     if (numero === 'M2M' && !iccid) return msg(false, 'Las líneas M2M necesitan el ICCID.');
     const otra = inventarioLineas.find(x => x.id !== l.id && (
         (numero && numero !== 'M2M' && String(x.numero || '').trim() === numero) ||
-        (iccid && normalizarImei(x.iccid) === iccid)));
+        (iccid && claveIccid(x.iccid) === iccid)));
     if (otra) return msg(false, `Ese número o ICCID ya está en otra línea del inventario${otra.rc_codigo ? ' (' + otra.rc_codigo + ')' : ''}.`);
 
     const cambios = {};
@@ -5397,7 +5410,7 @@ function filtrarSinRC() {
 // Línea en uso (con consumo en su último reporte) que no tiene RC en el inventario
 function lineaConConsumo(l) {
     const n = String(l.numero || '').trim();
-    const i = normalizarImei(l.iccid);
+    const i = claveIccid(l.iccid);
     const c = (n && !esM2MTexto(n) ? mapaNumAConsumo.get(n) : null) || (i ? mapaImeiAConsumo.get(i) : null);
     return !!c && (parseFloat(c.consumo_mb) || 0) > 0 && String(c.estado || '').toLowerCase() !== 'desactivado';
 }
@@ -5584,11 +5597,11 @@ function actualizarModoAsignar() {
 function slotSugeridoRC(codigo, l) {
     const dev = _rcPorCodigo(codigo);
     if (!dev || !l) return 'sim1';
-    const n = String(l.numero || '').trim(), i = normalizarImei(l.iccid);
-    const es = (num, imei) => (n && !esM2MTexto(n) && String(num || '').trim() === n) || (i && normalizarImei(imei) === i);
+    const n = String(l.numero || '').trim(), i = claveIccid(l.iccid);
+    const es = (num, imei) => (n && !esM2MTexto(n) && String(num || '').trim() === n) || (i && claveIccid(imei) === i);
     if (es(dev.sim1_num, dev.sim1_imei)) return 'sim1';
     if (es(dev.sim2_num, dev.sim2_imei)) return 'sim2';
-    if (!String(dev.sim1_num || '').trim() && !normalizarImei(dev.sim1_imei)) return 'sim1';
+    if (!String(dev.sim1_num || '').trim() && !claveIccid(dev.sim1_imei)) return 'sim1';
     return 'sim2';
 }
 
@@ -5687,19 +5700,19 @@ async function quitarAsignacionRC() {
 // Busca una línea del inventario por número (si no es M2M) o por ICCID
 function buscarLineaInventario(numero, iccid) {
     const n = String(numero || '').trim();
-    const i = normalizarImei(iccid);
+    const i = claveIccid(iccid);
     return inventarioLineas.find(l =>
         (n && !esM2MTexto(n) && String(l.numero || '').trim() === n) ||
-        (i && normalizarImei(l.iccid) === i)) || null;
+        (i && claveIccid(l.iccid) === i)) || null;
 }
 
 // RC (distinto de "excepto") que ya usa ese número o ICCID en alguna SIM
 function rcQueUsa(numero, iccid, excepto = null) {
     const n = String(numero || '').trim();
-    const i = normalizarImei(iccid);
+    const i = claveIccid(iccid);
     const dev = todosLosDatos.find(d => d.codigo !== excepto && (
         (n && !esM2MTexto(n) && [d.sim1_num, d.sim2_num].some(x => String(x || '').trim() === n)) ||
-        (i && [d.sim1_imei, d.sim2_imei].some(x => normalizarImei(x) === i))));
+        (i && [d.sim1_imei, d.sim2_imei].some(x => claveIccid(x) === i))));
     return dev ? dev.codigo : null;
 }
 
@@ -5819,7 +5832,7 @@ async function crearLineaInventario({ numero, iccid, telefonia, observacion = nu
     const rc  = rcQueUsa(numero, iccid);
     const dev = rc ? todosLosDatos.find(d => d.codigo === rc) : null;
     const slot = !dev ? null
-        : (String(dev.sim1_num || '').trim() === numero || (iccid && normalizarImei(dev.sim1_imei) === iccid)) ? 'sim1' : 'sim2';
+        : (String(dev.sim1_num || '').trim() === numero || (iccid && claveIccid(dev.sim1_imei) === iccid)) ? 'sim1' : 'sim2';
 
     const { data, error } = await window.clienteSupabase.from('lineas').insert({
         numero,
@@ -5884,7 +5897,7 @@ async function cambiarEstadoLinea(id, activar, legado = false, motivoDado = null
     const claves = [];
     const n = String(linea.numero || '').trim();
     if (n && !esM2MTexto(n)) claves.push('n:' + n);
-    if (linea.iccid) claves.push('i:' + normalizarImei(linea.iccid));
+    if (linea.iccid) claves.push('i:' + claveIccid(linea.iccid));
     claves.forEach(k => nuevo === 'desactivada' ? lineasDesactivadasInv.add(k) : lineasDesactivadasInv.delete(k));
     await actualizarRCDeLinea(linea, ref, nuevo === 'desactivada');
 
@@ -5896,9 +5909,9 @@ async function cambiarEstadoLinea(id, activar, legado = false, motivoDado = null
 // y lo guarda en dispositivos_ande. No toca los RC desactivados a mano (desactivado_manual).
 async function actualizarRCDeLinea(linea, ref, desactivada) {
     const n = String(linea.numero || '').trim();
-    const i = normalizarImei(linea.iccid);
+    const i = claveIccid(linea.iccid);
     const usa = (num, imei) => (!!n && !esM2MTexto(n) && String(num || '').trim() === n)
-                            || (!!i && normalizarImei(imei) === i);
+                            || (!!i && claveIccid(imei) === i);
     const devs = todosLosDatos.filter(d => usa(d.sim1_num, d.sim1_imei) || usa(d.sim2_num, d.sim2_imei)
                                         || (linea.rc_codigo && d.codigo === linea.rc_codigo && linea.rc_codigo !== 'Site Survey'));
     for (const dev of devs) {
@@ -6090,7 +6103,7 @@ function procesarEscaneo(valor) {
     const telefonia = document.getElementById('escaneoTelefonia').value || telefoniaDeIccid(iccid);
     if (r.error)    return resultadoEscaneo(iccid, false, r.error);
     if (!telefonia) return resultadoEscaneo(iccid, false, 'No se reconoce la telefonía: elegila arriba y volvé a escanear.');
-    if (buscarLineaInventario(null, iccid) || inventarioLineas.some(l => normalizarImei(l.iccid) === iccid))
+    if (buscarLineaInventario(null, iccid) || inventarioLineas.some(l => claveIccid(l.iccid) === iccid))
         return resultadoEscaneo(iccid, false, 'Ya está en el inventario.');
 
     if (document.getElementById('escaneoModo').value === 'numero') {
