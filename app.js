@@ -3786,8 +3786,6 @@ async function abrirPanelRC(codigo) {
         const sim1MB = calcSimMB(sim1n, sim1i);
         const sim2MB = calcSimMB(sim2n, sim2i);
 
-        // Estado efectivo directo desde la DB (igual que en la tabla)
-        const estEfectivo = device?.estado === 'desactivado' ? 'desactivado' : 'activo';
 
         // Badge del header: solo para legado / satelital / error (no para activado normal)
         const safeCode   = codigo.replace(/'/g, "\\'");
@@ -3803,9 +3801,9 @@ async function abrirPanelRC(codigo) {
                 ${HEADER_TIPO_BADGES[tipoDevice] || ''}
             </div>`;
 
-        // Badge de estado en el cuerpo del panel (solo activo / desactivado)
-        const cfgEst  = ESTADO_CONFIG_DISP[estEfectivo] || ESTADO_CONFIG_DISP['activo'];
-        const estLabel = `<span class="badge-estado ${cfgEst.cls}">${cfgEst.label}</span>`;
+        // Badge de estado en el cuerpo del panel: el mismo que la tabla de Dispositivos
+        // (activo / sin consumo / desactivado según el estado guardado del RC)
+        const estLabel = device ? badgeEstado(device) : badgeEstado({ estado: 'activo' });
 
         const hasSim1 = !!(sim1n || sim1i);
         const hasSim2 = !!(sim2n || sim2i);
