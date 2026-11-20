@@ -390,6 +390,11 @@
                         <option value="desactivada">Desactivada</option>
                         <option value="sin_rc">Sin RC asignado · actualizar</option>
                     </select>
+                    <select id="lineasOperativo" onchange="renderInventarioLineas(1)" title="Estado de la línea según los reportes del operador">
+                        <option value="">Línea: todas</option>
+                        <option value="activo">Línea activa</option>
+                        <option value="desactivado">Línea desactivada</option>
+                    </select>
                     <select id="lineasTelefonia" onchange="renderInventarioLineas(1)">
                         <option value="">Todas las telefonías</option>
                         <option>Claro</option>
@@ -407,6 +412,7 @@
                                 <th>ICCID</th>
                                 <th>Telefonía</th>
                                 <th>Estado</th>
+                                <th title="Según los reportes del operador">Línea</th>
                                 <th>RC</th>
                                 <th>Cargada</th>
                                 <th>Por</th>
@@ -415,7 +421,7 @@
                             </tr>
                         </thead>
                         <tbody id="lineasBody">
-                            <tr><td colspan="9" class="panel-empty">Cargando…</td></tr>
+                            <tr><td colspan="10" class="panel-empty">Cargando…</td></tr>
                         </tbody>
                     </table>
                 </div>

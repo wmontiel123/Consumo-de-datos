@@ -5235,7 +5235,7 @@ async function cargarLegado() {
         console.warn('⚠️ No se pudo cargar lineas_legado:', e.message);
         inventarioLegado = [];
         if (inventarioModo === 'legado') document.getElementById('lineasBody').innerHTML =
-            `<tr><td colspan="9" class="panel-empty">❌ ${escHtml(e.message)}</td></tr>`;
+            `<tr><td colspan="10" class="panel-empty">❌ ${escHtml(e.message)}</td></tr>`;
         return false;
     }
     actualizarBotonesInventario();
@@ -5291,7 +5291,7 @@ async function cambiarInventario(modo) {
     actualizarBotonesInventario();
     const tbody = document.getElementById('lineasBody');
     if (inventarioModo === 'legado' && !inventarioLegadoCargado) {
-        tbody.innerHTML = '<tr><td colspan="9" class="panel-empty">Cargando…</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="panel-empty">Cargando…</td></tr>';
         if (!(await cargarLegado())) return;
     }
     renderInventarioLineas(1);
@@ -5326,7 +5326,7 @@ async function cargarLineas() {
         console.warn('⚠️ No se pudo cargar lineas:', error.message);
         inventarioLineas = [];
         document.getElementById('lineasBody').innerHTML =
-            `<tr><td colspan="8" class="panel-empty">❌ ${escHtml(error.message)}</td></tr>`;
+            `<tr><td colspan="10" class="panel-empty">❌ ${escHtml(error.message)}</td></tr>`;
         return;
     }
     inventarioLineas = data || [];
@@ -5346,7 +5346,9 @@ function filasInventario() {
     const q      = (document.getElementById('lineasBuscar')?.value || '').trim().toLowerCase();
     const estado = document.getElementById('lineasEstado')?.value || '';
     const tel    = document.getElementById('lineasTelefonia')?.value || '';
+    const oper   = document.getElementById('lineasOperativo')?.value || '';
     return inventarioActual().filter(l =>
+        (!oper || estadoOperativoLinea(l) === oper) &&
         (!estado || (estado === 'activas' ? l.estado !== 'desactivada'
                    : estado === 'sin_rc' ? lineaSinRCConConsumo(l)
                    : l.estado === estado)) &&
@@ -5361,7 +5363,7 @@ function renderInventarioLineas(pagina, desdeControles) {
     const pag    = paginarLista('inventario', filas, pagina, tbody, 'renderInventarioLineas');
 
     if (!filas.length) {
-        tbody.innerHTML = `<tr><td colspan="9" class="panel-empty">${inventarioActual().length ? 'Sin líneas que coincidan' : 'Todavía no hay líneas cargadas'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" class="panel-empty">${inventarioActual().length ? 'Sin líneas que coincidan' : 'Todavía no hay líneas cargadas'}</td></tr>`;
         infoEl.textContent = '';
         return;
     }
@@ -5372,6 +5374,7 @@ function renderInventarioLineas(pagina, desdeControles) {
             <td class="td-imei">${l.iccid ? iccidVisual(l.iccid) : '-'}</td>
             <td>${badgeTelefonia(l.telefonia)}</td>
             <td><span class="badge-estado ${LINEA_ESTADO_CLS[l.estado] || ''}">${escHtml(ESTADO_HIST_LABEL[l.estado] || l.estado)}</span></td>
+            <td>${badgeEstadoOperativo(l)}</td>
             <td>${l.rc_codigo
                     ? `<span class="link-num" onclick="abrirPanelRC(this.textContent)">${escHtml(l.rc_codigo)}</span>${l.sim_slot ? ` (${l.sim_slot === 'sim1' ? 'SIM 1' : 'SIM 2'})` : ''}`
                     : lineaSinRCConConsumo(l)
@@ -5403,6 +5406,31 @@ function filtrarSinRC() {
     if (!sel) return;
     sel.value = sel.value === 'sin_rc' ? '' : 'sin_rc';
     renderInventarioLineas(1, true);
+}
+
+// Estado de la línea según los reportes del operador (aparte del estado del inventario):
+//   desactivado → desactivada en el inventario, el último reporte la da de baja,
+//                 o no figura en ningún reporte
+//   activo      → figura en el último reporte (con o sin consumo), o es una línea
+//                 asignada de una telefonía que no manda reportes (ej. VOX)
+function estadoOperativoLinea(l) {
+    if (l.estado === 'desactivada') return 'desactivado';
+    const n = String(l.numero || '').trim();
+    const i = claveIccid(l.iccid);
+    const c = (n && !esM2MTexto(n) ? mapaNumAConsumo.get(n) : null) || (i ? mapaImeiAConsumo.get(i) : null);
+    if (!c) return activaSinReporte(n, i) ? 'activo' : 'desactivado';
+    return String(c.estado || '').toLowerCase() === 'desactivado' ? 'desactivado' : 'activo';
+}
+
+function badgeEstadoOperativo(l) {
+    const est = estadoOperativoLinea(l);
+    const n = String(l.numero || '').trim();
+    const i = claveIccid(l.iccid);
+    const sinReporte = !((n && !esM2MTexto(n) && mapaNumAConsumo.has(n)) || (i && mapaImeiAConsumo.has(i)));
+    const titulo = l.estado === 'desactivada' ? 'Desactivada en el inventario'
+                 : sinReporte ? (est === 'activo' ? 'Su telefonía no manda reportes' : 'No figura en los reportes del operador')
+                 : est === 'activo' ? 'Figura activa en el último reporte' : 'El último reporte la da de baja';
+    return `<span class="badge-estado ${est === 'activo' ? 'badge-activo' : 'badge-desactivado'}" title="${titulo}">${est === 'activo' ? 'Activo' : 'Desactivado'}</span>`;
 }
 
 // Línea en uso (con consumo en su último reporte) que no tiene RC en el inventario

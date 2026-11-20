@@ -621,7 +621,8 @@ const TABLAS_INTERACTIVAS = {
     },
     inventario: {
         sel: '#subtab-inventario .panel-historial',
-        acc: [l => l.numero, l => l.iccid, l => l.telefonia, l => l.estado, l => l.rc_codigo, l => l.creado_en, l => l.creado_por, null],
+        acc: [l => l.numero, l => l.iccid, l => l.telefonia, l => l.estado, l => estadoOperativoLinea(l) === 'activo' ? 'Activo' : 'Desactivado',
+              l => l.rc_codigo, l => l.creado_en, l => l.creado_por, null],
         rehacer: () => renderInventarioLineas(1),
         dbl: {
             'Número':    v => _ponerValor('lineasBuscar', v),
@@ -629,6 +630,7 @@ const TABLAS_INTERACTIVAS = {
             RC:          v => _ponerValor('lineasBuscar', v),
             'Telefonía': v => _elegirOpcion('lineasTelefonia', v),
             Estado:      v => _elegirOpcion('lineasEstado', v),
+            'Línea':     v => _elegirOpcion('lineasOperativo', _norm(v).startsWith('act') ? 'activo' : 'desactivado'),
         },
         aplicar: () => renderInventarioLineas(1),
     },
@@ -837,7 +839,7 @@ const LIMPIAR_TABLA = {
         if (ocultar) ocultar.checked = true;   // vuelve al valor de siempre
         renderActivaciones(1);
     },
-    inventario:   () => { _quitarFiltrosColumna('inventario'); _vaciar(['lineasBuscar', 'lineasEstado', 'lineasTelefonia']); renderInventarioLineas(1); },
+    inventario:   () => { _quitarFiltrosColumna('inventario'); _vaciar(['lineasBuscar', 'lineasEstado', 'lineasOperativo', 'lineasTelefonia']); renderInventarioLineas(1); },
     cargas:       () => { _quitarFiltrosColumna('cargas'); pintarCargasSesion(); },
 };
 

@@ -69,6 +69,7 @@ const FILTROS = {
                     : [['activo', 'Activo'], ['sin_consumo', 'Sin consumo'], ['desactivado', 'Desactivado']] },
     tipoRC:     { tipo: 'multi', titulo: 'Tipo de RC', opciones: () => Object.entries(TIPO_CONFIG).map(([k, v]) => [k, v.label]) },
     estadoInv:  { tipo: 'multi', titulo: 'Estado en inventario', opciones: () => [['disponible', 'Disponible'], ['asignada', 'Asignada'], ['desactivada', 'Desactivada'], ['sin_rc', 'Sin RC asignado · actualizar']] },
+    estadoLinea: { tipo: 'multi', titulo: 'Estado de la línea (reportes)', opciones: () => [['activo', 'Activo'], ['desactivado', 'Desactivado']] },
     tipoAct:    { tipo: 'multi', titulo: 'Tipo', opciones: () => [['rc', 'RC'], ['linea', 'Líneas']] },
     rc:         { tipo: 'texto', titulo: 'RC (uno o varios, separados por coma)', etiqueta: 'RC', lista: true, placeholder: 'Ej: RC_55591, RC_10243' },
     numero:     { tipo: 'texto', titulo: 'Número / ICCID (uno o varios, separados por coma)', etiqueta: 'Número / ICCID', lista: true, placeholder: 'Ej: 976989482, 8959502…' },
@@ -292,7 +293,7 @@ const REPORTES = {
         titulo: 'Inventario de líneas',
         descripcion: 'Líneas del inventario y a qué RC están asignadas.',
         soloAdmin: true,
-        filtros: ['telefonia', 'estadoInv', 'regional', 'rc', 'buscar'],
+        filtros: ['telefonia', 'estadoInv', 'estadoLinea', 'regional', 'rc', 'buscar'],
         async obtener(f) {
             const legado = inventarioModo === 'legado';
             if (legado ? !inventarioLegadoCargado : !inventarioLineas.length) await (legado ? cargarLegado() : cargarLineas());
@@ -306,14 +307,15 @@ const REPORTES = {
                 || (estados.length && _pasa(l.estado, estados))
                 || (sinRC && lineaSinRCConConsumo(l));
             const filas = inventarioActual().filter(l =>
-                _pasa(l.telefonia, f.telefonia) && pasaEstado(l) &&
+                _pasa(l.telefonia, f.telefonia) && pasaEstado(l) && _pasa(estadoOperativoLinea(l), f.estadoLinea) &&
                 (!f.regional?.length || _pasa(reg(l), f.regional)) &&
                 (!rcs.length || rcs.some(x => _norm(l.rc_codigo).includes(x))) &&
                 _contiene(f.buscar, l.numero, l.iccid, l.rc_codigo));
             return {
-                columnas: ['Número', 'ICCID', 'Telefonía', 'Estado', 'RC', 'Slot', 'Regional', 'Cargada', 'Por', 'Observación'],
+                columnas: ['Número', 'ICCID', 'Telefonía', 'Estado', 'Línea', 'RC', 'Slot', 'Regional', 'Cargada', 'Por', 'Observación'],
                 filas: filas.map(l => [_txt(l.numero), _txt(l.iccid), _txt(l.telefonia),
                     ESTADO_HIST_LABEL[l.estado] || l.estado,
+                    estadoOperativoLinea(l) === 'activo' ? 'Activo' : 'Desactivado',
                     l.rc_codigo ? _txt(l.rc_codigo) : (lineaSinRCConConsumo(l) ? 'Sin RC asignado' : ''),
                     l.sim_slot ? (l.sim_slot === 'sim1' ? 'SIM 1' : 'SIM 2') : '', _txt(reg(l)),
                     formatearFechaHora(l.creado_en), _txt(l.creado_por), _txt(l.observacion)]),
@@ -428,6 +430,7 @@ function filtrosDePantalla(vista) {
         s.automaticas = !document.getElementById('activacionesOcultarSistema')?.checked;
     } else if (vista === 'inventario') {
         s.buscar    = v('lineasBuscar');
+        s.estadoLinea = uno('lineasOperativo', 'estadoLinea');
         s.estadoInv = v('lineasEstado') === 'activas' ? ['disponible', 'asignada'] : uno('lineasEstado', 'estadoInv');
         s.telefonia = uno('lineasTelefonia', 'telefonia');
     }
