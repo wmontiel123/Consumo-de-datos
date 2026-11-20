@@ -93,7 +93,7 @@ begin
     -- Estado calculado de cada SIM y del RC
     create temp table _rc_calc on commit drop as
     with s as (
-        select d.codigo, d.estado, d.sim1_estado, d.sim2_estado, v.slot, v.num, v.ic
+        select d.id, d.codigo, d.estado, d.sim1_estado, d.sim2_estado, v.slot, v.num, v.ic
           from dispositivos_ande d
           cross join lateral (values
               ('sim1', nullif(case when upper(trim(coalesce(d.sim1_num, ''))) in ('', 'M2M') then '' else trim(d.sim1_num) end, ''),
@@ -117,13 +117,15 @@ begin
           left join _est en on en.key = s.num
           left join _est ei on ei.key = s.ic
     ), r as (
-        select codigo,
+        -- Por FILA (id), no por código: hay RC con el mismo código cargados dos veces
+        select id,
+               max(codigo)      as codigo,
                max(estado)      as estado_ant,
                max(sim1_estado) as s1_ant,
                max(sim2_estado) as s2_ant,
                max(se) filter (where slot = 'sim1') as s1,
                max(se) filter (where slot = 'sim2') as s2
-          from e group by codigo
+          from e group by id
     )
     select r.*,
            case
@@ -159,7 +161,7 @@ begin
     update dispositivos_ande d
        set estado = c.estado_nuevo, sim1_estado = c.s1, sim2_estado = c.s2
       from _rc_calc c
-     where d.codigo = c.codigo
+     where d.id = c.id
        and (c.estado_ant is distinct from c.estado_nuevo or c.s1_ant is distinct from c.s1 or c.s2_ant is distinct from c.s2);
 
     return v_resumen;

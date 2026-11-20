@@ -623,7 +623,7 @@ async function sincronizarEstadosDispositivos(forzarTodos = false) {
 
     // Agrupa los dispositivos que cambian por combinación de (estado, sim1_estado, sim2_estado)
     // para hacer actualizaciones bulk en lugar de una por dispositivo.
-    const grupos = new Map(); // key → { estado, sim1_estado, sim2_estado, codigos[] }
+    const grupos = new Map(); // key → { estado, sim1_estado, sim2_estado, codigos[] = ids de fila }
     const addGrupo = (codigo, estado, s1e, s2e) => {
         const key = `${estado}|${s1e}|${s2e}`;
         if (!grupos.has(key)) grupos.set(key, { estado, sim1_estado: s1e, sim2_estado: s2e, codigos: [] });
@@ -651,7 +651,7 @@ async function sincronizarEstadosDispositivos(forzarTodos = false) {
 
         // Solo actualizar si algo cambió
         if (estadoFinal !== dev.estado || s1e !== dev.sim1_estado || s2e !== dev.sim2_estado) {
-            addGrupo(dev.codigo, estadoFinal, s1e, s2e);
+            addGrupo(dev.id, estadoFinal, s1e, s2e);
         }
     }
 
@@ -663,7 +663,7 @@ async function sincronizarEstadosDispositivos(forzarTodos = false) {
         for (let i = 0; i < grp.codigos.length; i += CHUNK) {
             ops.push(window.clienteSupabase.from('dispositivos_ande')
                 .update({ estado: grp.estado, sim1_estado: grp.sim1_estado, sim2_estado: grp.sim2_estado })
-                .in('codigo', grp.codigos.slice(i, i + CHUNK)));
+                .in('id', grp.codigos.slice(i, i + CHUNK)));
         }
     }
     await Promise.all(ops);
@@ -671,7 +671,7 @@ async function sincronizarEstadosDispositivos(forzarTodos = false) {
     // Actualizar cache local
     for (const [, grp] of grupos) {
         grp.codigos.forEach(c => {
-            const d = todosLosDatos.find(x => x.codigo === c);
+            const d = todosLosDatos.find(x => x.id === c);
             if (d) { d.estado = grp.estado; d.sim1_estado = grp.sim1_estado; d.sim2_estado = grp.sim2_estado; }
         });
     }
@@ -4878,14 +4878,14 @@ async function recalcularEstadosPostImport(filas) {
         if (estadoFinal !== dev.estado || s1e !== dev.sim1_estado || s2e !== dev.sim2_estado) {
             const key = `${estadoFinal}|${s1e}|${s2e}`;
             if (!grupos.has(key)) grupos.set(key, { estado: estadoFinal, sim1_estado: s1e, sim2_estado: s2e, codigos: [] });
-            grupos.get(key).codigos.push(dev.codigo);
+            grupos.get(key).codigos.push(dev.id);
         }
     }
     for (const [, grp] of grupos)
         for (let i = 0; i < grp.codigos.length; i += CHUNK)
             await window.clienteSupabase.from('dispositivos_ande')
                 .update({ estado: grp.estado, sim1_estado: grp.sim1_estado, sim2_estado: grp.sim2_estado })
-                .in('codigo', grp.codigos.slice(i, i + CHUNK));
+                .in('id', grp.codigos.slice(i, i + CHUNK));
 }
 
 async function ejecutarImportConsumo() {
