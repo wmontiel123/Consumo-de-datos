@@ -3653,6 +3653,8 @@ function parsearCSVConsumo(texto, telefonia) {
 
         const _mbParsed = parseFloat(mbRaw);
         const consumo_mb = (mbRaw !== '' && !isNaN(_mbParsed)) ? _mbParsed : null;
+        // Sin consumo numérico (vacío, "desactivado", "error"…): la fila no se carga
+        if (consumo_mb === null) continue;
 
         // Parsear fecha → YYYY-MM-DD
         // Soporta: DD/MM/YYYY · DD-MM-YYYY · YYYY-MM-DD · YYYY/MM/DD

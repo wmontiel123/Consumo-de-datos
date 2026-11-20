@@ -6,6 +6,9 @@ Replica la lógica del import de la app (app.js → parsearCSVConsumo /
 ejecutarImportConsumo / recalcularEstadosPostImport):
   - CSV sin encabezado: numero, imei, estado_operador, consumo_mb, fecha, [observacion]
   - Telefonía detectada por nombre de archivo o carpeta (personal/claro/tigo/vox/m2m)
+  - Filas sin consumo numérico (vacío, "desactivado", "error"…) no se cargan. Si el
+    texto dice "desactivado" la línea queda desactivada; con cualquier otro texto
+    conserva el estado que tenía.
   - Consumos negativos (reinicio del ciclo de facturación, reportes M2M) se
     guardan tal cual; con --corregir-negativos se recalculan o estiman
     (ver corregir_negativos()).
@@ -139,6 +142,12 @@ def parsear_csv(ruta, telefonia):
         if consumo_mb is not None and consumo_mb.is_integer():
             consumo_mb = int(consumo_mb)
         estado = 'desactivado' if telefonia == 'Personal' and 'backup' in obs.lower() else 'activo'
+        if consumo_mb is None:
+            # Sin consumo numérico (vacío, "desactivado", "error"…): no se carga.
+            # Se guarda el texto para decidir el estado de la línea (ver importar()).
+            registros.append({'numero': numero or None, 'imei': imei or None, 'sin_dato': True,
+                              'texto_mb': mb_raw, 'fecha_consumo': parsear_fecha(fecha_raw)})
+            continue
         registros.append({
             'numero': numero or None,
             'imei': imei or None,
@@ -236,8 +245,10 @@ def claves_existentes(telefonia, fecha_min, fecha_max):
 
 # ── Recalcular estados (igual que recalcularEstadosPostImport) ───
 
-def recalcular_estados(filas, telefonia, grupo_m2m):
-    """filas: todas las filas leídas de esa telefonía/grupo (nuevas y ya existentes)."""
+def recalcular_estados(filas, telefonia, grupo_m2m, conservar=frozenset()):
+    """filas: todas las filas leídas de esa telefonía/grupo (nuevas y ya existentes).
+    conservar: números/ICCID que vinieron en el archivo sin consumo numérico (p. ej. "error"):
+    no se marcan desactivados por no estar en filas; mantienen su estado."""
     max_num, max_imei = {}, {}
     for r in filas:
         n = (r['numero'] or '').strip()
@@ -265,9 +276,9 @@ def recalcular_estados(filas, telefonia, grupo_m2m):
     for r in obtener_todos('consumo_sim', params):
         n = (r.get('numero') or '').strip()
         i = normalizar_imei(r.get('imei'))
-        if n and not es_m2m(n) and n not in estado_num:
+        if n and not es_m2m(n) and n not in estado_num and n not in conservar:
             estado_num[n] = 'desactivado'
-        if i and i not in estado_imei:
+        if i and i not in estado_imei and i not in conservar:
             estado_imei[i] = 'desactivado'
 
     for campo, mapa in (('numero', estado_num), ('imei', estado_imei)):
@@ -482,6 +493,7 @@ def importar(archivos, carpeta, ejecutar, m2m_telefonia='Tigo', recalcular=True,
 
     # 1. Leer todos los archivos
     por_tel = {}          # telefonia → filas
+    conservar = {}        # telefonia → números/ICCID que vinieron sin consumo numérico (error…)
     omitidos = []
     for ruta in archivos:
         tel = detectar_telefonia(ruta, m2m_telefonia)
@@ -498,8 +510,21 @@ def importar(archivos, carpeta, ejecutar, m2m_telefonia='Tigo', recalcular=True,
         if sin_fecha:
             print(f'   ⚠️  {rel}: {sin_fecha} fila(s) sin fecha válida (se omiten)')
         filas = [f for f in filas if f['fecha_consumo']]
+        sin_dato = [f for f in filas if f.get('sin_dato')]
+        filas = [f for f in filas if not f.get('sin_dato')]
+        if sin_dato:
+            textos = ', '.join(f'"{t}": {n}' for t, n in sorted(
+                {t: sum(1 for f in sin_dato if (f['texto_mb'] or '(vacío)') == t)
+                 for t in {f['texto_mb'] or '(vacío)' for f in sin_dato}}.items()))
+            print(f'   ⚠️  {rel}: {len(sin_dato)} fila(s) sin consumo numérico, no se cargan ({textos})')
+            # "desactivado" en el consumo → la línea queda desactivada (como si no viniera).
+            # Cualquier otro texto (error, vacío…) → la línea conserva el estado que tenía.
+            for f in sin_dato:
+                if 'desactiv' not in (f['texto_mb'] or '').lower():
+                    conservar.setdefault(tel, set()).update(
+                        x for x in ((f['numero'] or '').strip(), normalizar_imei(f['imei'])) if x and not es_m2m(x))
         if not filas:
-            omitidos.append(f'{rel} (sin filas válidas)')
+            omitidos.append(f'{rel} (sin filas con consumo)')
             continue
         por_tel.setdefault(tel, []).extend(filas)
 
@@ -585,7 +610,7 @@ def importar(archivos, carpeta, ejecutar, m2m_telefonia='Tigo', recalcular=True,
         for grupo_m2m in (False, True):
             sub = [f for f in filas if es_m2m(f['numero']) == grupo_m2m]
             if sub:
-                recalcular_estados(sub, tel, grupo_m2m)
+                recalcular_estados(sub, tel, grupo_m2m, conservar.get(tel, set()))
 
     r = sesion.post(f'{REST}/rpc/refresh_consumo_consolidado', json={})
     print('   consumo_consolidado refrescado' if r.status_code < 300
