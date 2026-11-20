@@ -5263,6 +5263,7 @@ function renderTotalesInventario() {
         const desact  = lista.length - activas;
         // Asignadas en el inventario y activas según los reportes del operador
         const asigActivas = lista.filter(l => l.estado === 'asignada' && estadoOperativoLinea(l) === 'activo').length;
+        const disponibles = lista.filter(l => l.estado === 'disponible').length;
         const num = n => cargado ? formatearNumero(n) : '…';
         const modo = legado ? 'legado' : 'lineas';
         const tarjeta = (cls, label, n, estado, operativo = '') =>
@@ -5275,6 +5276,7 @@ function renderTotalesInventario() {
                 ${tarjeta('inv-total-activas', 'Activas', activas, '', 'activo')}
                 ${tarjeta('inv-total-desact', 'Desactivadas', desact, '', 'desactivado')}
                 ${tarjeta('inv-total-asig-act', 'Asignadas y activas', asigActivas, 'asignada', 'activo')}
+                ${legado ? '' : tarjeta('inv-total-disp', 'Disponibles', disponibles, 'disponible')}
             </div></div>`;
     };
     caja.innerHTML = grupo(false, 'Líneas', inventarioLineas.length > 0 || inventarioModo === 'lineas')
