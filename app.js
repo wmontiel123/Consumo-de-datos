@@ -701,8 +701,10 @@ async function cargarDatos() {
             fetchTodos('consumo_ultimo', 'numero,imei,observacion,estado_operador,consumo_mb,estado,fecha_consumo,telefonia', 'fecha_consumo', false, 'id')
                 .catch(e => { console.warn('⚠️ No se pudo cargar consumo_ultimo:', e.message); return []; }),
             cargarEstadosSIM(),  // no depende de los otros — va en paralelo
-            window.clienteSupabase.from('lineas').select('numero,iccid,telefonia').eq('estado', 'asignada').limit(5000)
-                .then(r => r.error ? [] : (r.data || []), () => []),
+            traerTodasEnParalelo(o => window.clienteSupabase.from('lineas')
+                    .select('numero,iccid,telefonia', o?.head ? { count: 'exact', head: true } : undefined)
+                    .eq('estado', 'asignada').order('id', { ascending: true }))
+                .catch(() => []),
             window.clienteSupabase.from('lineas').select('numero,iccid').eq('estado', 'desactivada').limit(1000)
                 .then(r => r.error ? [] : (r.data || []), () => []),
             window.clienteSupabase.from('lineas_legado').select('numero,iccid').eq('estado', 'desactivada').limit(5000)
@@ -5225,8 +5227,8 @@ const inventarioActual = () => listaInventario(inventarioModo === 'legado');
 
 async function cargarLegado() {
     try {
-        inventarioLegado = (await traerTodasLasFilas(() => window.clienteSupabase
-            .from('lineas_legado').select('*')
+        inventarioLegado = (await traerTodasEnParalelo(o => window.clienteSupabase
+            .from('lineas_legado').select('*', o?.head ? { count: 'exact', head: true } : undefined)
             .order('rc_codigo', { ascending: true })
             .order('id',        { ascending: true })))
             .map(l => Object.assign(l, { _legado: true }));
@@ -5317,15 +5319,26 @@ async function prepararAltas() {
     const regionales = [...new Set(todosLosDatos.map(d => d.regional).filter(Boolean))].sort();
     document.getElementById('dlRegionales').innerHTML =
         regionales.map(r => `<option value="${escHtml(r)}">`).join('');
+    // Si el inventario ya estaba cargado, se muestra al instante y se actualiza por detrás
+    if (inventarioLineas.length) {
+        actualizarBotonesInventario();
+        renderInventarioLineas();
+        cargarLineas();
+        return;
+    }
     await cargarLineas();
 }
 
 async function cargarLineas() {
+    if (!inventarioLegadoCargado && !_cargandoLegado) {
+        _cargandoLegado = true;
+        cargarLegado().finally(() => { _cargandoLegado = false; });
+    }
     let data = null, error = null;
     try {
-        data = await traerTodasLasFilas(() => window.clienteSupabase
+        data = await traerTodasEnParalelo(o => window.clienteSupabase
             .from('lineas')
-            .select('*')
+            .select('*', o?.head ? { count: 'exact', head: true } : undefined)
             .order('creado_en', { ascending: false })
             .order('id',        { ascending: false }));
     } catch (e) { error = e; }
@@ -5345,8 +5358,8 @@ async function cargarLineas() {
         .join('');
     actualizarBotonesInventario();
     if (inventarioModo === 'lineas') renderInventarioLineas();
-    if (!inventarioLegadoCargado) cargarLegado();
 }
+let _cargandoLegado = false;
 
 // Líneas del inventario que cumplen los filtros (las usa la tabla y la exportación)
 function filasInventario() {
@@ -5924,6 +5937,10 @@ async function cambiarEstadoLinea(id, activar, legado = false, motivoDado = null
     const { error } = await window.clienteSupabase.from(tablaLineas(legado)).update({ estado: nuevo }).eq('id', id);
     if (error) { alert('❌ Error: ' + error.message); return false; }
     await registrarEstado('linea', ref, linea.estado, nuevo, motivo.trim() || null);
+    // Tabla y tarjetas al instante (la recarga completa va al final, por detrás)
+    linea.estado = nuevo;
+    actualizarBotonesInventario();
+    if (inventarioActual() === listaInventario(legado)) renderInventarioLineas();
 
     // Reflejarlo en el RC que tiene la línea
     const claves = [];
@@ -5933,7 +5950,7 @@ async function cambiarEstadoLinea(id, activar, legado = false, motivoDado = null
     claves.forEach(k => nuevo === 'desactivada' ? lineasDesactivadasInv.add(k) : lineasDesactivadasInv.delete(k));
     await actualizarRCDeLinea(linea, ref, nuevo === 'desactivada');
 
-    if (legado) await cargarLegado(); else await cargarLineas();
+    if (legado) cargarLegado(); else cargarLineas();
     return true;
 }
 
