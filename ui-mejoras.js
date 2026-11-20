@@ -914,8 +914,11 @@ function irATabla(tab) {
 // Usa el mismo estado del inventario de líneas (disponible / asignada / desactivada).
 
 async function _lineaInventarioDe(numero, iccid) {
-    const n = String(numero || '').trim(), i = claveIccid(iccid);
-    const conds = [...(n && _norm(n) !== 'm2m' ? [`numero.eq.${n}`] : []), ...(i ? [`iccid.eq.${i}`] : [])];
+    let n = String(numero || '').trim(), i = claveIccid(iccid);
+    if (!i && /^89\d{16,18}$/.test(n)) { i = claveIccid(n); n = ''; }   // llegó un ICCID como número
+    // ICCID de 19 dígitos: en el inventario puede estar con el dígito verificador (20)
+    const condI = !i ? [] : /^89\d{17}$/.test(i) ? [`iccid.eq.${i}`, `iccid.like.${i}_`] : [`iccid.eq.${i}`];
+    const conds = [...(n && _norm(n) !== 'm2m' ? [`numero.eq.${n}`] : []), ...condI];
     if (!conds.length) return null;
     for (const legado of [false, true]) {
         const { data, error } = await window.clienteSupabase.from(tablaLineas(legado)).select('*').or(conds.join(',')).limit(1);

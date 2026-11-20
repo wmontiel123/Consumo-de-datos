@@ -2134,7 +2134,7 @@ function mostrarEnTablaConsumo(filas, totalServidor) {
         if (estMostrar !== 'activo') tr.classList.add('fila-inactiva');
         tr.innerHTML = `
             <td><span class="badge-estado ${cfg.cls}">${cfg.label}</span></td>
-            <td>${c.numero ? `${dot}<span class="link-num" onclick="abrirPanelSIM('${c.numero}')">${c.numero}</span>` : '-'}</td>
+            <td>${c.numero ? `${dot}<span class="link-num" onclick="abrirPanelSIM('${c.numero}', '${normalizarImei(c.imei)}')">${c.numero}</span>` : '-'}</td>
             <td class="td-imei">${c.imei ? iccidVisual(normalizarImei(c.imei)) : '-'}</td>
             <td>${rc !== '-' ? `<span class="link-rc" onclick="abrirPanelRC('${rc}')">${rc}</span>` : '-'}</td>
             <td>${badgeTelefonia(c.telefonia)}</td>
@@ -3961,10 +3961,13 @@ async function abrirPanelRC(codigo) {
 
 // ── Panel SIM ──────────────────────────────────────────────────────
 async function abrirPanelSIM(numero, imei = null) {
-    const n = String(numero || '').trim();
-    const i = imei ? normalizarImei(imei) : '';
+    let n = String(numero || '').trim();
+    let i = imei ? normalizarImei(imei) : '';
+    // Si llega un ICCID en lugar del número, se busca por ICCID
+    if (!i && /^89\d{16,18}$/.test(n)) { i = n; n = ''; }
     const m2m = n.toLowerCase() === 'm2m';
-    if (!n && !i) return;
+    // M2M sin ICCID no identifica ninguna línea (traería consumos de cualquiera)
+    if ((!n || m2m) && !i) { alert('Esta línea M2M no tiene ICCID: no se puede abrir su detalle.'); return; }
 
     const overlay = document.getElementById('panelOverlay');
     const titulo  = document.getElementById('panelTitulo');
@@ -3982,7 +3985,7 @@ async function abrirPanelSIM(numero, imei = null) {
     try {
         // Buscar dispositivo asociado: primero por número, luego por IMEI
         const device = (!m2m && n ? mapaNumADevice.get(n) : null)
-                    || (i ? mapaImeiADevice.get(i) : null)
+                    || (i ? (mapaImeiADevice.get(claveIccid(i)) || mapaImeiADevice.get(i)) : null)
                     || null;
 
         // Queries en paralelo: consumo histórico + historial de estados
@@ -3996,7 +3999,11 @@ async function abrirPanelSIM(numero, imei = null) {
             .order('fecha_consumo', { ascending: true })
             .limit(500);
         if (!m2m && n) q = q.eq('numero', n);
-        else if (i)    q = /^89\d{18}$/.test(i) ? q.in('imei', [i, i.slice(0, 19)]) : q.eq('imei', i);
+        else if (i) {
+            // ICCID con o sin el dígito verificador (Tigo lo informa con 19, otros con 20)
+            const base = claveIccid(i);
+            q = /^89\d{17}$/.test(base) ? q.or(`imei.eq.${base},imei.like.${base}_`) : q.eq('imei', i);
+        }
 
         const [{ data: rows, error }, { data: histEstados }] = await Promise.all([
             q,
