@@ -361,9 +361,10 @@ function aplicarRol() {
     // Ocultar botón "Actualizar Estados" (escribe en BD)
     document.getElementById('btnActualizarEstados').style.display  = 'none';
 
-    // Altas de RC y líneas: solo admin
+    // Altas de RC y líneas, inventario e historial de activaciones: solo admin
     document.getElementById('tabBtnAltas').style.display = 'none';
     document.getElementById('tabBtnInventario').style.display = 'none';
+    document.getElementById('tabBtnActivaciones').style.display = 'none';
 
     // Actualizar labels de las tarjetas de estadísticas
     document.querySelector('.stat-activos h3').textContent      = 'Activos';
@@ -1784,6 +1785,8 @@ function cambiarTab(tab) {
         altas:        ['tab-altas',        'tabBtnAltas'],
         inventario:   ['tab-inventario',   'tabBtnInventario'],
     };
+    // Pestañas solo para admin: un viewer vuelve a Consumo
+    if (esViewer() && ['activaciones', 'altas', 'inventario'].includes(tab)) tab = 'consumo';
     Object.entries(tabs).forEach(([nombre, [div, btn]]) => {
         document.getElementById(div).style.display = nombre === tab ? 'block' : 'none';
         document.getElementById(btn).classList.toggle('tab-activo', nombre === tab);

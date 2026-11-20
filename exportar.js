@@ -352,6 +352,7 @@ const REPORTES = {
     activaciones: {
         titulo: 'Activaciones y desactivaciones',
         descripcion: 'Altas, activaciones y desactivaciones de RC y líneas.',
+        soloAdmin: true,
         filtros: ['fechas', 'tipoAct', 'automaticas', 'buscar'],
         async obtener(f) {
             if (activacionesLista === null) await cargarActivaciones();
