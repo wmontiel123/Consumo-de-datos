@@ -11,6 +11,7 @@
 //   resolver_reseteo  : un aprobador aprueba o rechaza → mail con el enlace al usuario
 //   resetear          : el usuario crea su contraseña nueva
 //   aviso_solicitud_linea : mail a los aprobadores cuando alguien pide activar / desactivar una línea
+//                           o una carga de saldo (alias: aviso_solicitud)
 //   cerrar_ticket_linea   : la app avisa que resolvió una solicitud de línea → se cierra su ticket
 //
 // Tickets en Zammad (opcional; sin ZAMMAD_URL / ZAMMAD_TOKEN todo sigue por mail):
@@ -465,13 +466,13 @@ async function activar(req: Request, b: Record<string, unknown>): Promise<Respon
 async function avisoSolicitudLinea(req: Request): Promise<Response> {
     const desde = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     const { data, error } = await db.from('solicitudes').select('*')
-        .in('tipo', ['activar_linea', 'desactivar_linea']).eq('estado', 'pendiente')
+        .in('tipo', ['activar_linea', 'desactivar_linea', 'carga_saldo']).eq('estado', 'pendiente')
         .gte('creado_at', desde).order('id').limit(20);
     if (error) return errorDb(req, error);
     let enviados = 0;
     for (const s of data ?? []) {
         if ((s.datos ?? {}).mail_enviado) continue;
-        if (await mailSolicitudLinea(s)) enviados++;
+        if (await (s.tipo === 'carga_saldo' ? mailSolicitudSaldo(s) : mailSolicitudLinea(s))) enviados++;
     }
     return json(req, 200, { ok: true, enviados });
 }
@@ -491,6 +492,25 @@ async function mailSolicitudLinea(s: Record<string, any>): Promise<boolean> {
       <p>${boton(APP_URL, 'Abrir la aplicación', '#35398C')}</p>
       <p style="color:#64748b;font-size:12px">Se aprueba o rechaza en la pestaña Activaciones → Solicitudes pendientes.</p>`),
       { tipo: 'linea', clave: String(s.id) });
+    if (ok) await db.from('solicitudes').update({ datos: { ...d, mail_enviado: true } }).eq('id', s.id);
+    return ok;
+}
+
+// Solicitud de carga de saldo: ticket en Zammad (se resuelve ahí) y mail a los demás aprobadores
+async function mailSolicitudSaldo(s: Record<string, any>): Promise<boolean> {
+    const d = (s.datos ?? {}) as Record<string, unknown>;
+    const linea = String(d.numero || '-');
+    const monto = Number(d.monto);
+    const montoTxt = Number.isFinite(monto) ? monto.toLocaleString('es-PY') : '';
+    const fila = (k: string, v: unknown) => v ? `<tr><td style="padding:3px 12px 3px 0;color:#64748b;vertical-align:top">${k}</td><td>${esc(v)}</td></tr>` : '';
+    const ok = await avisarAprobadores(`Solicitud de saldo: ${linea}${montoTxt ? ' · ' + montoTxt : ''}`, marco('Solicitud de carga de saldo', `
+      <p><b>${esc(s.usuario)}</b> pidió una carga de saldo:</p>
+      <table style="border-collapse:collapse;margin:8px 0 16px">
+        ${fila('Número', d.numero)}${fila('Monto', montoTxt)}${fila('Observación', d.observacion)}
+        ${fila('Fecha', new Date(s.creado_at).toLocaleString('es-PY', { timeZone: 'America/Asuncion' }))}
+      </table>
+      <p>${boton(APP_URL, 'Abrir la aplicación', '#35398C')}</p>`),
+      { tipo: 'saldo', clave: String(s.id) });
     if (ok) await db.from('solicitudes').update({ datos: { ...d, mail_enviado: true } }).eq('id', s.id);
     return ok;
 }
@@ -535,7 +555,8 @@ Deno.serve(async (req: Request) => {
             case 'solicitar_reseteo': return await solicitarReseteo(req, b);
             case 'resolver_reseteo':  return await resolverReseteo(req, b);
             case 'resetear':          return await resetear(req, b);
-            case 'aviso_solicitud_linea': return await avisoSolicitudLinea(req);
+            case 'aviso_solicitud_linea':
+            case 'aviso_solicitud':       return await avisoSolicitudLinea(req);
             case 'cerrar_ticket_linea':   return await cerrarTicketLinea(req, b);
             default:          return json(req, 400, { error: 'Acción no válida' });
         }

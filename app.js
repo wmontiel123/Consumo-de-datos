@@ -4642,6 +4642,10 @@ async function ejecutarSolicitudSaldo() {
 
     try {
         await enviarSolicitud('carga_saldo', { numero, monto, observacion: obs });
+        // Ticket en soporte y aviso por mail (si falla, la solicitud igual queda guardada)
+        window.clienteSupabase.functions.invoke('solicitud-usuario', { body: { accion: 'aviso_solicitud' } })
+            .then(({ error }) => { if (error) console.warn('⚠️ No se pudo avisar la solicitud de saldo:', error.message); })
+            .catch(e => console.warn('⚠️ No se pudo avisar la solicitud de saldo:', e.message));
         st.style.color = '#16a34a'; st.style.background = '#f0fdf4';
         st.textContent = '✅ Solicitud enviada correctamente.';
         setTimeout(() => cerrarModalSaldo(), 1800);
