@@ -4601,6 +4601,10 @@ async function resolverSolicitudLinea(id, aprobar) {
         estado: estadoSol, datos: { ...d, resuelto_por: usuarioSesion(), resuelto_en: new Date().toISOString() },
     }).eq('id', id);
     if (error) { alert('❌ No se pudo actualizar la solicitud: ' + error.message); return; }
+    // Cierra el ticket de soporte de esta solicitud (si falla, la solicitud igual queda resuelta)
+    window.clienteSupabase.functions.invoke('solicitud-usuario', { body: { accion: 'cerrar_ticket_linea', id } })
+        .then(({ error: e }) => { if (e) console.warn('⚠️ No se pudo cerrar el ticket de soporte:', e.message); })
+        .catch(e => console.warn('⚠️ No se pudo cerrar el ticket de soporte:', e.message));
     solicitudesLineas = solicitudesLineas.filter(x => x.id !== id);
     renderSolicitudesLineas();
     if (aprobar) cargarActivaciones();

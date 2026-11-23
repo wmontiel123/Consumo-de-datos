@@ -11,6 +11,16 @@
 //   resolver_reseteo  : un aprobador aprueba o rechaza → mail con el enlace al usuario
 //   resetear          : el usuario crea su contraseña nueva
 //   aviso_solicitud_linea : mail a los aprobadores cuando alguien pide activar / desactivar una línea
+//   cerrar_ticket_linea   : la app avisa que resolvió una solicitud de línea → se cierra su ticket
+//
+// Tickets en Zammad (opcional; sin ZAMMAD_URL / ZAMMAD_TOKEN todo sigue por mail):
+//   ZAMMAD_URL      ej. https://soporte.inovasi.com.py
+//   ZAMMAD_TOKEN    token de acceso de un agente (Perfil → Token de acceso, permiso ticket.agent)
+//   ZAMMAD_GRUPO    grupo donde se crean los tickets (por defecto "Inovasi - Soporte")
+//   ZAMMAD_CLIENTE  correo del cliente del ticket (por defecto SMTP_USER)
+//   ZAMMAD_BUZON    aprobador que es el buzón de Zammad (por defecto soporte@inovasi.com.py):
+//                   recibe ticket en lugar de mail; si Zammad falla, le llega el mail
+//   Requiere la tabla tickets_zammad (scripts/tickets_zammad.sql).
 //
 // Secretos (Supabase → Edge Functions → Secrets):
 //   SMTP_USER       (obligatorio) cuenta de Zoho que envía, ej. soporte@inovasi.com.py
@@ -36,6 +46,14 @@ const APP_URL        = (Deno.env.get('APP_URL') ?? 'https://gcnoc.inovasi.com.py
 const APROBADORES    = (Deno.env.get('APROBADORES') ?? 'soporte@inovasi.com.py,wmontiel@inovasi.com.py,sinsaurralde@inovasi.com.py')
     .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 const ORIGENES = [APP_URL, 'http://localhost:8765'];   // localhost: pruebas locales
+// Zammad (soporte.inovasi.com.py): si están ZAMMAD_URL y ZAMMAD_TOKEN, cada solicitud abre un
+// ticket por API (en lugar del mail al buzón ZAMMAD_BUZON) y se cierra al resolverla.
+const ZAMMAD_URL     = (Deno.env.get('ZAMMAD_URL') ?? '').replace(/\/$/, '');
+const ZAMMAD_TOKEN   = Deno.env.get('ZAMMAD_TOKEN') ?? '';
+const ZAMMAD_GRUPO   = Deno.env.get('ZAMMAD_GRUPO') ?? 'Inovasi - Soporte';
+const ZAMMAD_CLIENTE = (Deno.env.get('ZAMMAD_CLIENTE') ?? SMTP_USER).trim().toLowerCase();
+const ZAMMAD_BUZON   = (Deno.env.get('ZAMMAD_BUZON') ?? 'soporte@inovasi.com.py').trim().toLowerCase();
+const zammadActivo   = () => !!(ZAMMAD_URL && ZAMMAD_TOKEN);
 
 const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
@@ -123,6 +141,78 @@ async function enviarMail(para: string[], asunto: string, html: string): Promise
     }
 }
 
+// ── Zammad ───────────────────────────────────────────────────────
+async function zammad(metodo: string, ruta: string, body: unknown): Promise<Record<string, any>> {
+    const r = await fetch(`${ZAMMAD_URL}/api/v1/${ruta}`, {
+        method: metodo,
+        headers: { 'Authorization': `Token token=${ZAMMAD_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(15_000),
+    });
+    const texto = await r.text();
+    if (!r.ok) throw new Error(`Zammad ${r.status}: ${texto.slice(0, 200)}`);
+    return texto ? JSON.parse(texto) : {};
+}
+
+// Abre un ticket y guarda a qué solicitud corresponde (tipo + clave). Devuelve false si no se pudo.
+async function crearTicket(tipo: string, clave: string, titulo: string, html: string): Promise<boolean> {
+    if (!zammadActivo()) return false;
+    try {
+        const t = await zammad('POST', 'tickets', {
+            title: titulo, group: ZAMMAD_GRUPO, customer_id: `guess:${ZAMMAD_CLIENTE}`,
+            article: { subject: titulo, body: html, content_type: 'text/html', type: 'note', internal: false },
+        });
+        const { error } = await db.from('tickets_zammad').insert({ tipo, clave, ticket_id: t.id, numero: String(t.number ?? '') });
+        if (error) console.error('tickets_zammad:', error.message);
+        return true;
+    } catch (e) {
+        console.error('Zammad crear ticket:', (e as Error).message);
+        return false;
+    }
+}
+
+// Agrega la resolución al último ticket abierto de esa solicitud y lo cierra
+async function cerrarTicket(tipo: string, clave: string, titulo: string, html: string): Promise<boolean> {
+    if (!zammadActivo()) return false;
+    const { data } = await db.from('tickets_zammad').select('id,ticket_id')
+        .eq('tipo', tipo).eq('clave', clave).is('cerrado_en', null).order('id', { ascending: false }).limit(1);
+    const fila = data?.[0];
+    if (!fila) return false;
+    try {
+        await zammad('PUT', `tickets/${fila.ticket_id}`, {
+            state: 'closed',
+            article: { subject: titulo, body: html, content_type: 'text/html', type: 'note', internal: false },
+        });
+        await db.from('tickets_zammad').update({ cerrado_en: new Date().toISOString() }).eq('id', fila.id);
+        return true;
+    } catch (e) {
+        console.error('Zammad cerrar ticket:', (e as Error).message);
+        return false;
+    }
+}
+
+// Mail a los aprobadores; el buzón de Zammad recibe un ticket nuevo o el cierre del existente
+// (si Zammad no responde, le llega el mail como antes)
+async function avisarAprobadores(asunto: string, html: string,
+                                 ticket?: { tipo: string, clave: string, cerrar?: boolean }): Promise<boolean> {
+    let otros = APROBADORES;
+    let okTicket = false;
+    if (ticket && zammadActivo() && APROBADORES.includes(ZAMMAD_BUZON)) {
+        okTicket = ticket.cerrar
+            ? await cerrarTicket(ticket.tipo, ticket.clave, asunto, html)
+            : await crearTicket(ticket.tipo, ticket.clave, asunto, html);
+        if (okTicket) otros = APROBADORES.filter(a => a !== ZAMMAD_BUZON);
+    }
+    const okMail = otros.length ? await enviarMail(otros, asunto, html) : false;
+    return okMail || okTicket;
+}
+
+// Un aprobador con su propio enlace: si es el buzón de Zammad va como ticket
+async function enviarAAprobador(aprobador: string, tipo: string, clave: string, asunto: string, html: string): Promise<boolean> {
+    if (aprobador === ZAMMAD_BUZON && zammadActivo() && await crearTicket(tipo, clave, asunto, html)) return true;
+    return enviarMail([aprobador], asunto, html);
+}
+
 // ── Plantillas de mail ───────────────────────────────────────────
 const marco = (titulo: string, cuerpo: string) => `
 <div style="font-family:Segoe UI,Arial,sans-serif;max-width:560px;margin:auto;border:1px solid #e5e8f5;border-radius:12px;overflow:hidden">
@@ -188,8 +278,8 @@ async function solicitar(req: Request, b: Record<string, unknown>): Promise<Resp
             destinatario: aprobador, expira_en: expira,
         });
         if (e) return errorDb(req, e);
-        envios.push(enviarMail([aprobador], `Solicitud de acceso: ${usuario}`,
-                               mailAprobacion({ nombre, email, usuario, motivo }, token)));
+        envios.push(enviarAAprobador(aprobador, 'acceso', usuario, `Solicitud de acceso: ${usuario}`,
+                                     mailAprobacion({ nombre, email, usuario, motivo }, token)));
     }
     const enviados = (await Promise.all(envios)).filter(Boolean).length;
     await db.from('auditoria_seguridad').insert({
@@ -251,7 +341,7 @@ async function solicitarReseteo(req: Request, b: Record<string, unknown>): Promi
         });
         if (e) { console.error('tokens_reseteo:', e.message); continue; }
         const url = (d: string) => `${APP_URL}/cuenta.html#t=${token}&d=${d}`;
-        const ok = await enviarMail([aprobador], `Reseteo de contraseña: ${usuario}`, marco('Reseteo de contraseña', `
+        const ok = await enviarAAprobador(aprobador, 'reseteo', usuario, `Reseteo de contraseña: ${usuario}`, marco('Reseteo de contraseña', `
           <p>Se pidió restablecer la contraseña de un usuario de Gestión de Equipos ANDE:</p>
           <table style="border-collapse:collapse;margin:8px 0 12px">
             <tr><td style="padding:3px 12px 3px 0;color:#64748b">Usuario</td><td><b>${esc(s.usuario)}</b> (${esc(s.rol)})</td></tr>
@@ -291,10 +381,11 @@ async function resolverReseteo(req: Request, b: Record<string, unknown>): Promis
           <p>${boton(`${APP_URL}/cuenta.html#t=${enlace}`, 'Crear contraseña nueva', '#35398C')}</p>
           <p style="color:#64748b;font-size:12px">Si no lo pediste vos, no uses el enlace y avisá a soporte@inovasi.com.py.</p>`));
     }
-    await enviarMail(APROBADORES, `Reseteo ${aprobada ? 'aprobado' : 'rechazado'}: ${r.usuario}`, marco('Reseteo resuelto', `
+    await avisarAprobadores(`Reseteo ${aprobada ? 'aprobado' : 'rechazado'}: ${r.usuario}`, marco('Reseteo resuelto', `
       <p>El reseteo de contraseña de <b>${esc(r.usuario)}</b> fue <b>${aprobada ? 'aprobado' : 'rechazado'}</b>
       por ${esc(r.resuelto_por)}.${aprobada ? ` Enlace enviado a ${esc(r.email)}.` : ''}</p>
-      ${aprobada && !mailOk ? '<p style="color:#dc2626">No se pudo enviar el enlace al usuario.</p>' : ''}`));
+      ${aprobada && !mailOk ? '<p style="color:#dc2626">No se pudo enviar el enlace al usuario.</p>' : ''}`),
+      { tipo: 'reseteo', clave: String(r.usuario).toLowerCase(), cerrar: true });
     return json(req, 200, { ok: true, decision, usuario: r.usuario, email: r.email, mail_solicitante: mailOk });
 }
 
@@ -345,10 +436,11 @@ async function resolver(req: Request, b: Record<string, unknown>): Promise<Respo
           <p>Si creés que es un error, escribí a soporte@inovasi.com.py.</p>`));
     }
     // Aviso a los aprobadores de cómo quedó resuelta
-    await enviarMail(APROBADORES, `Solicitud ${aprobada ? 'aprobada' : 'rechazada'}: ${r.usuario}`, marco('Solicitud resuelta', `
+    await avisarAprobadores(`Solicitud ${aprobada ? 'aprobada' : 'rechazada'}: ${r.usuario}`, marco('Solicitud resuelta', `
       <p>La solicitud de <b>${esc(r.nombre)}</b> (usuario <b>${esc(r.usuario)}</b>) fue
       <b>${aprobada ? 'aprobada como ' + rolTxt : 'rechazada'}</b> por ${esc(r.resuelto_por)}.</p>
-      ${aprobada && !mailOk ? '<p style="color:#dc2626">No se pudo enviar el enlace de activación al solicitante.</p>' : ''}`));
+      ${aprobada && !mailOk ? '<p style="color:#dc2626">No se pudo enviar el enlace de activación al solicitante.</p>' : ''}`),
+      { tipo: 'acceso', clave: String(r.usuario).toLowerCase(), cerrar: true });
 
     return json(req, 200, { ok: true, decision, usuario: r.usuario, mail_solicitante: mailOk });
 }
@@ -390,16 +482,36 @@ async function mailSolicitudLinea(s: Record<string, any>): Promise<boolean> {
     const accion  = activar ? 'activación' : 'desactivación';
     const linea   = String(d.numero || d.iccid || '-');
     const fila = (k: string, v: unknown) => v ? `<tr><td style="padding:3px 12px 3px 0;color:#64748b;vertical-align:top">${k}</td><td>${esc(v)}</td></tr>` : '';
-    const ok = await enviarMail(APROBADORES, `Solicitud de ${accion}: ${linea}`, marco(`Solicitud de ${accion} de línea`, `
+    const ok = await avisarAprobadores(`Solicitud de ${accion}: ${linea}`, marco(`Solicitud de ${accion} de línea`, `
       <p><b>${esc(s.usuario)}</b> pidió la <b style="color:${activar ? '#16a34a' : '#dc2626'}">${accion}</b> de una línea:</p>
       <table style="border-collapse:collapse;margin:8px 0 16px">
         ${fila('Número', d.numero)}${fila('ICCID', d.iccid)}${fila('RC', d.rc)}${fila('Motivo', d.motivo)}
         ${fila('Fecha', new Date(s.creado_at).toLocaleString('es-PY', { timeZone: 'America/Asuncion' }))}
       </table>
       <p>${boton(APP_URL, 'Abrir la aplicación', '#35398C')}</p>
-      <p style="color:#64748b;font-size:12px">Se aprueba o rechaza en la pestaña Activaciones → Solicitudes pendientes.</p>`));
+      <p style="color:#64748b;font-size:12px">Se aprueba o rechaza en la pestaña Activaciones → Solicitudes pendientes.</p>`),
+      { tipo: 'linea', clave: String(s.id) });
     if (ok) await db.from('solicitudes').update({ datos: { ...d, mail_enviado: true } }).eq('id', s.id);
     return ok;
+}
+
+// La app la llama después de aprobar o rechazar una solicitud de línea: cierra su ticket.
+// Solo actúa sobre solicitudes ya resueltas, así que no sirve para cerrar tickets arbitrarios.
+async function cerrarTicketLinea(req: Request, b: Record<string, unknown>): Promise<Response> {
+    const id = Number(b.id);
+    if (!Number.isInteger(id) || id <= 0) return json(req, 400, { error: 'Solicitud no válida' });
+    const { data: s, error } = await db.from('solicitudes').select('*').eq('id', id).maybeSingle();
+    if (error) return errorDb(req, error);
+    if (!s || !['activar_linea', 'desactivar_linea'].includes(s.tipo)) return json(req, 404, { error: 'Solicitud no encontrada' });
+    if (s.estado === 'pendiente') return json(req, 409, { error: 'La solicitud todavía está pendiente' });
+    const d = (s.datos ?? {}) as Record<string, unknown>;
+    const accion = s.tipo === 'activar_linea' ? 'activación' : 'desactivación';
+    const linea  = String(d.numero || d.iccid || '-');
+    const aprobada = s.estado === 'aprobada';
+    const cerrado = await cerrarTicket('linea', String(id), `Solicitud ${aprobada ? 'aprobada' : 'rechazada'}: ${linea}`,
+        `<p>La solicitud de ${accion} de la línea <b>${esc(linea)}</b> fue <b>${aprobada ? 'aprobada' : 'rechazada'}</b>` +
+        `${d.resuelto_por ? ' por ' + esc(d.resuelto_por) : ''}.</p>`);
+    return json(req, 200, { ok: true, cerrado });
 }
 
 Deno.serve(async (req: Request) => {
@@ -424,6 +536,7 @@ Deno.serve(async (req: Request) => {
             case 'resolver_reseteo':  return await resolverReseteo(req, b);
             case 'resetear':          return await resetear(req, b);
             case 'aviso_solicitud_linea': return await avisoSolicitudLinea(req);
+            case 'cerrar_ticket_linea':   return await cerrarTicketLinea(req, b);
             default:          return json(req, 400, { error: 'Acción no válida' });
         }
     } catch (e) {
