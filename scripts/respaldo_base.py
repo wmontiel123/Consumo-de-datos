@@ -6,8 +6,10 @@ y un manifiesto.json con la cantidad de filas de cada una. Las tablas se descubr
 (las que se agreguen más adelante también se respaldan); las vistas se saltean porque se
 recalculan desde las tablas.
 
-No respalda: los usuarios del login (Supabase Auth: esquema auth, no expuesto por la API)
-ni la estructura (tablas, funciones, políticas), que está en scripts/*.sql.
+Usuarios: se respaldan en usuarios_app (usuario, rol, contraseña cifrada con bcrypt). La cuenta
+interna de Supabase Auth no hace falta: la Edge Function "login" la vuelve a crear sola en el
+primer ingreso si no existe. Por eso esta carpeta es sensible: no compartirla.
+No respalda la estructura (tablas, funciones, políticas), que está en scripts/*.sql.
 
 Conservación: los últimos DIAS_DIARIOS respaldos diarios y el primero de cada mes durante
 MESES_MENSUALES meses.

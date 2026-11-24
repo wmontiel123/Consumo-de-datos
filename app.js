@@ -2259,52 +2259,46 @@ function crearGraficosConsumo(resumen, datos) {
         mbPorTelFecha[tel][r.fecha] = (mbPorTelFecha[tel][r.fecha] || 0) + parseFloat(r.total_mb || 0);
     });
 
+    // Barras apiladas por día: cada color es una telefonía y la altura total es el total del día.
+    // Se lee bien con un solo día cargado o con muchos (las líneas con 1 punto quedaban como puntos sueltos).
     const datasets = telefonias.map(tel => {
-        const cfg = TELEFONIA_CHART[tel] || { color: '#8A35AB', bg: 'rgba(138,53,171,0.08)' };
+        const cfg = TELEFONIA_CHART[tel] || { color: '#8A35AB' };
         return {
             label: tel,
             data: fechas.map(f => mbPorTelFecha[tel][f] || 0),
-            borderColor: cfg.color, backgroundColor: cfg.bg,
-            borderWidth: 2.5, fill: false, tension: 0.4,
-            pointBackgroundColor: cfg.color, pointBorderColor: '#fff',
-            pointBorderWidth: 2, pointRadius: 4, pointHoverRadius: 6,
+            backgroundColor: cfg.color, borderColor: '#fff', borderWidth: 1,
+            borderRadius: 3, maxBarThickness: 56, stack: 'dia',
         };
     });
-
-    // Línea de Total (suma de todas las telefonías por fecha)
-    if (telefonias.length > 1) {
-        const totalPorFecha = fechas.map(f =>
-            telefonias.reduce((sum, tel) => sum + (mbPorTelFecha[tel][f] || 0), 0)
-        );
-        datasets.push({
-            label: 'Total',
-            data: totalPorFecha,
-            borderColor: '#1e293b',
-            backgroundColor: 'rgba(30,41,59,0.05)',
-            borderWidth: 3,
-            borderDash: [6, 3],
-            fill: false,
-            tension: 0.4,
-            pointBackgroundColor: '#1e293b',
-            pointBorderColor: '#fff',
-            pointBorderWidth: 2,
-            pointRadius: 4,
-            pointHoverRadius: 6,
-            order: -1,
-        });
-    }
+    const totalDia = fechas.map(f => telefonias.reduce((s, tel) => s + (mbPorTelFecha[tel][f] || 0), 0));
+    // Eje en GB cuando los valores son grandes (93.000 MB → 91 GB)
+    const maxDia = Math.max(0, ...totalDia);
+    const enGB = maxDia >= 10240;
+    const ejeY = v => enGB ? formatearNumero(Math.round(v / 1024)) + ' GB' : formatearNumero(v) + ' MB';
+    // Paso redondo en GB (5, 10, 20, 50…) para que las marcas no queden en 59 GB, 78 GB…
+    const pasoGB = enGB ? [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000].find(p => maxDia / 1024 / p <= 5) || 1000 : null;
+    const mbTexto = v => formatearNumero(Math.round(v)) + ' MB' + (v >= 1024 ? ` (${(v / 1024).toLocaleString('es-PY', { maximumFractionDigits: 1 })} GB)` : '');
 
     const ctxH = document.getElementById('chartConsumoHistorico').getContext('2d');
     chartConsumoHistorico = new Chart(ctxH, {
-        type: 'line',
+        type: 'bar',
         data: { labels: fechas.map(f => formatearFecha(f)), datasets },
         options: {
             responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
             plugins: {
-                legend: { position: 'bottom', labels: { padding: 14, font: { size: 12 } } },
-                tooltip: { callbacks: { label: c => c.dataset.label + ': ' + formatearNumero(c.parsed.y) + ' MB' } }
+                legend: { position: 'bottom', labels: { padding: 14, font: { size: 12 }, usePointStyle: true, pointStyle: 'rectRounded' } },
+                tooltip: {
+                    callbacks: {
+                        label: c => ` ${c.dataset.label}: ${mbTexto(c.parsed.y)}`,
+                        footer: items => items.length ? 'Total: ' + mbTexto(totalDia[items[0].dataIndex]) : ''
+                    }
+                }
             },
-            scales: { y: { beginAtZero: true, ticks: { callback: v => formatearNumero(v) } } },
+            scales: {
+                x: { stacked: true, grid: { display: false } },
+                y: { stacked: true, beginAtZero: true, ticks: enGB ? { callback: ejeY, stepSize: pasoGB * 1024 } : { callback: ejeY, maxTicksLimit: 6 } }
+            },
             onClick: makeDblClickHandler(el => {
                 const fecha = fechas[el.index];
                 if (!fecha) return;
