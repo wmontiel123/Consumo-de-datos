@@ -331,7 +331,58 @@ function _activarSesion(usuario, rol) {
     document.getElementById('appPrincipal').style.display = 'block';
     document.getElementById('loginError').style.display   = 'none';
     aplicarRol();
+    iniciarVigilanciaInactividad();
     iniciarApp();
+}
+
+// ── Cierre de sesión por inactividad ────────────────────────────────
+// Sin mouse, teclado, scroll ni toques durante INACTIVIDAD_MS se cierra la sesión.
+// La última actividad queda en sessionStorage para que un F5 no la "reinicie".
+const INACTIVIDAD_MS = 3 * 60 * 1000;
+const CLAVE_ACTIVIDAD = 'gcnoc-ultima-actividad';
+let _vigilandoInactividad = false;
+
+function marcarActividad() {
+    try { sessionStorage.setItem(CLAVE_ACTIVIDAD, String(Date.now())); } catch (_) {}
+}
+
+function msDesdeUltimaActividad() {
+    const t = Number(sessionStorage.getItem(CLAVE_ACTIVIDAD));
+    return t ? Date.now() - t : 0;
+}
+
+function iniciarVigilanciaInactividad() {
+    marcarActividad();
+    if (_vigilandoInactividad) return;
+    _vigilandoInactividad = true;
+    let ultimaMarca = 0;
+    const alActuar = () => {
+        const ahora = Date.now();
+        if (ahora - ultimaMarca > 5000) { ultimaMarca = ahora; marcarActividad(); }  // a lo sumo cada 5 s
+    };
+    ['mousemove', 'mousedown', 'keydown', 'wheel', 'scroll', 'touchstart']
+        .forEach(ev => window.addEventListener(ev, alActuar, { passive: true, capture: true }));
+    // Se revisa con un reloj y no con un setTimeout de 3 min: si la PC se suspende o la pestaña
+    // queda en segundo plano, el control igual se hace al volver.
+    const revisar = () => {
+        if (_sesionActiva && msDesdeUltimaActividad() >= INACTIVIDAD_MS) cerrarSesionPorInactividad();
+    };
+    setInterval(revisar, 10000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) revisar(); });
+}
+
+function cerrarSesionPorInactividad() {
+    try { sessionStorage.setItem('gcnoc-cierre-inactividad', '1'); } catch (_) {}
+    cerrarSesion();
+}
+
+// Tras la recarga que hace cerrarSesion, avisa en el login por qué se cerró
+function avisoCierrePorInactividad() {
+    if (sessionStorage.getItem('gcnoc-cierre-inactividad') !== '1') return;
+    sessionStorage.removeItem('gcnoc-cierre-inactividad');
+    const el = document.getElementById('loginError');
+    el.textContent = 'Tu sesión se cerró por inactividad (3 minutos sin uso). Ingresá de nuevo.';
+    el.style.display = 'block';
 }
 
 // Aplica restricciones visuales según el rol del usuario logueado
@@ -404,7 +455,14 @@ document.addEventListener('DOMContentLoaded', function() {
 async function restaurarSesion() {
     try {
         const { data: { session } } = await window.clienteSupabase.auth.getSession();
-        if (!session) return;
+        if (!session) { avisoCierrePorInactividad(); return; }
+        // Recargó la página después de estar inactivo: no restaurar
+        if (msDesdeUltimaActividad() >= INACTIVIDAD_MS) {
+            sessionStorage.setItem('gcnoc-cierre-inactividad', '1');
+            await window.clienteSupabase.auth.signOut();
+            avisoCierrePorInactividad();
+            return;
+        }
         const { data: perfil, error } = await window.clienteSupabase.rpc('mi_perfil');
         if (!error && perfil?.usuario && ['admin', 'viewer'].includes(perfil.rol)) {
             _activarSesion(perfil.usuario, perfil.rol);
