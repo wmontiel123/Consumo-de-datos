@@ -1534,6 +1534,14 @@ tbody tr:nth-child(odd) {
     font-family: monospace;
     margin-top: 5px;
 }
+.panel-sim-iccid-link {
+    color: #6b7280;
+    cursor: pointer;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+    transition: color 0.15s;
+}
+.panel-sim-iccid-link:hover { color: #8A35AB; }
 
 .panel-chart-wrap {
     height: 160px;

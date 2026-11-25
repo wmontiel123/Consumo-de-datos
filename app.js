@@ -4190,7 +4190,7 @@ function renderPanelSimCard(num, imei, totalMB, slot, estado) {
                 <span class="panel-sim-mb">${formatearNumero(totalMB)} MB</span>
             </div>
             ${numDisplay}
-            ${imei ? `<div class="panel-sim-imei">ICCID: ${imei}</div>` : ''}
+            ${imei ? `<div class="panel-sim-imei">ICCID: <span class="panel-sim-iccid-link" onclick="irALineasFiltrado('${claveIccid(imei).replace(/[^0-9A-Za-z]/g, '')}')" title="Ver en Líneas →">${escHtml(imei)}</span></div>` : ''}
         </div>`;
 }
 
