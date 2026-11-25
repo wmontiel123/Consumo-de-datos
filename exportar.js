@@ -312,10 +312,12 @@ const REPORTES = {
                 (!rcs.length || rcs.some(x => _norm(l.rc_codigo).includes(x))) &&
                 _contiene(f.buscar, l.numero, l.iccid, l.rc_codigo));
             return {
-                columnas: ['Número', 'ICCID', 'Telefonía', 'Estado', 'Línea', 'RC', 'Slot', 'Regional', 'Cargada', 'Por', 'Observación'],
+                columnas: ['Número', 'ICCID', 'Telefonía', 'Estado', 'Línea', 'Saldo (MB)', 'Saldo al', 'RC', 'Slot', 'Regional', 'Cargada', 'Por', 'Observación'],
                 filas: filas.map(l => [_txt(l.numero), _txt(l.iccid), _txt(l.telefonia),
                     ESTADO_HIST_LABEL[l.estado] || l.estado,
                     etiquetaLinea(l),
+                    l.saldo_mb === null || l.saldo_mb === undefined ? '' : Number(l.saldo_mb),
+                    l.saldo_fecha ? formatearFecha(l.saldo_fecha) : '',
                     l.rc_codigo ? _txt(l.rc_codigo) : (lineaSinRCConConsumo(l) ? 'Sin RC asignado' : ''),
                     l.sim_slot ? (l.sim_slot === 'sim1' ? 'SIM 1' : 'SIM 2') : '', _txt(reg(l)),
                     formatearFechaHora(l.creado_en), _txt(l.creado_por), _txt(l.observacion)]),

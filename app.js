@@ -3721,6 +3721,7 @@ function parsearCSVConsumo(texto, telefonia) {
         const mbRaw    = (cols[3] || '').trim();
         const fechaRaw = (cols[4] || '').trim();
         const obs      = (cols[5] || '').trim();
+        const plan_disponible_mb = parsearPlanDisponible(cols[6]);
 
         if (!numero && !imei) continue;
 
@@ -3762,9 +3763,20 @@ function parsearCSVConsumo(texto, telefonia) {
             observacion:     obs       || null,
             telefonia,
             estado,
+            plan_disponible_mb,
         });
     }
     return registros;
+}
+
+// 7ª columna "plan disponible" (MB): 1234.5 · 1234,5 · 1.234,5 · "1234 MB". Sin dato → null.
+// Igual que parsear_plan() de scripts/importar_consumos.py.
+function parsearPlanDisponible(raw) {
+    let s = String(raw || '').replace(/[^\d.,\-]/g, '');
+    if (!s) return null;
+    if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+    const v = parseFloat(s);
+    return isNaN(v) ? null : v;
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -5067,7 +5079,12 @@ async function ejecutarImportConsumo() {
 
             for (let i = 0; i < filas.length; i += BATCH) {
                 const lote = filas.slice(i, i + BATCH);
-                const { error } = await window.clienteSupabase.from('consumo_sim').insert(lote);
+                let { error } = await window.clienteSupabase.from('consumo_sim').insert(lote);
+                // Base sin la columna nueva (falta scripts/saldo_lineas.sql): cargar sin el saldo
+                if (error && /plan_disponible_mb/.test(error.message || '')) {
+                    ({ error } = await window.clienteSupabase.from('consumo_sim')
+                        .insert(lote.map(({ plan_disponible_mb, ...r }) => r)));
+                }
                 if (error) throw new Error(`Lote ${Math.floor(i / BATCH) + 1}: ${error.message}`);
 
                 const basePct  = 5 + Math.round((fi / total) * 75);
@@ -5360,7 +5377,7 @@ async function cargarLegado() {
         console.warn('⚠️ No se pudo cargar lineas_legado:', e.message);
         inventarioLegado = [];
         if (inventarioModo === 'legado') document.getElementById('lineasBody').innerHTML =
-            `<tr><td colspan="10" class="panel-empty">❌ ${escHtml(e.message)}</td></tr>`;
+            `<tr><td colspan="11" class="panel-empty">❌ ${escHtml(e.message)}</td></tr>`;
         return false;
     }
     actualizarBotonesInventario();
@@ -5427,7 +5444,7 @@ async function cambiarInventario(modo) {
     actualizarBotonesInventario();
     const tbody = document.getElementById('lineasBody');
     if (inventarioModo === 'legado' && !inventarioLegadoCargado) {
-        tbody.innerHTML = '<tr><td colspan="10" class="panel-empty">Cargando…</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="panel-empty">Cargando…</td></tr>';
         if (!(await cargarLegado())) return;
     }
     renderInventarioLineas(1);
@@ -5473,7 +5490,7 @@ async function cargarLineas() {
         console.warn('⚠️ No se pudo cargar lineas:', error.message);
         inventarioLineas = [];
         document.getElementById('lineasBody').innerHTML =
-            `<tr><td colspan="10" class="panel-empty">❌ ${escHtml(error.message)}</td></tr>`;
+            `<tr><td colspan="11" class="panel-empty">❌ ${escHtml(error.message)}</td></tr>`;
         return;
     }
     inventarioLineas = data || [];
@@ -5509,7 +5526,7 @@ function renderInventarioLineas(pagina, desdeControles) {
     const pag    = paginarLista('inventario', filas, pagina, tbody, 'renderInventarioLineas');
 
     if (!filas.length) {
-        tbody.innerHTML = `<tr><td colspan="10" class="panel-empty">${inventarioActual().length ? 'Sin líneas que coincidan' : 'Todavía no hay líneas cargadas'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="11" class="panel-empty">${inventarioActual().length ? 'Sin líneas que coincidan' : 'Todavía no hay líneas cargadas'}</td></tr>`;
         infoEl.textContent = '';
         return;
     }
@@ -5521,6 +5538,7 @@ function renderInventarioLineas(pagina, desdeControles) {
             <td>${badgeTelefonia(l.telefonia)}</td>
             <td><span class="badge-estado ${LINEA_ESTADO_CLS[l.estado] || ''}">${escHtml(ESTADO_HIST_LABEL[l.estado] || l.estado)}</span></td>
             <td>${badgeEstadoOperativo(l)}</td>
+            <td class="td-saldo">${celdaSaldo(l)}</td>
             <td>${l.rc_codigo
                     ? `<span class="link-num" onclick="abrirPanelRC(this.textContent)">${escHtml(l.rc_codigo)}</span>${l.sim_slot ? ` (${l.sim_slot === 'sim1' ? 'SIM 1' : 'SIM 2'})` : ''}`
                     : lineaSinRCConConsumo(l)
@@ -5535,6 +5553,17 @@ function renderInventarioLineas(pagina, desdeControles) {
         </tr>`).join('');
     infoEl.innerHTML = `Mostrando <strong>${pag.desde + 1}–${pag.desde + pag.filas.length}</strong> de <strong>${formatearNumero(filas.length)}</strong> líneas`;
     if (desdeControles) _subirATabla(tbody);
+}
+
+// Saldo (plan disponible) del último reporte que lo trajo: lo actualiza
+// actualizar_saldos_lineas() en cada carga de consumos (scripts/saldo_lineas.sql)
+function celdaSaldo(l) {
+    if (l.saldo_mb === null || l.saldo_mb === undefined) return '<span class="saldo-vacio">-</span>';
+    const mb = Number(l.saldo_mb);
+    const gb = mb >= 1024 ? ` (${(mb / 1024).toLocaleString('es-PY', { maximumFractionDigits: 1 })} GB)` : '';
+    const fecha = l.saldo_fecha ? formatearFecha(l.saldo_fecha) : '';
+    return `<span class="saldo-mb${mb <= 0 ? ' saldo-agotado' : ''}" title="Plan disponible${gb}${fecha ? ' según el reporte del ' + fecha : ''}">${formatearNumero(Math.round(mb))} MB</span>`
+         + (fecha ? `<span class="saldo-fecha">${fecha}</span>` : '');
 }
 
 // Botón de una línea: activar / desactivar (sirve para el inventario de líneas y el de legado)

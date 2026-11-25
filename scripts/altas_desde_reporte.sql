@@ -187,6 +187,8 @@ end;
 $$;
 
 
+-- OJO: saldo_lineas.sql redefine esta función agregando actualizar_saldos_lineas().
+-- Si se vuelve a correr este archivo, correr después saldo_lineas.sql.
 create or replace function refresh_lineas_estado()
 returns void
 language plpgsql

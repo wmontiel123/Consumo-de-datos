@@ -4,7 +4,9 @@ consumo_sim de Supabase, sin insertar duplicados.
 
 Replica la lógica del import de la app (app.js → parsearCSVConsumo /
 ejecutarImportConsumo / recalcularEstadosPostImport):
-  - CSV sin encabezado: numero, imei, estado_operador, consumo_mb, fecha, [observacion]
+  - CSV sin encabezado: numero, imei, estado_operador, consumo_mb, fecha, [observacion],
+    [plan_disponible]. El plan disponible (MB) se guarda en consumo_sim.plan_disponible_mb
+    y refresh_lineas_estado() lo pasa al inventario (scripts/saldo_lineas.sql).
   - Telefonía detectada por nombre de archivo o carpeta (personal/claro/tigo/vox/m2m)
   - Filas sin consumo numérico (vacío, "desactivado", "error"…) no se cargan. Si el
     texto dice "desactivado" la línea queda desactivada; con cualquier otro texto
@@ -120,6 +122,21 @@ def leer_texto(ruta):
     return datos.decode('latin-1', errors='replace')
 
 
+def parsear_plan(raw):
+    """7ª columna "plan disponible" (MB). Acepta 1234.5 · 1234,5 · 1.234,5 · "1234 MB".
+    Vacío o texto (sin dato) → None."""
+    s = re.sub(r'[^\d.,\-]', '', raw or '')
+    if not s:
+        return None
+    if ',' in s:
+        s = s.replace('.', '').replace(',', '.')   # coma decimal; el punto es de miles
+    try:
+        v = float(s)
+    except ValueError:
+        return None
+    return int(v) if v.is_integer() else v
+
+
 def parsear_csv(ruta, telefonia):
     lineas = [l.strip() for l in leer_texto(ruta).splitlines() if l.strip()]
     if not lineas:
@@ -130,8 +147,8 @@ def parsear_csv(ruta, telefonia):
         cols = [c.strip() for c in linea.split(sep)]
         if len(cols) < 4:
             continue
-        cols += [''] * (6 - len(cols))
-        numero, imei_raw, estado_op, mb_raw, fecha_raw, obs = cols[:6]
+        cols += [''] * (7 - len(cols))
+        numero, imei_raw, estado_op, mb_raw, fecha_raw, obs, plan_raw = cols[:7]
         imei = normalizar_imei(imei_raw)
         if not numero and not imei:
             continue
@@ -157,6 +174,7 @@ def parsear_csv(ruta, telefonia):
             'observacion': obs or None,
             'telefonia': telefonia,
             'estado': estado,
+            'plan_disponible_mb': parsear_plan(plan_raw),
         })
     return registros
 
@@ -198,9 +216,20 @@ def obtener_todos(tabla, params):
 
 
 def insertar(tabla, filas):
+    sin_plan = False
     for i in range(0, len(filas), BATCH_INSERT):
-        _check(sesion.post(f'{REST}/{tabla}', json=filas[i:i + BATCH_INSERT],
-                           headers={'Prefer': 'return=minimal'}), f'INSERT {tabla}')
+        lote = filas[i:i + BATCH_INSERT]
+        if sin_plan:
+            lote = [{k: v for k, v in f.items() if k != 'plan_disponible_mb'} for f in lote]
+        r = sesion.post(f'{REST}/{tabla}', json=lote, headers={'Prefer': 'return=minimal'})
+        # Base sin la columna nueva (falta correr scripts/saldo_lineas.sql): se carga igual sin el saldo
+        if r.status_code >= 300 and not sin_plan and 'plan_disponible_mb' in r.text:
+            print('   ⚠️  La base todavía no tiene la columna plan_disponible_mb '
+                  '(correr scripts/saldo_lineas.sql): se carga sin el saldo.')
+            sin_plan = True
+            lote = [{k: v for k, v in f.items() if k != 'plan_disponible_mb'} for f in lote]
+            r = sesion.post(f'{REST}/{tabla}', json=lote, headers={'Prefer': 'return=minimal'})
+        _check(r, f'INSERT {tabla}')
 
 
 def lista_in(valores):

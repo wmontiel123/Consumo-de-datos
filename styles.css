@@ -2464,3 +2464,10 @@ th.th-filtrada { background: #e2e5f3; }
 .inv-totales-fila { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
 .inv-totales { grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); }
 @media (max-width: 760px) { .inv-totales { grid-template-columns: 1fr; } .inv-totales-fila { grid-template-columns: repeat(2, 1fr); } }
+
+/* Saldo (plan disponible) en el inventario de líneas */
+.td-saldo { white-space: nowrap; }
+.saldo-mb { font-weight: 600; color: #35398C; }
+.saldo-mb.saldo-agotado { color: #dc2626; }
+.saldo-fecha { display: block; font-size: 11px; color: #94a3b8; }
+.saldo-vacio { color: #cbd5e1; }
