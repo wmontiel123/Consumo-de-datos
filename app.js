@@ -3873,7 +3873,7 @@ async function abrirPanelRC(codigo) {
             ...([sim1i, sim2i].filter(Boolean).map(i => `imei.eq.${i}`)),
         ];
 
-        const [consumoRes, historialRes] = await Promise.all([
+        const [consumoRes, historialRes, ticketsRes] = await Promise.all([
             orParts.length > 0
                 ? window.clienteSupabase.from('consumo_sim')
                     .select('numero,imei,consumo_mb,fecha_consumo,telefonia,estado,estado_operador,observacion')
@@ -3886,10 +3886,17 @@ async function abrirPanelRC(codigo) {
                 .eq('rc_codigo', codigo)
                 .order('fecha_cambio', { ascending: false })
                 .limit(20),
+            // Tickets de Zammad de este RC (los registra la Edge Function zammad-webhook)
+            window.clienteSupabase.from('tickets_ande')
+                .select('ticket_id,numero,titulo,sim_afectada,estado,creado_en,finalizado_en,cerrado_en,aplicado_en,revisar,resultado')
+                .ilike('rc_codigo', codigo.replace(/[\\%_]/g, m => '\\' + m))
+                .order('creado_en', { ascending: false })
+                .limit(10),
         ]);
 
         const consumoData   = consumoRes.data   || [];
         const historialData = historialRes.error ? [] : (historialRes.data || []);
+        const ticketsData   = ticketsRes.error ? [] : (ticketsRes.data || []);
 
         const calcSimMB = (n, i) => consumoData
             .filter(c => {
@@ -3995,6 +4002,12 @@ async function abrirPanelRC(codigo) {
                     <canvas id="chartPanelRCCanvas"></canvas>
                 </div>
             </div>
+
+            ${ticketsData.length ? `
+            <div class="panel-section">
+                <div class="panel-section-title">Tickets de soporte</div>
+                ${renderTicketsRC(ticketsData)}
+            </div>` : ''}
 
             <div class="panel-section">
                 <div class="panel-section-title">Historial de Cambios SIM</div>
@@ -4206,6 +4219,36 @@ function renderPanelSimCard(num, imei, totalMB, slot, estado) {
         </div>`;
 }
 
+// ── Tickets de Zammad del RC (tabla tickets_ande) ──────────────────
+const ZAMMAD_WEB = 'https://soporte.inovasi.com.py';
+const ESTADO_TICKET = {
+    new: 'Nuevo', open: 'Abierto', closed: 'Cerrado', merged: 'Unido',
+    'pending reminder': 'Pendiente', 'pending close': 'Por cerrar',
+};
+const SIM_AFECTADA = { principal: 'SIM principal', backup: 'SIM respaldo', ambas: 'Ambas SIM' };
+
+function renderTicketsRC(tickets) {
+    return tickets.map(t => {
+        const cerrado = t.estado === 'closed' || t.cerrado_en;
+        const inv = t.revisar
+            ? `<span class="ticket-inv ticket-inv-revisar" title="${escHtml((t.resultado || []).filter(r => !r.r?.ok).map(r => r.r?.detalle || r.r?.error).join(' · '))}">⚠ Cambio de SIM sin aplicar · revisar</span>`
+            : t.aplicado_en ? `<span class="ticket-inv ticket-inv-ok">✅ Inventario actualizado ${formatearFechaHora(t.aplicado_en)}</span>`
+            : t.finalizado_en ? '' : '<span class="ticket-inv">En curso</span>';
+        return `
+        <div class="panel-hist-item">
+            <div class="panel-hist-cab">
+                <a class="ticket-num" href="${ZAMMAD_WEB}/#ticket/zoom/${Number(t.ticket_id)}" target="_blank" rel="noopener">#${escHtml(t.numero)}</a>
+                <span class="badge-estado ${cerrado ? 'badge-sin-consumo' : 'badge-activo'}">${escHtml(ESTADO_TICKET[t.estado] || t.estado || '-')}</span>
+            </div>
+            ${t.titulo ? `<div class="panel-hist-fila"><span>Asunto</span>${escHtml(t.titulo)}</div>` : ''}
+            ${t.sim_afectada ? `<div class="panel-hist-fila"><span>SIM</span>${escHtml(SIM_AFECTADA[t.sim_afectada] || t.sim_afectada)}</div>` : ''}
+            <div class="panel-hist-fila"><span>Abierto</span>${formatearFechaHora(t.creado_en)}</div>
+            ${t.finalizado_en ? `<div class="panel-hist-fila"><span>Finalizado</span>${formatearFechaHora(t.finalizado_en)}</div>` : ''}
+            ${inv ? `<div class="panel-hist-pie">${inv}</div>` : ''}
+        </div>`;
+    }).join('');
+}
+
 // ── Tabla historial SIM ────────────────────────────────────────────
 function renderHistorialSIM(historial) {
     if (!historial.length) return '<div class="panel-empty">Sin cambios registrados</div>';
@@ -4218,6 +4261,7 @@ function renderHistorialSIM(historial) {
             </div>
             <div class="panel-hist-fila"><span>Número</span>${cambio(h.numero_ant, h.numero_nuevo)}</div>
             <div class="panel-hist-fila"><span>ICCID</span>${cambio(h.imei_ant, h.imei_nuevo)}</div>
+            ${h.ticket ? `<div class="panel-hist-fila"><span>Ticket</span>#${escHtml(h.ticket)}</div>` : ''}
             ${h.observacion ? `<div class="panel-hist-fila"><span>Obs.</span>${escHtml(h.observacion)}</div>` : ''}
             <div class="panel-hist-pie">Registrado ${formatearFechaHora(h.fecha_cambio)} por <strong>${escHtml(h.usuario) || '-'}</strong></div>
         </div>`).join('');

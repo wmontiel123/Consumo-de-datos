@@ -2471,3 +2471,10 @@ th.th-filtrada { background: #e2e5f3; }
 .saldo-mb.saldo-agotado { color: #dc2626; }
 .saldo-fecha { display: block; font-size: 11px; color: #94a3b8; }
 .saldo-vacio { color: #cbd5e1; }
+
+/* Tickets de Zammad en el panel del RC */
+.ticket-num { font-weight: 700; color: #35398C; text-decoration: none; }
+.ticket-num:hover { color: #8A35AB; text-decoration: underline; }
+.ticket-inv { font-size: 12px; color: #64748b; }
+.ticket-inv-ok { color: #16a34a; }
+.ticket-inv-revisar { color: #dc2626; font-weight: 600; cursor: help; }
