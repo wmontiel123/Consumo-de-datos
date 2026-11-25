@@ -2024,6 +2024,8 @@ tbody tr:hover { background: #f4f5fb; }
                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kpi-tel .kpi-valor { color: var(--kpi-acento); }
 .kpi-detalle { font-size: 12px; color: #6b7280; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.kpi-lineas-activas { margin: 0 0 18px; }
+.kpi-lineas-activas .kpi:first-child { background: #f4f5fb; }
 
 /* ══ Filtros plegables y chips ══ */
 .filtros-titulo { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 10px; }

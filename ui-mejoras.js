@@ -989,6 +989,55 @@ function iniciarMejorasUI() {
         .forEach(n => _despuesDe(n, () => kpiConsumo()));
     _despuesDe('renderActivaciones', kpiActivaciones);
     _despuesDe('renderHistorialSIMLista', kpiHistorialSIM);
+    _despuesDe('cargarConsumos', force => kpiLineasActivas(force));
+}
+
+// ── Tarjetero de líneas activas (menú Consumo) ────────────────────
+// Activa = cualquier estado que no sea "desactivada" (asignada o disponible),
+// sumando el inventario normal y el legado. Se cachea 5 minutos.
+let _lineasActivasCache = null, _lineasActivasEn = 0, _lineasActivasPromesa = null;
+
+async function kpiLineasActivas(force = false) {
+    if (!document.getElementById('kpiLineasActivas') || !window.clienteSupabase) return;
+    if (!force && _lineasActivasCache && Date.now() - _lineasActivasEn < 5 * 60 * 1000)
+        return pintarLineasActivas(_lineasActivasCache);
+    if (!_lineasActivasPromesa) {
+        const traer = t => traerTodasEnParalelo(o => window.clienteSupabase.from(t)
+            .select('telefonia', o?.head ? { count: 'exact', head: true } : undefined)
+            .neq('estado', 'desactivada').order('id', { ascending: true }));
+        _lineasActivasPromesa = Promise.all([traer('lineas'), traer('lineas_legado')])
+            .then(([normales, legado]) => {
+                const porTel = {};
+                const sumar = (filas, campo) => filas.forEach(f => {
+                    const k = Object.keys(TEL_MARCA).find(x => x.toLowerCase() === String(f.telefonia || '').trim().toLowerCase()) || 'Desconocida';
+                    porTel[k] ??= { normales: 0, legado: 0 };
+                    porTel[k][campo]++;
+                });
+                sumar(normales, 'normales');
+                sumar(legado, 'legado');
+                _lineasActivasCache = { normales: normales.length, legado: legado.length, porTel };
+                _lineasActivasEn = Date.now();
+                return _lineasActivasCache;
+            })
+            .catch(e => { console.warn('⚠️ No se pudieron contar las líneas activas:', e.message); return null; })
+            .finally(() => { _lineasActivasPromesa = null; });
+    }
+    const datos = await _lineasActivasPromesa;
+    if (datos) pintarLineasActivas(datos);
+}
+
+function pintarLineasActivas(d) {
+    const fmt = n => formatearNumero(n);
+    const tels = Object.entries(d.porTel)
+        .sort((a, b) => (b[1].normales + b[1].legado) - (a[1].normales + a[1].legado));
+    pintarTarjetas('kpiLineasActivas', null, [
+        { titulo: 'Líneas activas', valor: fmt(d.normales + d.legado),
+          detalle: `Normales ${fmt(d.normales)} · Legado ${fmt(d.legado)}`, tono: 'azul' },
+        ...tels.map(([tel, c]) => ({
+            titulo: tel, valor: fmt(c.normales + c.legado),
+            detalle: `Normales ${fmt(c.normales)} · Legado ${fmt(c.legado)}`, tono: tel,
+        })),
+    ]);
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciarMejorasUI);
