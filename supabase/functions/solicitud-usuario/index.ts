@@ -496,6 +496,18 @@ async function mailSolicitudLinea(s: Record<string, any>): Promise<boolean> {
     return ok;
 }
 
+// Correo del usuario de la app: el de usuarios_app o, si no lo tiene (usuarios viejos),
+// el de su solicitud de acceso aprobada.
+async function emailDeUsuario(usuario: unknown): Promise<string> {
+    const u = String(usuario ?? '').trim();
+    if (!u) return '';
+    const { data } = await db.from('usuarios_app').select('email').ilike('usuario', u).maybeSingle();
+    if (data?.email) return String(data.email);
+    const { data: sol } = await db.from('solicitudes_usuario').select('email')
+        .ilike('usuario', u).in('estado', ['aprobada', 'activada']).order('id', { ascending: false }).limit(1).maybeSingle();
+    return sol?.email ? String(sol.email) : '';
+}
+
 // Solicitud de carga de saldo: ticket en Zammad (se resuelve ahí) y mail a los demás aprobadores
 async function mailSolicitudSaldo(s: Record<string, any>): Promise<boolean> {
     const d = (s.datos ?? {}) as Record<string, unknown>;
@@ -503,13 +515,15 @@ async function mailSolicitudSaldo(s: Record<string, any>): Promise<boolean> {
     const monto = Number(d.monto);
     const montoTxt = Number.isFinite(monto) ? monto.toLocaleString('es-PY') : '';
     const fila = (k: string, v: unknown) => v ? `<tr><td style="padding:3px 12px 3px 0;color:#64748b;vertical-align:top">${k}</td><td>${esc(v)}</td></tr>` : '';
+    const correo = await emailDeUsuario(s.usuario);
+    // Sin botón "Abrir la aplicación": la carga de saldo se resuelve en el ticket, no en la app
     const ok = await avisarAprobadores(`Solicitud de saldo: ${linea}${montoTxt ? ' · ' + montoTxt : ''}`, marco('Solicitud de carga de saldo', `
-      <p><b>${esc(s.usuario)}</b> pidió una carga de saldo:</p>
+      <p><b>${esc(s.usuario)}</b>${correo ? ` (${esc(correo)})` : ''} pidió una carga de saldo:</p>
       <table style="border-collapse:collapse;margin:8px 0 16px">
+        ${fila('Solicitante', s.usuario)}${fila('Correo', correo || 'sin correo registrado')}
         ${fila('Número', d.numero)}${fila('Monto', montoTxt)}${fila('Observación', d.observacion)}
         ${fila('Fecha', new Date(s.creado_at).toLocaleString('es-PY', { timeZone: 'America/Asuncion' }))}
-      </table>
-      <p>${boton(APP_URL, 'Abrir la aplicación', '#35398C')}</p>`),
+      </table>`),
       { tipo: 'saldo', clave: String(s.id) });
     if (ok) await db.from('solicitudes').update({ datos: { ...d, mail_enviado: true } }).eq('id', s.id);
     return ok;
