@@ -2259,18 +2259,16 @@ function crearGraficosConsumo(resumen, datos) {
         mbPorTelFecha[tel][r.fecha] = (mbPorTelFecha[tel][r.fecha] || 0) + parseFloat(r.total_mb || 0);
     });
 
-    // Barras apiladas por día: cada color es una telefonía y la altura total es el total del día.
-    // Se lee bien con un solo día cargado o con muchos (las líneas con 1 punto quedaban como puntos sueltos).
-    const datasets = telefonias.map(tel => {
-        const cfg = TELEFONIA_CHART[tel] || { color: '#8A35AB' };
-        return {
-            label: tel,
-            data: fechas.map(f => mbPorTelFecha[tel][f] || 0),
-            backgroundColor: cfg.color, borderColor: '#fff', borderWidth: 1,
-            borderRadius: 3, maxBarThickness: 56, stack: 'dia',
-        };
-    });
+    // Una sola línea con el total del día; el desglose por telefonía aparece al pasar el mouse.
     const totalDia = fechas.map(f => telefonias.reduce((s, tel) => s + (mbPorTelFecha[tel][f] || 0), 0));
+    const datasets = [{
+        label: 'Total del día',
+        data: totalDia,
+        borderColor: '#8A35AB', backgroundColor: 'rgba(138,53,171,0.10)',
+        borderWidth: 2.5, fill: true, tension: 0.3,
+        pointBackgroundColor: '#8A35AB', pointBorderColor: '#fff', pointBorderWidth: 2,
+        pointRadius: fechas.length > 40 ? 0 : 4, pointHoverRadius: 6,
+    }];
     // Eje en GB cuando los valores son grandes (93.000 MB → 91 GB)
     const maxDia = Math.max(0, ...totalDia);
     const enGB = maxDia >= 10240;
@@ -2281,23 +2279,28 @@ function crearGraficosConsumo(resumen, datos) {
 
     const ctxH = document.getElementById('chartConsumoHistorico').getContext('2d');
     chartConsumoHistorico = new Chart(ctxH, {
-        type: 'bar',
+        type: 'line',
         data: { labels: fechas.map(f => formatearFecha(f)), datasets },
         options: {
             responsive: true, maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
             plugins: {
-                legend: { position: 'bottom', labels: { padding: 14, font: { size: 12 }, usePointStyle: true, pointStyle: 'rectRounded' } },
+                legend: { display: false },
                 tooltip: {
+                    displayColors: false,
                     callbacks: {
-                        label: c => ` ${c.dataset.label}: ${mbTexto(c.parsed.y)}`,
-                        footer: items => items.length ? 'Total: ' + mbTexto(totalDia[items[0].dataIndex]) : ''
+                        label: c => 'Total: ' + mbTexto(c.parsed.y),
+                        afterBody: items => {
+                            const f = fechas[items[0]?.dataIndex];
+                            return telefonias.filter(t => mbPorTelFecha[t][f])
+                                .map(t => `  ${t}: ${mbTexto(mbPorTelFecha[t][f])}`);
+                        }
                     }
                 }
             },
             scales: {
-                x: { stacked: true, grid: { display: false } },
-                y: { stacked: true, beginAtZero: true, ticks: enGB ? { callback: ejeY, stepSize: pasoGB * 1024 } : { callback: ejeY, maxTicksLimit: 6 } }
+                x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } },
+                y: { beginAtZero: true, ticks: enGB ? { callback: ejeY, stepSize: pasoGB * 1024 } : { callback: ejeY, maxTicksLimit: 6 } }
             },
             onClick: makeDblClickHandler(el => {
                 const fecha = fechas[el.index];
