@@ -993,7 +993,7 @@ function iniciarMejorasUI() {
 }
 
 // ── Tarjetero de líneas activas (menú Consumo) ────────────────────
-// Activa = cualquier estado que no sea "desactivada" (asignada o disponible),
+// Activa = igual que en el Inventario (estadoOperativoLinea === 'activo'),
 // sumando el inventario normal y el legado. Se cachea 5 minutos.
 let _lineasActivasCache = null, _lineasActivasEn = 0, _lineasActivasPromesa = null;
 
@@ -1003,8 +1003,10 @@ async function kpiLineasActivas(force = false) {
         return pintarLineasActivas(_lineasActivasCache);
     if (!_lineasActivasPromesa) {
         const traer = t => traerTodasEnParalelo(o => window.clienteSupabase.from(t)
-            .select('telefonia', o?.head ? { count: 'exact', head: true } : undefined)
-            .neq('estado', 'desactivada').order('id', { ascending: true }));
+            .select('telefonia,estado,backup,linea_inactiva', o?.head ? { count: 'exact', head: true } : undefined)
+            .neq('estado', 'desactivada').order('id', { ascending: true }))
+            // Misma regla que las tarjetas del Inventario: ni desactivada, ni inactiva, ni backup
+            .then(filas => filas.filter(l => estadoOperativoLinea(l) === 'activo'));
         _lineasActivasPromesa = Promise.all([traer('lineas'), traer('lineas_legado')])
             .then(([normales, legado]) => {
                 const porTel = {};
