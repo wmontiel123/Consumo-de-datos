@@ -100,6 +100,11 @@ begin
     refresh materialized view lineas_estado_mv;
     refresh materialized view lineas_mes_mv;
     begin
+        refresh materialized view lineas_plan_mv;   -- Disponible de la vista Líneas
+    exception when others then
+        raise warning 'lineas_plan_mv falló: %', sqlerrm;
+    end;
+    begin
         perform crear_lineas_desde_reporte();
     exception when others then
         raise warning 'crear_lineas_desde_reporte falló: %', sqlerrm;

@@ -63,8 +63,8 @@ select
     l.estado_operador,
     l.observacion,
     l.ultima_fecha,
-    coalesce(disp.rc, '')       as rc,
-    coalesce(disp.regional, '') as regional,
+    nullif(coalesce(disp.rc, ''), '')       as rc,        -- null (no '') sin RC: al ordenar queda al final
+    nullif(coalesce(disp.regional, ''), '') as regional,
     coalesce(m.mb, 0)           as consumo_mes_mb,
     l.consumo_total_mb,
     p.plan_disponible_mb,
@@ -87,7 +87,11 @@ as $$
 begin
     refresh materialized view lineas_estado_mv;
     refresh materialized view lineas_mes_mv;
-    refresh materialized view lineas_plan_mv;
+    begin
+        refresh materialized view lineas_plan_mv;   -- Disponible de la vista Líneas
+    exception when others then
+        raise warning 'lineas_plan_mv falló: %', sqlerrm;
+    end;
     begin
         perform crear_lineas_desde_reporte();
     exception when others then
