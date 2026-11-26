@@ -2985,6 +2985,11 @@ async function consultarLineasBD() {
 // Último "plan disponible" registrado de cada línea de la página (sin límite de fecha):
 // una consulta chica por línea (la fila más reciente que trae disponible, por número o ICCID)
 async function agregarDisponibleLineas(filas) {
+    // Con scripts/disponible_vista_lineas.sql la vista ya trae el dato (y se puede ordenar)
+    if (filas.length && 'plan_disponible_mb' in filas[0]) {
+        filas.forEach(r => { r.saldo_mb = r.plan_disponible_mb; r.saldo_fecha = r.plan_fecha; });
+        return;
+    }
     const lim = v => String(v || '').trim().replace(/["\\,()]/g, '');
     await Promise.all(filas.map(async r => {
         const n = lim(r.numero), i = lim(r.imei);

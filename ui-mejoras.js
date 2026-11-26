@@ -583,7 +583,7 @@ const TABLAS_INTERACTIVAS = {
     },
     lineasBD: {
         sel: '#tablaLineasBD',
-        servidor: ['estado_operador', 'numero', 'imei', 'telefonia', 'rc', 'consumo_mes_mb', 'consumo_total_mb'],
+        servidor: ['estado_operador', 'numero', 'imei', 'telefonia', 'rc', 'consumo_mes_mb', 'consumo_total_mb', 'plan_disponible_mb'],
         dbl: {
             Estado:      v => _elegirOpcion('filtroLineasEstado', v),
             'Número':    v => _norm(v) !== 'm2m' && _ponerValor('filtroLineasBuscar', v),
