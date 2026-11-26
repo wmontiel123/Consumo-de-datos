@@ -797,12 +797,13 @@
                             <th class="sortable" data-sort="rc"        onclick="setSortLineas('rc')">RC</th>
                             <th class="sortable" data-sort="telefonia" onclick="setSortLineas('telefonia')">Telefonía</th>
                             <th class="sortable th-num" data-sort="mb"        onclick="setSortLineas('mb')">MB</th>
+                            <th class="sortable th-num" data-sort="disponible" onclick="setSortLineas('disponible')" title="Plan disponible (MB) informado en el reporte de ese día">Disponible</th>
                             <th class="sortable" data-sort="fecha"     onclick="setSortLineas('fecha')">Fecha</th>
                             <th id="thObservacion">Observación</th>
                         </tr>
                     </thead>
                     <tbody id="tablaDatosConsumo">
-                        <tr><td colspan="8" style="text-align:center;padding:40px;color:#999">Hacé clic en "Consumo SIM" para cargar los datos.</td></tr>
+                        <tr><td colspan="9" style="text-align:center;padding:40px;color:#999">Hacé clic en "Consumo SIM" para cargar los datos.</td></tr>
                     </tbody>
                 </table>
                 <div id="paginacion-consumo" class="paginacion"></div>
@@ -835,10 +836,11 @@
                             <th>RC</th>
                             <th class="th-num">MB Mes</th>
                             <th class="th-num">MB Total</th>
+                            <th class="th-num" title="Último plan disponible (MB) informado en los reportes de consumo">Disponible</th>
                         </tr>
                     </thead>
                     <tbody id="tablaLineasBDBody">
-                        <tr><td colspan="7" style="text-align:center;padding:40px;color:#999">Hacé clic en "Líneas" para cargar.</td></tr>
+                        <tr><td colspan="8" style="text-align:center;padding:40px;color:#999">Hacé clic en "Líneas" para cargar.</td></tr>
                     </tbody>
                 </table>
                 <div id="paginacion-lineas-bd" class="paginacion"></div>

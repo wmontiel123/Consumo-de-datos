@@ -1931,6 +1931,7 @@ function dbColLineas() {
     const map = {
         estado: 'estado', numero: 'numero', imei: 'imei',
         telefonia: 'telefonia', mb: 'consumo_mb', fecha: 'fecha_consumo',
+        disponible: 'plan_disponible_mb',
         rc: 'numero', // RC es derivado — número como proxy
     };
     return map[sortLineas.col] || 'fecha_consumo';
@@ -2144,7 +2145,7 @@ async function cargarConsumos(force = false) {
     } catch (e) {
         loading.style.display = 'none';
         document.getElementById('tablaDatosConsumo').innerHTML =
-            `<tr><td colspan="8" style="text-align:center;padding:40px;color:#ef4444">❌ ${e.message}</td></tr>`;
+            `<tr><td colspan="9" style="text-align:center;padding:40px;color:#ef4444">❌ ${e.message}</td></tr>`;
         console.error('❌', e);
     }
 }
@@ -2166,7 +2167,7 @@ function mostrarEnTablaConsumo(filas, totalServidor) {
     const totalPaginas = Math.max(1, Math.ceil(total / ITEMS_POR_PAGINA));
 
     if (total === 0 || filas.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px">No se encontraron resultados.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px">No se encontraron resultados.</td></tr>';
         infoEl.innerHTML = '';
         pagEl.innerHTML  = '';
         return;
@@ -2197,6 +2198,7 @@ function mostrarEnTablaConsumo(filas, totalServidor) {
             <td>${rc !== '-' ? `<span class="link-rc" onclick="abrirPanelRC('${rc}')">${rc}</span>` : '-'}</td>
             <td>${badgeTelefonia(c.telefonia)}</td>
             <td class="td-num">${mb}</td>
+            <td class="td-num td-saldo">${celdaDisponible(c.plan_disponible_mb)}</td>
             <td class="td-fecha">${formatearFecha(c.fecha_consumo)}</td>
             ${esViewer() ? '' : `<td>${c.observacion || '-'}</td>`}
         `;
@@ -2976,13 +2978,42 @@ async function consultarLineasBD() {
     q = q.order('imei', { ascending: true }).range(from, from + ITEMS_POR_PAGINA - 1);
     const { data, error, count } = await q;
     if (error) throw error;
+    await agregarDisponibleLineas(data || []);
     return { data: data || [], count: count || 0 };
+}
+
+// Último "plan disponible" informado (últimos 90 días) para las líneas de la página
+async function agregarDisponibleLineas(filas) {
+    const lim = v => String(v || '').trim().replace(/["\\,()]/g, '');
+    const nums  = [...new Set(filas.map(r => lim(r.numero)).filter(Boolean))];
+    const imeis = [...new Set(filas.map(r => lim(r.imei)).filter(Boolean))];
+    if (!nums.length && !imeis.length) return;
+    const lista = a => a.map(v => `"${v}"`).join(',');
+    const cond = [nums.length ? `numero.in.(${lista(nums)})` : '', imeis.length ? `imei.in.(${lista(imeis)})` : '']
+        .filter(Boolean).join(',');
+    const desde = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+    const { data, error } = await window.clienteSupabase.from('consumo_sim')
+        .select('numero,imei,plan_disponible_mb,fecha_consumo')
+        .not('plan_disponible_mb', 'is', null).gte('fecha_consumo', desde).or(cond)
+        .order('fecha_consumo', { ascending: false }).limit(1000);
+    if (error) { console.warn('⚠️ disponible líneas:', error.message); return; }
+    const porNum = new Map(), porIccid = new Map();
+    (data || []).forEach(c => {   // vienen de la más reciente a la más vieja
+        const n = String(c.numero || '').trim(), i = claveIccid(c.imei);
+        if (n && !porNum.has(n)) porNum.set(n, c);
+        if (i && !porIccid.has(i)) porIccid.set(i, c);
+    });
+    filas.forEach(r => {
+        const a = porNum.get(String(r.numero || '').trim()), b = porIccid.get(claveIccid(r.imei));
+        const c = [a, b].filter(Boolean).sort((x, y) => String(y.fecha_consumo).localeCompare(String(x.fecha_consumo)))[0];
+        if (c) { r.saldo_mb = c.plan_disponible_mb; r.saldo_fecha = c.fecha_consumo; }
+    });
 }
 
 async function cargarLineasBD() {
     const tbody  = document.getElementById('tablaLineasBDBody');
     const infoEl = document.getElementById('paginacion-info-consumo');
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:#35398C">⏳ Cargando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:#35398C">⏳ Cargando...</td></tr>';
     infoEl.innerHTML = '';
     try {
         const [{ data, count }, totales] = await Promise.all([
@@ -2994,7 +3025,7 @@ async function cargarLineasBD() {
         mostrarLineasBD(data, count);   // también elige la línea de los gráficos
         actualizarTotalesLineas(totales);
     } catch (e) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#ef4444">❌ ${e.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:#ef4444">❌ ${e.message}</td></tr>`;
         console.error('❌ cargarLineasBD:', e);
     }
 }
@@ -3143,7 +3174,7 @@ function mostrarLineasBD(filas, totalServidor) {
     const from         = (paginaLineasBD - 1) * ITEMS_POR_PAGINA;
 
     if (total === 0 || filas.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px">No se encontraron líneas.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px">No se encontraron líneas.</td></tr>';
         infoEl.innerHTML = '';
         pagEl.innerHTML  = '';
         lineaHistSel = null;
@@ -3200,6 +3231,7 @@ function mostrarLineasBD(filas, totalServidor) {
             <td>${rcCell}</td>
             <td class="td-num">${formatearNumero(parseFloat(row.consumo_mes_mb) || 0)} MB</td>
             <td class="td-num">${formatearNumero(parseFloat(row.consumo_total_mb) || 0)} MB</td>
+            <td class="td-num td-saldo">${celdaSaldo(row)}</td>
         `;
         tbody.appendChild(tr);
     });
@@ -5602,10 +5634,14 @@ function renderInventarioLineas(pagina, desdeControles) {
 // Saldo (plan disponible) del último reporte que lo trajo: lo actualiza
 // actualizar_saldos_lineas() en cada carga de consumos (scripts/saldo_lineas.sql)
 function celdaSaldo(l) {
-    if (l.saldo_mb === null || l.saldo_mb === undefined) return '<span class="saldo-vacio">-</span>';
-    const mb = Number(l.saldo_mb);
+    return celdaDisponible(l.saldo_mb, l.saldo_fecha);
+}
+// Plan disponible en MB (rojo si está agotado); con fecha abajo si se indica
+function celdaDisponible(valor, fechaISO) {
+    if (valor === null || valor === undefined || valor === '') return '<span class="saldo-vacio">-</span>';
+    const mb = Number(valor);
     const gb = mb >= 1024 ? ` (${(mb / 1024).toLocaleString('es-PY', { maximumFractionDigits: 1 })} GB)` : '';
-    const fecha = l.saldo_fecha ? formatearFecha(l.saldo_fecha) : '';
+    const fecha = fechaISO ? formatearFecha(fechaISO) : '';
     return `<span class="saldo-mb${mb <= 0 ? ' saldo-agotado' : ''}" title="Plan disponible${gb}${fecha ? ' según el reporte del ' + fecha : ''}">${formatearNumero(Math.round(mb))} MB</span>`
          + (fecha ? `<span class="saldo-fecha">${fecha}</span>` : '');
 }
