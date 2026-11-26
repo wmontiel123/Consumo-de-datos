@@ -6,7 +6,7 @@
 -- 1. Cada fila del reporte lo guarda en consumo_sim.plan_disponible_mb (historial).
 -- 2. Después de cada carga (y cada 30 min por pg_cron) refresh_lineas_estado() llama a
 --    actualizar_saldos_lineas(), que copia el valor del reporte MÁS NUEVO de cada línea a
---    lineas.saldo_mb / saldo_fecha (y lo mismo en lineas_legado). Se busca por número y
+--    lineas.saldo_mb / saldo_fecha (y lo mismo en lineas_legado), sin límite de fecha. Se busca por número y
 --    por ICCID (sin el dígito verificador, como en el resto del inventario).
 --    Una línea que no vuelve a figurar en un reporte conserva su último saldo y su fecha.
 --
@@ -37,18 +37,18 @@ declare
 begin
     drop table if exists _saldo;
 
-    -- Último saldo informado por línea (últimos 90 días), por número y por ICCID
+    -- Último saldo informado por línea (sin límite de fecha), por número y por ICCID
     create temp table _saldo on commit drop as
     select distinct on (key) key, plan, f
       from (
         select trim(numero) as key, plan_disponible_mb as plan, fecha_consumo as f, id
           from consumo_sim
-         where plan_disponible_mb is not null and fecha_consumo >= current_date - 90
+         where plan_disponible_mb is not null
            and upper(trim(coalesce(numero, ''))) not in ('', 'M2M')
         union all
         select clave_iccid(imei), plan_disponible_mb, fecha_consumo, id
           from consumo_sim
-         where plan_disponible_mb is not null and fecha_consumo >= current_date - 90
+         where plan_disponible_mb is not null
            and trim(coalesce(imei, '')) <> ''
       ) x
      order by key, f desc, id desc;
