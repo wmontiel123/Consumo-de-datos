@@ -2185,7 +2185,7 @@ function mostrarEnTablaConsumo(filas, totalServidor) {
             : (ESTADO_CONFIG_DISP[est]          || ESTADO_CONFIG_DISP['activo']);
         const rc  = encontrarRC(c);
         const mb  = (c.consumo_mb !== null && c.consumo_mb !== undefined)
-            ? formatearNumero(c.consumo_mb) + ' MB'
+            ? formatearNumero(c.consumo_mb)
             : '-';
         const dotColor = est === 'desactivado' ? '#dc2626' : '#16a34a';
         const dot = `<span style="color:${dotColor};font-size:10px;margin-right:4px;vertical-align:middle">●</span>`;
@@ -2198,7 +2198,7 @@ function mostrarEnTablaConsumo(filas, totalServidor) {
             <td>${rc !== '-' ? `<span class="link-rc" onclick="abrirPanelRC('${rc}')">${rc}</span>` : '-'}</td>
             <td>${badgeTelefonia(c.telefonia)}</td>
             <td class="td-num">${mb}</td>
-            <td class="td-num td-saldo">${celdaDisponible(c.plan_disponible_mb)}</td>
+            <td class="td-num td-saldo">${celdaDisponible(c.plan_disponible_mb, null, false)}</td>
             <td class="td-fecha">${formatearFecha(c.fecha_consumo)}</td>
             ${esViewer() ? '' : `<td>${c.observacion || '-'}</td>`}
         `;
@@ -3229,9 +3229,9 @@ function mostrarLineasBD(filas, totalServidor) {
             <td class="td-imei">${imeiCell}</td>
             <td>${badgeTelefonia(row.telefonia)}</td>
             <td>${rcCell}</td>
-            <td class="td-num">${formatearNumero(parseFloat(row.consumo_mes_mb) || 0)} MB</td>
-            <td class="td-num">${formatearNumero(parseFloat(row.consumo_total_mb) || 0)} MB</td>
-            <td class="td-num td-saldo">${celdaSaldo(row)}</td>
+            <td class="td-num">${formatearNumero(parseFloat(row.consumo_mes_mb) || 0)}</td>
+            <td class="td-num">${formatearNumero(parseFloat(row.consumo_total_mb) || 0)}</td>
+            <td class="td-num td-saldo">${celdaDisponible(row.saldo_mb, row.saldo_fecha, false)}</td>
         `;
         tbody.appendChild(tr);
     });
@@ -5636,13 +5636,14 @@ function renderInventarioLineas(pagina, desdeControles) {
 function celdaSaldo(l) {
     return celdaDisponible(l.saldo_mb, l.saldo_fecha);
 }
-// Plan disponible en MB (rojo si está agotado); con fecha abajo si se indica
-function celdaDisponible(valor, fechaISO) {
+// Plan disponible en MB (rojo si está agotado); con fecha abajo si se indica.
+// conUnidad=false cuando el encabezado ya dice "(MB)"
+function celdaDisponible(valor, fechaISO, conUnidad = true) {
     if (valor === null || valor === undefined || valor === '') return '<span class="saldo-vacio">-</span>';
     const mb = Number(valor);
     const gb = mb >= 1024 ? ` (${(mb / 1024).toLocaleString('es-PY', { maximumFractionDigits: 1 })} GB)` : '';
     const fecha = fechaISO ? formatearFecha(fechaISO) : '';
-    return `<span class="saldo-mb${mb <= 0 ? ' saldo-agotado' : ''}" title="Plan disponible${gb}${fecha ? ' según el reporte del ' + fecha : ''}">${formatearNumero(Math.round(mb))} MB</span>`
+    return `<span class="saldo-mb${mb <= 0 ? ' saldo-agotado' : ''}" title="Plan disponible${gb}${fecha ? ' según el reporte del ' + fecha : ''}">${formatearNumero(Math.round(mb))}${conUnidad ? ' MB' : ''}</span>`
          + (fecha ? `<span class="saldo-fecha">${fecha}</span>` : '');
 }
 
