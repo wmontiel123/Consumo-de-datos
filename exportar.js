@@ -312,7 +312,7 @@ const REPORTES = {
                 (!rcs.length || rcs.some(x => _norm(l.rc_codigo).includes(x))) &&
                 _contiene(f.buscar, l.numero, l.iccid, l.rc_codigo));
             return {
-                columnas: ['Número', 'ICCID', 'Telefonía', 'Estado', 'Línea', 'Saldo (MB)', 'Saldo al', 'RC', 'Slot', 'Regional', 'Cargada', 'Por', 'Observación'],
+                columnas: ['Número', 'ICCID', 'Telefonía', 'Estado', 'Línea', 'Disponible (MB)', 'Disponible al', 'RC', 'Slot', 'Regional', 'Cargada', 'Por', 'Observación'],
                 filas: filas.map(l => [_txt(l.numero), _txt(l.iccid), _txt(l.telefonia),
                     ESTADO_HIST_LABEL[l.estado] || l.estado,
                     etiquetaLinea(l),
