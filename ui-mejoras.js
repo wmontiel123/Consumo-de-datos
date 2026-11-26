@@ -622,6 +622,7 @@ const TABLAS_INTERACTIVAS = {
     inventario: {
         sel: '#subtab-inventario .panel-historial',
         acc: [l => l.numero, l => l.iccid, l => l.telefonia, l => l.estado, l => etiquetaLinea(l),
+              l => l.saldo_mb == null ? null : Number(l.saldo_mb),
               l => l.rc_codigo, l => l.creado_en, l => l.creado_por, null],
         rehacer: () => renderInventarioLineas(1),
         dbl: {
