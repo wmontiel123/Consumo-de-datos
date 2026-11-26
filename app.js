@@ -2982,32 +2982,23 @@ async function consultarLineasBD() {
     return { data: data || [], count: count || 0 };
 }
 
-// Último "plan disponible" informado (últimos 90 días) para las líneas de la página
+// Último "plan disponible" registrado de cada línea de la página (sin límite de fecha):
+// una consulta chica por línea (la fila más reciente que trae disponible, por número o ICCID)
 async function agregarDisponibleLineas(filas) {
     const lim = v => String(v || '').trim().replace(/["\\,()]/g, '');
-    const nums  = [...new Set(filas.map(r => lim(r.numero)).filter(Boolean))];
-    const imeis = [...new Set(filas.map(r => lim(r.imei)).filter(Boolean))];
-    if (!nums.length && !imeis.length) return;
-    const lista = a => a.map(v => `"${v}"`).join(',');
-    const cond = [nums.length ? `numero.in.(${lista(nums)})` : '', imeis.length ? `imei.in.(${lista(imeis)})` : '']
-        .filter(Boolean).join(',');
-    const desde = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
-    const { data, error } = await window.clienteSupabase.from('consumo_sim')
-        .select('numero,imei,plan_disponible_mb,fecha_consumo')
-        .not('plan_disponible_mb', 'is', null).gte('fecha_consumo', desde).or(cond)
-        .order('fecha_consumo', { ascending: false }).limit(1000);
-    if (error) { console.warn('⚠️ disponible líneas:', error.message); return; }
-    const porNum = new Map(), porIccid = new Map();
-    (data || []).forEach(c => {   // vienen de la más reciente a la más vieja
-        const n = String(c.numero || '').trim(), i = claveIccid(c.imei);
-        if (n && !porNum.has(n)) porNum.set(n, c);
-        if (i && !porIccid.has(i)) porIccid.set(i, c);
-    });
-    filas.forEach(r => {
-        const a = porNum.get(String(r.numero || '').trim()), b = porIccid.get(claveIccid(r.imei));
-        const c = [a, b].filter(Boolean).sort((x, y) => String(y.fecha_consumo).localeCompare(String(x.fecha_consumo)))[0];
+    await Promise.all(filas.map(async r => {
+        const n = lim(r.numero), i = lim(r.imei);
+        const cond = [n ? `numero.eq."${n}"` : '', i ? `imei.eq."${i}"` : ''].filter(Boolean).join(',');
+        if (!cond) return;
+        const { data, error } = await window.clienteSupabase.from('consumo_sim')
+            .select('plan_disponible_mb,fecha_consumo')
+            .not('plan_disponible_mb', 'is', null).or(cond)
+            .order('fecha_consumo', { ascending: false }).order('id', { ascending: false })
+            .limit(1);
+        if (error) { console.warn('⚠️ disponible línea:', error.message); return; }
+        const c = data?.[0];
         if (c) { r.saldo_mb = c.plan_disponible_mb; r.saldo_fecha = c.fecha_consumo; }
-    });
+    }));
 }
 
 async function cargarLineasBD() {
