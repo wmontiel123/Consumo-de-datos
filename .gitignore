@@ -6,3 +6,6 @@ scripts/cargar_reportes.lock
 scripts/logs/
 scripts/__pycache__/
 dist/
+
+# Manual de administrador: vive solo en la base (tabla manuales, solo admin)
+docs/manual-admin.html

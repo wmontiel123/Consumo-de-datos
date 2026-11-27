@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Consulta de Consumo de Datos</title>
-    <link rel="stylesheet" href="styles.css?v=20261126">
+    <link rel="stylesheet" href="styles.css?v=20261127">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         .btn-ayuda {
@@ -32,6 +32,36 @@
             color: #ffffff;
         }
         .btn-ayuda svg { flex-shrink: 0; }
+        button.btn-ayuda { cursor: pointer; }
+        .menu-ayuda {
+            position: fixed; top: 50px; left: 16px; z-index: 10000;
+            background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0,0,0,.14); padding: 6px; min-width: 230px;
+            display: flex; flex-direction: column; font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        .menu-ayuda[hidden] { display: none; }
+        .menu-ayuda a, .menu-ayuda button {
+            display: block; text-align: left; padding: 9px 12px; border-radius: 7px; border: 0; background: none;
+            font: 600 13px 'Segoe UI', Arial, sans-serif; color: #35398C; text-decoration: none; cursor: pointer;
+        }
+        .menu-ayuda a:hover, .menu-ayuda button:hover { background: #f0f2f8; }
+        .manual-overlay {
+            position: fixed; inset: 0; z-index: 10001; background: #f5f6fa;
+            display: flex; flex-direction: column;
+        }
+        .manual-overlay[hidden] { display: none; }
+        .manual-barra {
+            display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+            background: #1e2160; color: #fff; font-family: 'Segoe UI', Arial, sans-serif; font-size: 14px;
+        }
+        .manual-barra span { flex: 1; opacity: .8; font-size: 13px; }
+        .manual-barra button {
+            background: rgba(255,255,255,.14); color: #fff; border: 1px solid rgba(255,255,255,.3);
+            border-radius: 7px; padding: 5px 12px; font: 600 13px 'Segoe UI', Arial, sans-serif; cursor: pointer;
+            flex: 0 0 auto; width: auto; margin: 0;
+        }
+        .manual-barra button:hover { background: rgba(255,255,255,.26); }
+        .manual-overlay iframe { flex: 1; width: 100%; border: 0; background: #f5f6fa; }
     </style>
 </head>
 <body>
@@ -135,11 +165,24 @@
     <!-- App principal (oculta hasta login) -->
     <div id="appPrincipal" style="display:none;">
 
-    <!-- Botón de ayuda fijo: abre el manual de usuario -->
-    <a href="manual-ande.html" target="_blank" class="btn-ayuda" title="Manual de usuario">
+    <!-- Botón de ayuda fijo: manual de usuario (todos) y de administrador (solo admin) -->
+    <button type="button" class="btn-ayuda no-print" onclick="abrirAyuda(event)" title="Manuales del sistema">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         Ayuda
-    </a>
+    </button>
+    <div id="menuAyuda" class="menu-ayuda no-print" hidden>
+        <a href="manual-ande.html" target="_blank" rel="noopener">📘 Manual de usuario</a>
+        <button type="button" onclick="abrirManualAdmin()">🔒 Manual de administrador</button>
+    </div>
+    <div id="manualAdminOverlay" class="manual-overlay no-print" hidden>
+        <div class="manual-barra">
+            <strong>🔒 Manual de administrador</strong>
+            <span id="manualAdminEstado"></span>
+            <button type="button" onclick="imprimirManualAdmin()">🖨️ Imprimir / PDF</button>
+            <button type="button" onclick="cerrarManualAdmin()" aria-label="Cerrar">✕</button>
+        </div>
+        <iframe id="manualAdminFrame" title="Manual de administrador" sandbox="allow-same-origin allow-modals"></iframe>
+    </div>
 
     <div class="container">
         <h1>📡 Gestión de Equipos ANDE</h1>
@@ -1117,8 +1160,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20261126"></script>
-    <script src="exportar.js?v=20261126"></script>
-    <script src="ui-mejoras.js?v=20261126"></script>
+    <script src="app.js?v=20261127"></script>
+    <script src="exportar.js?v=20261127"></script>
+    <script src="ui-mejoras.js?v=20261127"></script>
 </body>
 </html>

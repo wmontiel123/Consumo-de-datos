@@ -1045,3 +1045,59 @@ function pintarLineasActivas(d) {
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciarMejorasUI);
 else iniciarMejorasUI();
+
+// ── Ayuda: manual de usuario (todos) y de administrador (solo admin) ─────────
+// El manual de administrador no está en el sitio: se lee de la tabla "manuales", que por RLS
+// solo devuelve filas a un admin. Un viewer no ve la opción ni puede leerlo aunque lo pida.
+function abrirAyuda(ev) {
+    ev?.stopPropagation();
+    if (!esAdmin()) { window.open('manual-ande.html', '_blank', 'noopener'); return; }
+    const menu = document.getElementById('menuAyuda');
+    menu.hidden = !menu.hidden;
+    if (!menu.hidden) document.addEventListener('click', () => { menu.hidden = true; }, { once: true });
+}
+
+let _manualAdminUrl = null;
+async function abrirManualAdmin() {
+    if (!esAdmin()) return;
+    const ov = document.getElementById('manualAdminOverlay');
+    const fr = document.getElementById('manualAdminFrame');
+    const est = document.getElementById('manualAdminEstado');
+    document.getElementById('menuAyuda').hidden = true;
+    ov.hidden = false;
+    if (_manualAdminUrl) { if (!fr.src) fr.src = _manualAdminUrl; return; }
+    est.textContent = 'Cargando…';
+    const { data, error } = await window.clienteSupabase.from('manuales')
+        .select('contenido, actualizado_en').eq('id', 'admin').maybeSingle();
+    if (error || !data?.contenido) {
+        est.textContent = '❌ No se pudo cargar el manual' + (error ? ': ' + error.message : ' (no está cargado en la base)');
+        return;
+    }
+    est.textContent = data.actualizado_en ? 'Actualizado: ' + formatearFechaHora(data.actualizado_en) : '';
+    _manualAdminUrl = URL.createObjectURL(new Blob([data.contenido], { type: 'text/html;charset=utf-8' }));
+    fr.src = _manualAdminUrl;
+}
+
+// Leer el manual cuenta como actividad: los eventos dentro del iframe no llegan a la página
+document.getElementById('manualAdminFrame')?.addEventListener('load', e => {
+    const w = e.target.contentWindow;
+    if (!w) return;
+    let ultima = 0;
+    const alActuar = () => { const t = Date.now(); if (t - ultima > 5000) { ultima = t; marcarActividad(); } };
+    ['mousemove', 'mousedown', 'keydown', 'wheel', 'scroll', 'touchstart']
+        .forEach(ev => w.addEventListener(ev, alActuar, { passive: true, capture: true }));
+});
+
+function imprimirManualAdmin() {
+    try { document.getElementById('manualAdminFrame').contentWindow.print(); } catch (_) {}
+}
+
+function cerrarManualAdmin() {
+    document.getElementById('manualAdminOverlay').hidden = true;
+}
+
+document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    const ov = document.getElementById('manualAdminOverlay');
+    if (ov && !ov.hidden) cerrarManualAdmin();
+});

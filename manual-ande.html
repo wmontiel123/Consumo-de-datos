@@ -1,515 +1,337 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manual de Usuario - Gestion de Equipos ANDE RC</title>
-    <style>
-        :root {
-            --azul:    #35398C;
-            --azul-cl: #4a50b8;
-            --verde:   #16a34a;
-            --rojo:    #dc2626;
-            --gris:    #6b7280;
-            --bg:      #f5f6fa;
-            --card:    #ffffff;
-            --border:  #e5e7eb;
-            --text:    #1f2937;
-            --muted:   #6b7280;
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.6; }
-
-        .cover { background: linear-gradient(135deg, var(--azul) 0%, var(--azul-cl) 100%); color: #fff; padding: 60px 40px 50px; text-align: center; }
-        .cover .brand { font-size: 13px; letter-spacing: 4px; text-transform: uppercase; opacity: .7; margin-bottom: 16px; }
-        .cover h1 { font-size: 32px; font-weight: 700; margin-bottom: 10px; }
-        .cover .sub { font-size: 16px; opacity: .85; margin-bottom: 28px; }
-        .cover .badge-cover { display: inline-block; background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.35); border-radius: 20px; padding: 5px 18px; font-size: 13px; }
-
-        .wrapper { max-width: 900px; margin: 0 auto; padding: 40px 24px 80px; }
-
-        .toc { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 28px 32px; margin-bottom: 40px; }
-        .toc h2 { font-size: 17px; color: var(--azul); margin-bottom: 16px; }
-        .toc ol { padding-left: 20px; }
-        .toc li { margin-bottom: 6px; }
-        .toc a { color: var(--azul-cl); text-decoration: none; }
-        .toc a:hover { text-decoration: underline; }
-
-        section { margin-bottom: 52px; scroll-margin-top: 24px; }
-
-        h2.seccion { font-size: 22px; color: var(--azul); border-bottom: 2px solid var(--azul); padding-bottom: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
-        h2.seccion .num { background: var(--azul); color: #fff; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
-
-        h3.sub { font-size: 16px; color: var(--azul-cl); margin: 24px 0 10px; display: flex; align-items: center; gap: 8px; }
-
-        p { margin-bottom: 12px; }
-
-        .img-block { margin: 18px 0 22px; }
-        .img-block img { width: 100%; border-radius: 10px; border: 1px solid var(--border); box-shadow: 0 2px 12px rgba(0,0,0,.08); display: block; }
-        .img-caption { text-align: center; font-size: 12px; color: var(--muted); margin-top: 7px; }
-        .img-half { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 18px 0 22px; }
-        @media (max-width: 620px) { .img-half { grid-template-columns: 1fr; } }
-        .img-half .img-block { margin: 0; }
-
-        .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px 24px; margin-bottom: 16px; }
-        .card-title { font-weight: 600; margin-bottom: 8px; color: var(--text); font-size: 15px; }
-
-        table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
-        th { background: #f0f2f8; color: var(--azul); font-weight: 600; text-align: left; padding: 10px 14px; }
-        td { padding: 9px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
-        tr:last-child td { border-bottom: none; }
-        tr:hover td { background: #f9fafb; }
-
-        .badge { display: inline-flex; align-items: center; gap: 5px; border-radius: 6px; padding: 3px 10px; font-size: 13px; font-weight: 500; }
-        .badge-verde  { background: rgba(22,163,74,.12);   color: #15803d; }
-        .badge-rojo   { background: rgba(220,38,38,.12);   color: #b91c1c; }
-        .badge-gris   { background: rgba(107,114,128,.12); color: #4b5563; }
-        .badge-azul   { background: rgba(37,99,235,.12);   color: #1d4ed8; }
-        .badge-naranja{ background: rgba(234,88,12,.12);   color: #c2410c; }
-
-        .alert { border-radius: 8px; padding: 14px 18px; margin-bottom: 16px; display: flex; gap: 10px; align-items: flex-start; font-size: 14px; }
-        .alert-info { background: #eff6ff; border-left: 4px solid #3b82f6; color: #1e40af; }
-        .alert-warn { background: #fffbeb; border-left: 4px solid #f59e0b; color: #92400e; }
-        .alert-tip  { background: #f0fdf4; border-left: 4px solid #22c55e; color: #166534; }
-
-        .steps { counter-reset: step; list-style: none; padding: 0; }
-        .steps li { counter-increment: step; display: flex; gap: 14px; align-items: flex-start; margin-bottom: 14px; font-size: 14px; }
-        .steps li::before { content: counter(step); background: var(--azul); color: #fff; border-radius: 50%; min-width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
-
-        .btn-sim { display: inline-flex; align-items: center; gap: 5px; border-radius: 6px; padding: 4px 12px; font-size: 13px; font-weight: 500; border: 1px solid; vertical-align: middle; }
-        .btn-azul { background: var(--azul); color: #fff; border-color: var(--azul); }
-        .btn-gris { background: #f3f4f6; color: var(--gris); border-color: #d1d5db; }
-
-        .view-tabs { display: flex; gap: 6px; margin: 14px 0 6px; }
-        .vt { border-radius: 6px; padding: 5px 14px; font-size: 13px; font-weight: 500; border: 1px solid var(--border); background: #f3f4f6; color: var(--gris); }
-        .vt.active { background: var(--azul); color: #fff; border-color: var(--azul); }
-
-        .col2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-        @media (max-width: 600px) { .col2 { grid-template-columns: 1fr; } }
-
-        code { background: #f3f4f6; border-radius: 4px; padding: 1px 6px; font-size: 13px; font-family: monospace; }
-
-        .btn-panel-demo { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; border: 1.5px solid; justify-content: center; font-family: 'Segoe UI', Arial, sans-serif; width: 100%; }
-        .btn-panel-demo-rojo  { background: rgba(220,38,38,0.06); color: #b91c1c; border-color: #fca5a5; }
-        .btn-panel-demo-azul  { background: rgba(53,57,140,0.06); color: #35398C; border-color: #c7cae8; }
-        .btn-panel-demo-verde { background: rgba(22,163,74,0.06); color: #15803d; border-color: #86efac; }
-
-        footer { text-align: center; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); padding: 24px 0 0; margin-top: 40px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manual de usuario · Gestión de Equipos ANDE</title>
+<style>
+    :root { --azul:#35398C; --azul-cl:#4a50b8; --bg:#f5f6fa; --card:#fff; --border:#e5e7eb; --text:#1f2937; --muted:#6b7280; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.6; }
+    .cover { background: linear-gradient(135deg, var(--azul) 0%, var(--azul-cl) 100%); color: #fff; padding: 52px 24px 44px; text-align: center; }
+    .cover .brand { font-size: 12px; letter-spacing: 4px; text-transform: uppercase; opacity: .75; margin-bottom: 14px; }
+    .cover h1 { font-size: 30px; margin-bottom: 8px; }
+    .cover .sub { opacity: .88; margin-bottom: 22px; }
+    .cover .chip { display: inline-block; background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.35); border-radius: 20px; padding: 4px 16px; font-size: 13px; }
+    .wrapper { max-width: 920px; margin: 0 auto; padding: 36px 16px 80px; }
+    .toc { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px 28px; margin-bottom: 40px; }
+    .toc h2 { font-size: 17px; color: var(--azul); margin-bottom: 12px; }
+    .toc ol { padding-left: 20px; columns: 2; column-gap: 32px; }
+    @media (max-width: 640px) { .toc ol { columns: 1; } }
+    .toc li { margin-bottom: 5px; break-inside: avoid; }
+    .toc a { color: var(--azul-cl); text-decoration: none; }
+    .toc a:hover { text-decoration: underline; }
+    section { margin-bottom: 48px; scroll-margin-top: 16px; }
+    h2.sec { font-size: 22px; color: var(--azul); border-bottom: 2px solid var(--azul); padding-bottom: 8px; margin-bottom: 18px; display: flex; align-items: center; gap: 10px; }
+    h2.sec .num { background: var(--azul); color: #fff; border-radius: 50%; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+    h3 { font-size: 16px; color: var(--azul-cl); margin: 22px 0 8px; }
+    p { margin-bottom: 10px; }
+    ul.lista { margin: 0 0 12px 22px; }
+    ul.lista li { margin-bottom: 4px; }
+    table { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 14px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    th { background: #f0f2f8; color: var(--azul); font-weight: 600; text-align: left; padding: 9px 12px; }
+    td { padding: 8px 12px; border-top: 1px solid var(--border); vertical-align: top; }
+    td:first-child { white-space: nowrap; font-weight: 500; }
+    .alert { border-radius: 8px; padding: 12px 16px; margin: 12px 0 16px; font-size: 14px; }
+    .info { background: #eff6ff; border-left: 4px solid #3b82f6; color: #1e40af; }
+    .warn { background: #fffbeb; border-left: 4px solid #f59e0b; color: #92400e; }
+    .tip  { background: #f0fdf4; border-left: 4px solid #22c55e; color: #166534; }
+    ol.pasos { counter-reset: p; list-style: none; margin: 8px 0 14px; }
+    ol.pasos li { counter-increment: p; position: relative; padding-left: 38px; margin-bottom: 10px; }
+    ol.pasos li::before { content: counter(p); position: absolute; left: 0; top: 0; background: var(--azul); color: #fff; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+    .b { display: inline-block; border-radius: 6px; padding: 1px 9px; font-size: 13px; font-weight: 600; }
+    .b-verde { background: rgba(22,163,74,.12); color: #15803d; }
+    .b-rojo  { background: rgba(220,38,38,.12); color: #b91c1c; }
+    .b-nar   { background: rgba(234,88,12,.12); color: #c2410c; }
+    .b-gris  { background: rgba(107,114,128,.14); color: #4b5563; }
+    .b-azul  { background: rgba(53,57,140,.1); color: var(--azul); }
+    kbd, code { background: #eef0f6; border-radius: 4px; padding: 1px 6px; font-size: 13px; font-family: Consolas, monospace; }
+    dl.faq dt { font-weight: 600; margin-top: 14px; }
+    dl.faq dd { margin: 4px 0 0 0; color: #374151; }
+    footer { text-align: center; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); padding-top: 20px; margin-top: 40px; }
+    @media print { .cover { padding: 24px; } .toc { break-after: page; } section { break-inside: avoid-page; } body { background: #fff; } }
+</style>
 </head>
 <body>
 
 <div class="cover">
-    <div class="brand">INOVASI &mdash; Tecnologia que trabaja por vos</div>
-    <h1>&#128225; Manual de Usuario</h1>
-    <div class="sub">Sistema de Gestion de Equipos ANDE &middot; Perfil: Consulta</div>
-    <div class="badge-cover">Version 1.0 &mdash; Mayo 2026</div>
+    <div class="brand">INOVASI · Tecnología que trabaja por vos</div>
+    <h1>Manual de usuario</h1>
+    <div class="sub">Sistema de Gestión de Equipos ANDE · Perfil Consulta</div>
+    <span class="chip">Versión 2.0 · Noviembre 2026</span>
 </div>
 
 <div class="wrapper">
 
-    <div class="toc">
-        <h2>&#128203; Contenido</h2>
-        <ol>
-            <li><a href="#s1">Acceso al sistema (Login)</a></li>
-            <li><a href="#s2">Pantalla principal y navegacion</a></li>
-            <li><a href="#s3">Tab Consumo SIM</a>
-                <ol style="margin-top:4px;margin-left:16px">
-                    <li><a href="#s3-consumo">Vista Consumo</a></li>
-                    <li><a href="#s3-lineas">Vista Lineas</a></li>
-                    <li><a href="#s3-rc">Vista RC (por equipo)</a></li>
-                </ol>
-            </li>
-            <li><a href="#s4">Tab Dispositivos</a></li>
-            <li><a href="#s5">Panel de detalle RC</a></li>
-            <li><a href="#s6">Solicitudes (desactivacion, cambio SIM, saldo)</a></li>
-            <li><a href="#s7">Graficos e indicadores</a></li>
-            <li><a href="#s8">Estados y significados</a></li>
-            <li><a href="#s9">Preguntas frecuentes</a></li>
-        </ol>
-    </div>
+<nav class="toc">
+    <h2>Contenido</h2>
+    <ol>
+        <li><a href="#acceso">Acceso al sistema</a></li>
+        <li><a href="#pantalla">Pantalla principal</a></li>
+        <li><a href="#tablas">Cómo usar las tablas</a></li>
+        <li><a href="#consumo">Consumo SIM</a></li>
+        <li><a href="#dispositivos">Dispositivos</a></li>
+        <li><a href="#historial">Historial SIM</a></li>
+        <li><a href="#panel-rc">Panel de un RC</a></li>
+        <li><a href="#panel-sim">Panel de una línea</a></li>
+        <li><a href="#solicitudes">Solicitudes</a></li>
+        <li><a href="#reportes">Reportes PDF y Excel</a></li>
+        <li><a href="#estados">Estados y significados</a></li>
+        <li><a href="#faq">Preguntas frecuentes</a></li>
+    </ol>
+</nav>
 
-    <!-- 1 -->
-    <section id="s1">
-        <h2 class="seccion"><span class="num">1</span> Acceso al sistema</h2>
-        <p>Al abrir la aplicacion aparece la pantalla de inicio de sesion.</p>
-        <ol class="steps">
-            <li>Ingresa tu <strong>usuario</strong> en el primer campo.</li>
-            <li>Ingresa tu <strong>contrasena</strong> en el segundo campo. Podes usar el icono del ojo para mostrar u ocultar los caracteres.</li>
-            <li>Presiona el boton <span class="btn-sim btn-azul">Ingresar</span> o la tecla <code>Enter</code>.</li>
-        </ol>
-        <div class="alert alert-warn">
-            <span>&#9888;&#65039;</span>
-            <span>Si aparece el mensaje <em>"Usuario o contrasena incorrectos"</em>, verifica que no tengas el Bloq Mayus activado e intenta nuevamente. Si el problema persiste, contacta al administrador del sistema.</span>
-        </div>
-        <div class="alert alert-info">
-            <span>&#8505;&#65039;</span>
-            <span>La sesion se mantiene activa si recargas la pagina (F5). Se cierra automaticamente al cerrar la pestana del navegador.</span>
-        </div>
-    </section>
+<!-- 1 ─────────────────────────────────────────────── -->
+<section id="acceso">
+    <h2 class="sec"><span class="num">1</span>Acceso al sistema</h2>
 
-    <!-- 2 -->
-    <section id="s2">
-        <h2 class="seccion"><span class="num">2</span> Pantalla principal y navegacion</h2>
-        <p>Una vez autenticado, veras la pantalla principal con dos pestanas en la parte superior:</p>
-        <table>
-            <tr><th>Pestana</th><th>Que muestra</th></tr>
-            <tr><td><strong>&#128202; Consumo SIM</strong></td><td>Historial de consumo de datos por linea SIM, inventario de lineas y vista por equipo RC. Es la pestana que se abre por defecto.</td></tr>
-            <tr><td><strong>&#128421;&#65039; Dispositivos</strong></td><td>Listado de todos los equipos ANDE con su codigo RC, ubicacion, SIMs asignadas y mapa geografico.</td></tr>
-        </table>
-        <div class="img-half">
-            <div class="img-block">
-                <img src="Imagenes/2.consumo sim.png" alt="Tab Consumo SIM">
-                <div class="img-caption">Tab Consumo SIM</div>
-            </div>
-            <div class="img-block">
-                <img src="Imagenes/2.dispositivos.png" alt="Tab Dispositivos">
-                <div class="img-caption">Tab Dispositivos</div>
-            </div>
-        </div>
-        <p>Para <strong>cerrar sesion</strong>, hace clic en el boton <span class="btn-sim btn-gris">Salir</span> en la esquina superior derecha.</p>
-        <div class="alert alert-tip">
-            <span>&#128161;</span>
-            <span>Los botones de <strong>Buscar</strong> y <strong>Limpiar</strong> en los filtros generan consultas a la base de datos. Es normal que tarden unos segundos si hay muchos registros.</span>
-        </div>
-    </section>
+    <h3>Ingresar</h3>
+    <ol class="pasos">
+        <li>Escribí tu <strong>usuario</strong> y tu <strong>contraseña</strong>. Con el ícono del ojo podés ver lo que escribiste.</li>
+        <li>Presioná <strong>Ingresar</strong> o la tecla <kbd>Enter</kbd>.</li>
+    </ol>
+    <div class="alert warn">Después de <strong>5 intentos fallidos en 15 minutos</strong> el usuario queda bloqueado durante 15 minutos. Revisá que no esté activado Bloq Mayús.</div>
 
-    <!-- 3 -->
-    <section id="s3">
-        <h2 class="seccion"><span class="num">3</span> Tab Consumo SIM</h2>
-        <p>Esta pestana concentra toda la informacion de consumo. Tiene tres sub-vistas que se seleccionan con los botones:</p>
-        <div class="view-tabs">
-            <div class="vt active">Consumo</div>
-            <div class="vt">Lineas</div>
-            <div class="vt">RC</div>
-        </div>
+    <h3>Pedir un usuario nuevo</h3>
+    <p>En la pantalla de ingreso, hacé clic en <strong>Solicitar acceso</strong>. Completá tu nombre, tu correo, el usuario que querés y para qué necesitás el acceso. Soporte revisa el pedido. Si lo aprueba, te llega un correo con un enlace para crear tu contraseña. El enlace vale 48 horas.</p>
 
-        <h3 class="sub" id="s3-consumo">&#128200; Vista Consumo</h3>
-        <p>Muestra el historial detallado de consumo: <strong>una fila por linea SIM por fecha de registro</strong>. Es util para ver la evolucion diaria o mensual de una linea.</p>
-        <div class="img-block">
-            <img src="Imagenes/3. vista consumo.png" alt="Vista Consumo">
-            <div class="img-caption">Vista Consumo &mdash; historial por linea y fecha</div>
-        </div>
-        <h3 class="sub" style="font-size:14px;margin-top:18px">Filtros disponibles</h3>
-        <table>
-            <tr><th>Filtro</th><th>Descripcion</th></tr>
-            <tr><td><strong>Telefonia</strong></td><td>Filtra por operadora: Personal, Claro, Tigo o Vox.</td></tr>
-            <tr><td><strong>Estado</strong></td><td>Filtra por estado de la linea: <em>Todos / Activado / Desactivado</em>.</td></tr>
-            <tr><td><strong>RC</strong></td><td>Busca por codigo de equipo (ej. <code>RC_55591</code>).</td></tr>
-            <tr><td><strong>N&deg; / ICCID</strong></td><td>Busca por numero de telefono o numero ICCID de la SIM.</td></tr>
-            <tr><td><strong>Desde / Hasta</strong></td><td>Acota el periodo de fechas a consultar.</td></tr>
-        </table>
-        <p>Hace clic en <span class="btn-sim btn-azul">Buscar</span> para aplicar los filtros, o en <span class="btn-sim btn-gris">Limpiar</span> para reiniciarlos.</p>
-        <h3 class="sub" style="font-size:14px;margin-top:18px">Columnas de la tabla</h3>
-        <table>
-            <tr><th>Columna</th><th>Significado</th></tr>
-            <tr><td><strong>Estado</strong></td><td><span class="badge badge-verde">&#9679; Activado</span> o <span class="badge badge-rojo">&#9679; Desactivado</span></td></tr>
-            <tr><td><strong>Numero</strong></td><td>Numero de la SIM. Hace clic para filtrar el historial de esa linea.</td></tr>
-            <tr><td><strong>ICCID</strong></td><td>Identificador unico del modulo SIM.</td></tr>
-            <tr><td><strong>RC</strong></td><td>Codigo del equipo al que pertenece la SIM. Hace clic para abrir el panel de detalle.</td></tr>
-            <tr><td><strong>Telefonia</strong></td><td>Operadora de la SIM.</td></tr>
-            <tr><td><strong>MB</strong></td><td>Megabytes consumidos en esa fecha.</td></tr>
-            <tr><td><strong>Fecha</strong></td><td>Fecha del registro de consumo.</td></tr>
-        </table>
-        <div class="alert alert-info">
-            <span>&#8505;&#65039;</span>
-            <span>El <strong>total de consumo</strong> del periodo filtrado aparece arriba de la tabla como <em>Total consumo: X MB</em>.</span>
-        </div>
-        <h3 class="sub" style="font-size:14px;margin-top:18px">Botones de accion</h3>
-        <div class="col2">
-            <div class="card"><div class="card-title">&#128229; Exportar</div>Descarga los datos visibles en la tabla como archivo Excel (.xlsx).</div>
-            <div class="card"><div class="card-title">&#128424;&#65039; Imprimir</div>Abre el dialogo de impresion con un formato limpio sin filtros ni botones.</div>
-        </div>
+    <h3>Olvidé mi contraseña</h3>
+    <p>La opción <strong>¿Olvidaste tu contraseña?</strong> aparece después de una contraseña incorrecta. Indicá tu usuario y el correo donde querés recibir el enlace. Cuando soporte lo aprueba, te llega un enlace para crear una contraseña nueva. El enlace vale 24 horas y se puede usar una sola vez.</p>
 
-        <h3 class="sub" id="s3-lineas">&#128203; Vista Lineas</h3>
-        <p>Muestra el <strong>inventario de lineas unicas</strong> registradas en el sistema. Cada fila es una SIM diferente, con su consumo del mes actual y el consumo total acumulado.</p>
-        <div class="img-block">
-            <img src="Imagenes/3.vista lineas.png" alt="Vista Lineas">
-            <div class="img-caption">Vista Lineas &mdash; inventario unico de SIMs con totales</div>
-        </div>
-        <h3 class="sub" style="font-size:14px;margin-top:18px">Filtros disponibles</h3>
-        <table>
-            <tr><th>Filtro</th><th>Descripcion</th></tr>
-            <tr><td><strong>Buscar linea</strong></td><td>Busqueda libre por Numero, ICCID, codigo RC. Los resultados se actualizan automaticamente mientras escribis.</td></tr>
-            <tr><td><strong>Telefonia</strong></td><td>Filtra por operadora.</td></tr>
-            <tr><td><strong>Estado</strong></td><td>Filtra por Activado o Desactivado.</td></tr>
-        </table>
-        <h3 class="sub" style="font-size:14px;margin-top:18px">Columnas de la tabla</h3>
-        <table>
-            <tr><th>Columna</th><th>Significado</th></tr>
-            <tr><td><strong>Estado</strong></td><td>Estado actual de la linea.</td></tr>
-            <tr><td><strong>Numero</strong></td><td>Numero de la SIM. Clic para ver su historial en la vista Consumo.</td></tr>
-            <tr><td><strong>ICCID</strong></td><td>Identificador del modulo SIM.</td></tr>
-            <tr><td><strong>Telefonia</strong></td><td>Operadora.</td></tr>
-            <tr><td><strong>RC</strong></td><td>Equipo al que pertenece. Clic para ver el panel de detalle.</td></tr>
-            <tr><td><strong>MB Mes</strong></td><td>Consumo del mes en curso.</td></tr>
-            <tr><td><strong>MB Total</strong></td><td>Consumo total historico acumulado.</td></tr>
-        </table>
-        <div class="alert alert-tip">
-            <span>&#128161;</span>
-            <span>Encima de la tabla se muestran los <strong>totales del filtro activo</strong>: <em>MB Mes</em> (suma del mes actual) y <em>MB Total</em> (suma historica).</span>
-        </div>
+    <h3>Reglas de la contraseña</h3>
+    <ul class="lista">
+        <li>Entre 12 y 128 caracteres.</li>
+        <li>Al menos una letra, un número y un símbolo.</li>
+        <li>No puede contener tu usuario ni repetir la contraseña anterior.</li>
+    </ul>
 
-        <h3 class="sub" id="s3-rc">&#128295; Vista RC (por equipo)</h3>
-        <p>Muestra el consumo <strong>agrupado por codigo RC</strong>. Cada fila representa un equipo con sus dos SIMs (principal y respaldo) y el consumo total.</p>
-        <div class="img-block">
-            <img src="Imagenes/3.vista rc.png" alt="Vista RC">
-            <div class="img-caption">Vista RC &mdash; consumo agrupado por equipo</div>
-        </div>
-        <h3 class="sub" style="font-size:14px;margin-top:18px">Filtros disponibles</h3>
-        <table>
-            <tr><th>Filtro</th><th>Descripcion</th></tr>
-            <tr><td><strong>Buscar RC</strong></td><td>Escribe parte del codigo RC para filtrar resultados en tiempo real.</td></tr>
-            <tr><td><strong>Regional</strong></td><td>Filtra por regional geografica.</td></tr>
-        </table>
-        <h3 class="sub" style="font-size:14px;margin-top:18px">Columnas de la tabla</h3>
-        <table>
-            <tr><th>Columna</th><th>Significado</th></tr>
-            <tr><td><strong>RC</strong></td><td>Codigo del equipo. Clic para abrir el panel de detalle.</td></tr>
-            <tr><td><strong>Regional</strong></td><td>Regional a la que pertenece el equipo.</td></tr>
-            <tr><td><strong>SIM Principal</strong></td><td>Numero de la SIM primaria.</td></tr>
-            <tr><td><strong>MB SIM Principal</strong></td><td>Consumo de la SIM primaria en el periodo.</td></tr>
-            <tr><td><strong>SIM Respaldo</strong></td><td>Numero de la SIM secundaria (si existe).</td></tr>
-            <tr><td><strong>MB SIM Respaldo</strong></td><td>Consumo de la SIM secundaria.</td></tr>
-            <tr><td><strong>Total MB</strong></td><td>Suma de consumo de ambas SIMs.</td></tr>
-        </table>
-        <p>Los encabezados con la flecha permiten <strong>ordenar</strong> la tabla haciendo clic sobre ellos. Un segundo clic invierte el orden.</p>
-    </section>
+    <h3>Cierre de sesión</h3>
+    <ul class="lista">
+        <li>Botón <strong>Salir</strong>, arriba a la derecha.</li>
+        <li>La sesión se cierra sola después de <strong>3 minutos sin actividad</strong> (sin mover el mouse, escribir ni desplazarte). Al volver aparece un aviso y tenés que ingresar de nuevo.</li>
+        <li>También se cierra al cerrar la pestaña del navegador. Si recargás la página (<kbd>F5</kbd>) seguís dentro.</li>
+    </ul>
+</section>
 
-    <!-- 4 -->
-    <section id="s4">
-        <h2 class="seccion"><span class="num">4</span> Tab Dispositivos</h2>
-        <p>Muestra el inventario completo de equipos ANDE con todos sus datos de registro.</p>
-        <div class="img-block">
-            <img src="Imagenes/4.vista Dispositivos.png" alt="Tab Dispositivos">
-            <div class="img-caption">Tab Dispositivos &mdash; listado completo de equipos</div>
-        </div>
-        <h3 class="sub">Filtros disponibles</h3>
-        <table>
-            <tr><th>Filtro</th><th>Descripcion</th></tr>
-            <tr><td><strong>Regional</strong></td><td>Filtra los equipos de una regional especifica.</td></tr>
-            <tr><td><strong>Codigo</strong></td><td>Busca por codigo RC (ej. <code>RC_55591</code>).</td></tr>
-            <tr><td><strong>N&deg; SIM</strong></td><td>Busca por numero de linea asignada al equipo.</td></tr>
-            <tr><td><strong>Fecha Activacion</strong></td><td>Filtra por la fecha en que fue activado el equipo.</td></tr>
-            <tr><td><strong>Estado</strong></td><td>Muestra solo equipos Activados o Desactivados.</td></tr>
-        </table>
-        <h3 class="sub" style="margin-top:20px">Columnas de la tabla</h3>
-        <table>
-            <tr><th>Columna</th><th>Significado</th></tr>
-            <tr><td><strong>Estado</strong></td><td><span class="badge badge-verde">&#9679; Activado</span> o <span class="badge badge-rojo">&#9679; Desactivado</span></td></tr>
-            <tr><td><strong>Regional</strong></td><td>Regional geografica del equipo.</td></tr>
-            <tr><td><strong>Codigo</strong></td><td>Codigo unico del equipo (RC_XXXXX). Clic para abrir panel de detalle.</td></tr>
-            <tr><td><strong>Ubicacion</strong></td><td>Descripcion textual de donde esta instalado.</td></tr>
-            <tr><td><strong>SIM 1 - Num</strong></td><td>Numero de la SIM principal.</td></tr>
-            <tr><td><strong>SIM 1 - ICCID</strong></td><td>ICCID del modulo SIM principal.</td></tr>
-            <tr><td><strong>SIM 2 - Num</strong></td><td>Numero de la SIM de respaldo (si aplica).</td></tr>
-            <tr><td><strong>SIM 2 - ICCID</strong></td><td>ICCID del modulo SIM de respaldo.</td></tr>
-            <tr><td><strong>Fecha Activacion</strong></td><td>Fecha en que el equipo fue dado de alta.</td></tr>
-        </table>
-        <h3 class="sub" style="margin-top:20px">Estadisticas rapidas</h3>
-        <p>Debajo de la tabla aparecen cuatro tarjetas con resumenes del conjunto filtrado:</p>
-        <div class="col2">
-            <div class="card" style="border-left:4px solid #3b82f6"><div class="card-title">Total Dispositivos</div>Cantidad total de equipos en el filtro activo.</div>
-            <div class="card" style="border-left:4px solid var(--verde)"><div class="card-title">Activados</div>Equipos con SIMs operativas.</div>
-            <div class="card" style="border-left:4px solid #f59e0b"><div class="card-title">Sin Consumo</div>Equipos activados pero sin registros de consumo recientes.</div>
-            <div class="card" style="border-left:4px solid var(--rojo)"><div class="card-title">Desactivados</div>Equipos con SIMs desactivadas.</div>
-        </div>
-        <h3 class="sub" style="margin-top:16px">Mapa de equipos</h3>
-        <p>Al final de la seccion Dispositivos encontraras un <strong>mapa interactivo de Paraguay</strong> con la ubicacion de cada equipo. Los pines verdes corresponden a equipos activados y los rojos a equipos desactivados.</p>
-    </section>
+<!-- 2 ─────────────────────────────────────────────── -->
+<section id="pantalla">
+    <h2 class="sec"><span class="num">2</span>Pantalla principal</h2>
+    <p>Arriba están las pestañas del sistema. A la izquierda, el botón <strong>Ayuda</strong> abre este manual.</p>
+    <table>
+        <tr><th>Pestaña</th><th>Qué muestra</th></tr>
+        <tr><td>Consumo SIM</td><td>Consumo de datos de cada línea, el listado de líneas y el consumo por equipo (RC). Es la pestaña que se abre al ingresar.</td></tr>
+        <tr><td>Dispositivos</td><td>Los equipos ANDE (RC) con su regional, ubicación, SIM, gráficos y mapa.</td></tr>
+        <tr><td>Historial SIM</td><td>Los cambios de SIM hechos en los equipos.</td></tr>
+    </table>
+    <div class="alert tip">En el celular las tablas se ven como tarjetas: cada fila muestra "Columna: valor".</div>
+</section>
 
-    <!-- 5 -->
-    <section id="s5">
-        <h2 class="seccion"><span class="num">5</span> Panel de detalle RC</h2>
-        <p>Desde cualquier tabla que muestre un codigo <strong>RC</strong>, podes hacer clic sobre el para abrir el <strong>panel lateral de detalle</strong>.</p>
-        <p>El panel muestra toda la informacion de ese equipo:</p>
-        <div class="col2">
-            <div class="card"><div class="card-title">&#128205; Datos del equipo</div>Codigo RC, regional, ubicacion, fecha de activacion y estado.</div>
-            <div class="card"><div class="card-title">&#128246; Estado de las SIMs</div>Estado individual de cada slot SIM: Activo, Sin Consumo, Desactivado, etc.</div>
-            <div class="card"><div class="card-title">&#128202; Grafico de consumo</div>Historial mensual de MB consumidos por SIM en los ultimos meses.</div>
-            <div class="card"><div class="card-title">&#128336; Historial de cambios</div>Registro de los cambios de SIM realizados en ese equipo.</div>
-        </div>
-        <p>Para cerrar el panel hace clic en la <strong>X</strong> de la esquina superior derecha, o en cualquier area gris fuera del panel.</p>
-    </section>
+<!-- 3 ─────────────────────────────────────────────── -->
+<section id="tablas">
+    <h2 class="sec"><span class="num">3</span>Cómo usar las tablas</h2>
+    <p>Todas las tablas del sistema funcionan igual:</p>
+    <table>
+        <tr><th>Acción</th><th>Resultado</th></tr>
+        <tr><td>Clic en el título de una columna</td><td>Ordena de menor a mayor. Otro clic ordena de mayor a menor. Las celdas vacías siempre quedan al final.</td></tr>
+        <tr><td>Doble clic en un valor</td><td>Filtra la tabla por ese valor en esa columna (por ejemplo, doble clic en "Tigo" muestra solo Tigo).</td></tr>
+        <tr><td>Doble clic en un título</td><td>Aparece un campo para escribir. <kbd>Enter</kbd> filtra y <kbd>Esc</kbd> cancela.</td></tr>
+        <tr><td>Chips de filtros</td><td>Arriba de la tabla se ven los filtros aplicados. La ✕ de cada chip quita ese filtro.</td></tr>
+        <tr><td>Limpiar filtros</td><td>Quita todos los filtros de esa tabla.</td></tr>
+        <tr><td>Filtros plegables</td><td>El cuadro de filtros se abre y se cierra con un clic en su título.</td></tr>
+        <tr><td>Paginación</td><td>Debajo de la tabla: Anterior, números de página y Siguiente.</td></tr>
+    </table>
+    <p>Al costado de cada tabla hay <strong>tarjetas de resumen</strong> con los totales de lo que está filtrado. El botón <strong>Ver gráficos</strong> baja a los gráficos y <strong>↑ Volver a la tabla</strong> regresa.</p>
+</section>
 
-    <!-- 6 -->
-    <section id="s6">
-        <h2 class="seccion"><span class="num">6</span> Solicitudes desde el Panel RC y Panel SIM</h2>
-        <p>Al abrir el panel de detalle de un <strong>RC</strong> o de una <strong>linea SIM</strong>, encontraras una seccion <em>Acciones</em> con botones que envian solicitudes al equipo administrador. Estas solicitudes <strong>no aplican el cambio de forma inmediata</strong>; son registradas en el sistema para que el administrador las revise y ejecute.</p>
-        <div class="alert alert-info">
-            <span>&#8505;&#65039;</span>
-            <span>Despues de enviar una solicitud aparece la confirmacion <strong>&#9989; Solicitud enviada correctamente</strong> y el formulario se cierra automaticamente.</span>
-        </div>
+<!-- 4 ─────────────────────────────────────────────── -->
+<section id="consumo">
+    <h2 class="sec"><span class="num">4</span>Consumo SIM</h2>
 
-        <h3 class="sub" style="margin-top:24px">Solicitar Desactivacion</h3>
-        <div class="card">
-            <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
-                <div style="flex:0 0 220px">
-                    <div class="btn-panel-demo btn-panel-demo-rojo">&#128308; Solicitar Desactivacion</div>
-                </div>
-                <div style="flex:1;min-width:180px;font-size:14px">
-                    Disponible en el <strong>Panel RC</strong>. Solicita que el equipo administrador de de baja el RC seleccionado. Aparece una confirmacion antes de enviar.
-                </div>
-            </div>
-        </div>
-        <ol class="steps">
-            <li>Abre el panel de un RC haciendo clic en su codigo.</li>
-            <li>En la seccion <em>Acciones</em>, presiona <strong>Solicitar Desactivacion</strong>.</li>
-            <li>Confirma el mensaje emergente.</li>
-            <li>El area de acciones muestra la confirmacion de envio.</li>
-        </ol>
+    <h3>Tarjetero de líneas activas</h3>
+    <p>Arriba de todo se ve el total de <strong>líneas activas</strong> (normales + legado) y una tarjeta por telefonía. Cuenta las líneas activas del inventario: no incluye las desactivadas ni las de backup.</p>
 
-        <h3 class="sub" style="margin-top:28px">Solicitar Cambio de SIM</h3>
-        <div class="card">
-            <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
-                <div style="flex:0 0 220px;display:flex;flex-direction:column;gap:8px">
-                    <div class="btn-panel-demo btn-panel-demo-azul">&#128260; Solicitar Cambio SIM 1</div>
-                    <div class="btn-panel-demo btn-panel-demo-azul">&#128260; Solicitar Cambio SIM 2</div>
-                </div>
-                <div style="flex:1;min-width:180px;font-size:14px">
-                    Disponible en el <strong>Panel RC</strong>. Abre un formulario para indicar el nuevo numero y/o ICCID de la SIM. Si el equipo solo tiene una SIM, solo aparece el boton de SIM 1.
-                </div>
-            </div>
-        </div>
-        <ol class="steps">
-            <li>En el panel RC, presiona <strong>Solicitar Cambio SIM 1</strong> (o SIM 2).</li>
-            <li>Se abre el formulario <em>Solicitar Cambio SIM Principal</em>.</li>
-            <li>Completa el nuevo <strong>Numero</strong> y/o <strong>ICCID</strong>. Al menos uno es obligatorio.</li>
-            <li>Podes agregar una observacion con el motivo del cambio.</li>
-            <li>Presiona <strong>Enviar Solicitud</strong>. El formulario se cierra automaticamente al confirmar.</li>
-        </ol>
-        <div class="img-block" style="margin-top:16px">
-            <div style="background:#f0f2f8;border:1px solid #c7cae8;border-radius:10px;padding:20px;max-width:360px;font-family:'Segoe UI',Arial,sans-serif">
-                <div style="font-size:13px;font-weight:700;color:#35398C;margin-bottom:14px">&#128241; Solicitar Cambio SIM Principal &mdash; RC_55591</div>
-                <div style="margin-bottom:10px">
-                    <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Nuevo Numero</div>
-                    <div style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;color:#9ca3af;background:#fff">Ej: 994316194</div>
-                </div>
-                <div style="margin-bottom:10px">
-                    <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Nuevo ICCID</div>
-                    <div style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;color:#9ca3af;background:#fff">ICCID de la nueva SIM</div>
-                </div>
-                <div style="margin-bottom:14px">
-                    <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Observacion</div>
-                    <div style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;color:#9ca3af;background:#fff">Motivo del cambio (opcional)</div>
-                </div>
-                <div style="background:#35398C;color:#fff;border-radius:8px;padding:10px 16px;text-align:center;font-size:13px;font-weight:600">Enviar Solicitud</div>
-            </div>
-            <div class="img-caption">Formulario de solicitud de cambio de SIM</div>
-        </div>
+    <p>La pestaña tiene tres vistas, que se eligen con los botones <span class="b b-azul">Consumo</span> <span class="b b-azul">Líneas</span> <span class="b b-azul">RC</span>.</p>
 
-        <h3 class="sub" style="margin-top:28px">Solicitar Saldo</h3>
-        <div class="card">
-            <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
-                <div style="flex:0 0 220px">
-                    <div class="btn-panel-demo btn-panel-demo-verde">&#128179; Solicitar Saldo</div>
-                </div>
-                <div style="flex:1;min-width:180px;font-size:14px">
-                    Disponible en el <strong>Panel SIM</strong> (al hacer clic en un numero de linea). Permite solicitar una recarga de saldo para esa linea especificando el monto en guaranies.
-                </div>
-            </div>
-        </div>
-        <ol class="steps">
-            <li>Hace clic en un numero de linea en cualquier tabla para abrir el panel SIM.</li>
-            <li>En la seccion <em>Acciones</em>, presiona <strong>Solicitar Saldo</strong>.</li>
-            <li>El numero de la SIM se completa automaticamente.</li>
-            <li>Ingresa el <strong>monto en guaranies</strong> a cargar. Es obligatorio.</li>
-            <li>Agrega una observacion si es necesario y presiona <strong>Enviar Solicitud</strong>.</li>
-        </ol>
-        <div class="img-block" style="margin-top:16px">
-            <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:20px;max-width:360px;font-family:'Segoe UI',Arial,sans-serif">
-                <div style="font-size:13px;font-weight:700;color:#15803d;margin-bottom:14px">&#128179; Solicitar Carga de Saldo</div>
-                <div style="margin-bottom:10px">
-                    <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Linea SIM</div>
-                    <div style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;color:#6b7280;background:#f3f4f6">976989482</div>
-                </div>
-                <div style="margin-bottom:10px">
-                    <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Monto a cargar (Gs.)</div>
-                    <div style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;color:#9ca3af;background:#fff">Ej: 50000</div>
-                </div>
-                <div style="margin-bottom:14px">
-                    <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Observacion (opcional)</div>
-                    <div style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;color:#9ca3af;background:#fff">Motivo o comentario</div>
-                </div>
-                <div style="background:#16a34a;color:#fff;border-radius:8px;padding:10px 16px;text-align:center;font-size:13px;font-weight:600">Enviar Solicitud</div>
-            </div>
-            <div class="img-caption">Formulario de solicitud de carga de saldo</div>
-        </div>
+    <h3>Vista Consumo: una fila por línea y por día</h3>
+    <table>
+        <tr><th>Filtro</th><th>Uso</th></tr>
+        <tr><td>Telefonía</td><td>Personal, Claro, Tigo o Vox.</td></tr>
+        <tr><td>Estado</td><td>Activo o Desactivado.</td></tr>
+        <tr><td>RC</td><td>Código del equipo (ej. RC_55591).</td></tr>
+        <tr><td>Nº / ICCID</td><td>Número de la línea o ICCID de la SIM.</td></tr>
+        <tr><td>Desde / Hasta</td><td>Período de fechas.</td></tr>
+    </table>
+    <p>Presioná <strong>Buscar</strong> para aplicar o <strong>Limpiar</strong> para volver al inicio.</p>
+    <table>
+        <tr><th>Columna</th><th>Significado</th></tr>
+        <tr><td>Estado</td><td>Activo o Desactivado según el reporte de ese día.</td></tr>
+        <tr><td>Número</td><td>Número de la línea. Clic para abrir el panel de la línea.</td></tr>
+        <tr><td>ICCID</td><td>Identificador de la tarjeta SIM.</td></tr>
+        <tr><td>RC</td><td>Equipo que usa la línea. Clic para abrir el panel del RC.</td></tr>
+        <tr><td>Telefonía</td><td>Operadora.</td></tr>
+        <tr><td>Consumo (MB)</td><td>Megabytes consumidos ese día.</td></tr>
+        <tr><td>Disponible (MB)</td><td>Plan disponible que informó el operador en el reporte de ese día. En rojo si es 0 o negativo. Pasando el mouse se ve en GB.</td></tr>
+        <tr><td>Fecha</td><td>Día del consumo.</td></tr>
+    </table>
 
-        <div class="alert alert-warn" style="margin-top:20px">
-            <span>&#9888;&#65039;</span>
-            <span>Las solicitudes <strong>no aplican el cambio automaticamente</strong>. Son recibidas por el equipo administrador para su revision y ejecucion. Si necesitas un cambio urgente, contacta directamente al administrador.</span>
-        </div>
-    </section>
+    <h3>Vista Líneas: una fila por línea</h3>
+    <p>Busca por número, ICCID o RC mientras escribís. También filtra por telefonía y estado.</p>
+    <table>
+        <tr><th>Columna</th><th>Significado</th></tr>
+        <tr><td>Consumo Mes (MB)</td><td>Consumo del mes en curso.</td></tr>
+        <tr><td>Consumo Total (MB)</td><td>Consumo histórico acumulado.</td></tr>
+        <tr><td>Disponible (MB)</td><td>El <strong>último</strong> plan disponible informado para esa línea, con la fecha de ese reporte debajo.</td></tr>
+    </table>
 
-    <!-- 7 -->
-    <section id="s7">
-        <h2 class="seccion"><span class="num">7</span> Graficos e indicadores</h2>
-        <p>Cada vista cuenta con graficos automaticos que se actualizan al aplicar filtros.</p>
-        <div class="img-block">
-            <img src="Imagenes/4.graficos.png" alt="Graficos">
-            <div class="img-caption">Graficos automaticos &mdash; se actualizan al cambiar filtros</div>
-        </div>
-        <table>
-            <tr><th>Vista</th><th>Graficos disponibles</th></tr>
-            <tr><td><strong>Consumo</strong></td><td><ul style="padding-left:16px;font-size:14px"><li>Historico de consumo MB por dia</li><li>Top 5 Lineas por consumo (barras)</li><li>MB por Telefonia (donut)</li></ul></td></tr>
-            <tr><td><strong>Lineas</strong></td><td><ul style="padding-left:16px;font-size:14px"><li>Estado de lineas (donut)</li><li>Lineas por Telefonia (barras)</li><li>Top 10 lineas por Consumo Total</li></ul></td></tr>
-            <tr><td><strong>RC</strong></td><td><ul style="padding-left:16px;font-size:14px"><li>Historico Top 5 Equipos (lineas)</li><li>Top 5 Equipos por Consumo (barras)</li><li>Consumo por Regional (barras)</li></ul></td></tr>
-            <tr><td><strong>Dispositivos</strong></td><td><ul style="padding-left:16px;font-size:14px"><li>Dispositivos por Regional</li><li>Activaciones en el Tiempo</li><li>Estado de Dispositivos (torta)</li></ul></td></tr>
-        </table>
-        <div class="alert alert-tip">
-            <span>&#128161;</span>
-            <span>Pasando el cursor por encima de cada barra o sector del grafico se muestra un <strong>tooltip</strong> con el valor exacto.</span>
-        </div>
-    </section>
+    <h3>Vista RC: una fila por equipo</h3>
+    <p>Muestra cada RC con su SIM principal y su SIM de respaldo, el consumo de cada una y el total. Se filtra por código RC y por regional.</p>
 
-    <!-- 8 -->
-    <section id="s8">
-        <h2 class="seccion"><span class="num">8</span> Estados y significados</h2>
-        <h3 class="sub">Estado de las lineas SIM</h3>
-        <table>
-            <tr><th>Badge</th><th>Significado</th></tr>
-            <tr><td><span class="badge badge-verde">&#9679; Activado</span></td><td>La SIM esta operativa y tiene registros de consumo activos.</td></tr>
-            <tr><td><span class="badge badge-rojo">&#9679; Desactivado</span></td><td>La SIM fue desactivada. No genera trafico de datos. La fila aparece en gris.</td></tr>
-        </table>
-        <h3 class="sub" style="margin-top:20px">Estado de los equipos (Dispositivos)</h3>
-        <table>
-            <tr><th>Badge</th><th>Significado</th></tr>
-            <tr><td><span class="badge badge-verde">&#9679; Activado</span></td><td>El equipo tiene al menos una SIM activa con consumo.</td></tr>
-            <tr><td><span class="badge badge-gris">&#9679; Sin Consumo</span></td><td>El equipo esta registrado pero no reporto consumo recientemente.</td></tr>
-            <tr><td><span class="badge badge-rojo">&#9679; Desactivado</span></td><td>El equipo fue dado de baja. Todas sus SIMs estan desactivadas.</td></tr>
-        </table>
-        <h3 class="sub" style="margin-top:20px">Operadoras / Telefonia</h3>
-        <table>
-            <tr><td><span class="badge badge-azul">Personal</span></td><td>SIM de la operadora Personal.</td></tr>
-            <tr><td><span class="badge badge-rojo">Claro</span></td><td>SIM de la operadora Claro.</td></tr>
-            <tr><td><span class="badge badge-naranja">Tigo</span></td><td>SIM de la operadora Tigo.</td></tr>
-            <tr><td><span class="badge badge-verde">Vox</span></td><td>SIM de la operadora Vox.</td></tr>
-        </table>
-    </section>
+    <h3>Gráficos</h3>
+    <table>
+        <tr><th>Vista</th><th>Gráficos</th></tr>
+        <tr><td>Consumo</td><td>Histórico de MB por día (total diario), Top 5 líneas, MB por telefonía. Si filtrás una sola línea: consumo por mes y resumen de la línea.</td></tr>
+        <tr><td>RC</td><td>Histórico de los 5 equipos con más consumo, Top 5 equipos, consumo por regional.</td></tr>
+    </table>
+</section>
 
-    <!-- 9 -->
-    <section id="s9">
-        <h2 class="seccion"><span class="num">9</span> Preguntas frecuentes</h2>
-        <div class="card"><div class="card-title">Con que frecuencia se actualizan los datos?</div>Los consumos se actualizan diariamente. Los registros cargados corresponden al <strong>dia anterior</strong>.</div>
-        <div class="card"><div class="card-title">Por que una linea activada muestra 0 MB?</div>Puede deberse a que el consumo del dia todavia no fue importado, o a que la SIM no genero trafico en el periodo consultado.</div>
-        <div class="card"><div class="card-title">Como puedo buscar un equipo especifico rapidamente?</div>En la vista <strong>RC</strong>, usa el campo "Buscar RC" y escribe parte del codigo (ej: <code>55591</code>). Los resultados se filtran en tiempo real.</div>
-        <div class="card"><div class="card-title">Puedo exportar los datos a Excel?</div>Si. En la vista <strong>Consumo</strong>, usa el boton <span class="btn-sim btn-gris">Exportar</span>. Se descarga un archivo .xlsx con los registros actualmente visibles.</div>
-        <div class="card"><div class="card-title">Que hago si los datos no cargan o aparece un error?</div>
-            <ol class="steps" style="margin-top:8px">
-                <li>Verifica tu conexion a internet.</li>
-                <li>Recarga la pagina con F5.</li>
-                <li>Si el error persiste, contacta al administrador del sistema de INOVASI.</li>
-            </ol>
-        </div>
-        <div class="card"><div class="card-title">La informacion es en tiempo real?</div>No. Los datos de consumo se importan una vez al dia. El sistema muestra la informacion mas reciente disponible al momento de la ultima importacion.</div>
-    </section>
+<!-- 5 ─────────────────────────────────────────────── -->
+<section id="dispositivos">
+    <h2 class="sec"><span class="num">5</span>Dispositivos</h2>
+    <p>Listado de todos los equipos ANDE (RC).</p>
+    <table>
+        <tr><th>Filtro</th><th>Uso</th></tr>
+        <tr><td>Regional</td><td>Regional del equipo.</td></tr>
+        <tr><td>Código</td><td>Código del RC.</td></tr>
+        <tr><td>Nº SIM</td><td>Número de una de sus líneas.</td></tr>
+        <tr><td>Fecha Activación</td><td>Fecha de alta del equipo.</td></tr>
+        <tr><td>Estado</td><td>Activo o Desactivado.</td></tr>
+        <tr><td>Tipo</td><td>Activo, Legado o Satelital.</td></tr>
+    </table>
+    <p>Columnas: estado, regional, código, ubicación, número e ICCID de la SIM 1 y de la SIM 2, y fecha de activación.</p>
+    <p>En <strong>Resumen y gráficos</strong> están las tarjetas (total, activos, sin consumo, desactivados), los gráficos por regional, activaciones en el tiempo y estado, y el <strong>mapa de equipos</strong>: verde = activo, rojo = desactivado. Clic en un punto para ver los datos del RC.</p>
+</section>
 
-    <footer>
-        <p>Manual de usuario &mdash; Sistema de Gestion de Equipos ANDE</p>
-        <p style="margin-top:4px">Desarrollado por <strong>INOVASI</strong> &middot; Version 1.0 &middot; Mayo 2026</p>
-    </footer>
+<!-- 6 ─────────────────────────────────────────────── -->
+<section id="historial">
+    <h2 class="sec"><span class="num">6</span>Historial SIM</h2>
+    <p>Registro de cada cambio de SIM hecho en un equipo. Se busca por RC, número, ICCID o usuario.</p>
+    <table>
+        <tr><th>Columna</th><th>Significado</th></tr>
+        <tr><td>Fecha en campo</td><td>Día en que se cambió la SIM en el equipo.</td></tr>
+        <tr><td>Registrado</td><td>Cuándo se cargó en el sistema.</td></tr>
+        <tr><td>Código / Slot</td><td>RC y posición (SIM 1 o SIM 2).</td></tr>
+        <tr><td>Número / ICCID</td><td>Valor anterior → valor nuevo.</td></tr>
+        <tr><td>Usuario</td><td>Quién lo registró. Los cambios que vienen de un ticket de soporte muestran el número de ticket.</td></tr>
+    </table>
+</section>
 
+<!-- 7 ─────────────────────────────────────────────── -->
+<section id="panel-rc">
+    <h2 class="sec"><span class="num">7</span>Panel de un RC</h2>
+    <p>Clic en cualquier código RC de una tabla para abrir el panel lateral. Se cierra con la ✕ o haciendo clic fuera del panel.</p>
+    <table>
+        <tr><th>Sección</th><th>Contenido</th></tr>
+        <tr><td>Equipo</td><td>Regional, estado, ubicación y fecha de activación.</td></tr>
+        <tr><td>SIM Cards</td><td>Número, ICCID, consumo y estado de cada SIM. <strong>Clic en el ICCID</strong> abre la vista Líneas filtrada por esa SIM.</td></tr>
+        <tr><td>Consumo Histórico</td><td>Gráfico de consumo de las dos SIM.</td></tr>
+        <tr><td>Tickets de soporte</td><td>Tickets de cambio de SIM de ese RC (aparece solo si hay).</td></tr>
+        <tr><td>Historial de Cambios SIM</td><td>Cambios de SIM hechos en el equipo.</td></tr>
+        <tr><td>Acciones</td><td>Solicitar Desactivación y Solicitar Cambio SIM 1 / SIM 2 (ver <a href="#solicitudes">Solicitudes</a>).</td></tr>
+    </table>
+</section>
+
+<!-- 8 ─────────────────────────────────────────────── -->
+<section id="panel-sim">
+    <h2 class="sec"><span class="num">8</span>Panel de una línea</h2>
+    <p>Clic en un número de línea para abrir su panel: RC asociado, telefonía, consumo total registrado, regional y gráfico de consumo.</p>
+    <table>
+        <tr><th>Botón</th><th>Qué hace</th></tr>
+        <tr><td>🟢 Solicitar Activación</td><td>Pide al administrador que active la línea.</td></tr>
+        <tr><td>🔴 Solicitar Desactivación</td><td>Pide al administrador que la desactive.</td></tr>
+        <tr><td>💳 Solicitar Saldo</td><td>Pide una carga de saldo.</td></tr>
+        <tr><td>📋 Ver en Líneas</td><td>Abre la vista Líneas filtrada por esa línea.</td></tr>
+        <tr><td>📊 Ver en Consumo</td><td>Abre la vista Consumo filtrada por esa línea.</td></tr>
+    </table>
+</section>
+
+<!-- 9 ─────────────────────────────────────────────── -->
+<section id="solicitudes">
+    <h2 class="sec"><span class="num">9</span>Solicitudes</h2>
+    <div class="alert info">Las solicitudes <strong>no cambian nada en el momento</strong>. Quedan registradas y le llegan al administrador, que las revisa y las aplica. Al enviarlas aparece "✅ Solicitud enviada".</div>
+
+    <h3>Desactivar un RC</h3>
+    <ol class="pasos">
+        <li>Abrí el panel del RC.</li>
+        <li>En Acciones, presioná <strong>Solicitar Desactivación</strong> y confirmá.</li>
+    </ol>
+
+    <h3>Cambiar una SIM de un RC</h3>
+    <ol class="pasos">
+        <li>En el panel del RC, presioná <strong>Solicitar Cambio SIM 1</strong> (o SIM 2).</li>
+        <li>Completá el <strong>nuevo número</strong> y/o el <strong>nuevo ICCID</strong>. Al menos uno es obligatorio.</li>
+        <li>Indicá la <strong>fecha del cambio en campo</strong> y, si querés, una observación.</li>
+        <li>Presioná <strong>Enviar Solicitud</strong>.</li>
+    </ol>
+
+    <h3>Activar o desactivar una línea</h3>
+    <p>En el panel de la línea, presioná <strong>Solicitar Activación</strong> o <strong>Solicitar Desactivación</strong> y escribí el motivo. Se avisa por correo a los administradores.</p>
+
+    <h3>Cargar saldo</h3>
+    <ol class="pasos">
+        <li>En el panel de la línea, presioná <strong>Solicitar Saldo</strong>. El número ya viene cargado.</li>
+        <li>Escribí el <strong>monto en guaraníes</strong> (obligatorio) y una observación si hace falta.</li>
+        <li>Presioná <strong>Enviar Solicitud</strong>. Se crea un ticket en soporte y se avisa por correo.</li>
+    </ol>
+</section>
+
+<!-- 10 ────────────────────────────────────────────── -->
+<section id="reportes">
+    <h2 class="sec"><span class="num">10</span>Reportes PDF y Excel</h2>
+    <p>El botón <strong>Reporte</strong> de cada pestaña abre la ventana "Generar reporte", con los filtros que tenías en pantalla ya cargados.</p>
+    <ol class="pasos">
+        <li>Elegí el reporte: Consumo por línea, Consumo por RC, Consumo diario (detalle), Líneas, Dispositivos o Cambios de SIM.</li>
+        <li>Marcá los filtros. Cada filtro acepta varios valores; sin marcar = todos. En RC y Número / ICCID podés poner varios separados por coma.</li>
+        <li>Elegí <strong>PDF</strong> o <strong>Excel</strong>. Con "Incluir el detalle" sale el resumen y todas las filas; sin marcar, solo el resumen.</li>
+        <li>Generá el archivo. Se descarga con los filtros usados en el encabezado.</li>
+    </ol>
+</section>
+
+<!-- 11 ────────────────────────────────────────────── -->
+<section id="estados">
+    <h2 class="sec"><span class="num">11</span>Estados y significados</h2>
+    <table>
+        <tr><th>Estado</th><th>Significado</th></tr>
+        <tr><td><span class="b b-verde">● Activo</span></td><td>La línea o el equipo está en uso.</td></tr>
+        <tr><td><span class="b b-rojo">● Desactivado</span></td><td>Dado de baja. Las filas desactivadas se ven en gris.</td></tr>
+    </table>
+    <table>
+        <tr><th>Telefonía</th><th>Notas</th></tr>
+        <tr><td>Personal, Claro, Tigo</td><td>Envían reportes de consumo diarios.</td></tr>
+        <tr><td>Vox</td><td>No envía reportes: sus líneas no muestran consumo.</td></tr>
+        <tr><td>M2M</td><td>Líneas sin número telefónico. Se identifican por el ICCID.</td></tr>
+    </table>
+</section>
+
+<!-- 12 ────────────────────────────────────────────── -->
+<section id="faq">
+    <h2 class="sec"><span class="num">12</span>Preguntas frecuentes</h2>
+    <dl class="faq">
+        <dt>¿Cada cuánto se actualizan los datos?</dt>
+        <dd>Los reportes de los operadores se cargan solos varias veces al día. Normalmente el último día disponible es el de ayer o anteayer.</dd>
+        <dt>¿Por qué una línea activa muestra 0 MB?</dt>
+        <dd>La SIM no generó tráfico ese día, o el reporte de ese día todavía no llegó.</dd>
+        <dt>¿Por qué una línea no tiene Disponible?</dt>
+        <dd>El operador no informó el plan disponible para esa línea en ningún reporte.</dd>
+        <dt>Envié una solicitud, ¿cuándo se aplica?</dt>
+        <dd>Cuando el administrador la apruebe. Si es urgente, contactá a soporte de INOVASI.</dd>
+        <dt>Me sacó del sistema.</dt>
+        <dd>Pasaron 3 minutos sin actividad. Ingresá de nuevo.</dd>
+        <dt>Los datos no cargan o aparece un error.</dt>
+        <dd>Revisá tu conexión y recargá con <kbd>Ctrl</kbd> + <kbd>F5</kbd>. Si sigue, contactá a soporte de INOVASI.</dd>
+    </dl>
+</section>
+
+<footer>INOVASI · Sistema de Gestión de Equipos ANDE · Manual de usuario v2.0</footer>
 </div>
 </body>
 </html>
